@@ -1,11 +1,18 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { OSM_CONTRIBUTORS } from '@/domain/routeConsent';
-import { DRAW_FINGER_HINT } from '@/domain/routeAdjust';
+import { CONFIRM_DRAW, DRAW_FINGER_HINT, DRAW_SNAPPED, DRAW_TICK_GREEN } from '@/domain/routeAdjust';
 import { MAP_CREDIT, type MapScheme } from '@/domain/outdoorRoute';
+import {
+  fullScreenModalVisible,
+  fullScreenShowsNativeMap,
+  inlineMapMounted,
+  nextFullScreenPhase,
+  type FullScreenPhase,
+} from '@/ui/mapCamera';
 import { ShowMyLocationButton } from '@/ui/ShowMyLocation';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Pencil, T } from '@/ui/ui';
@@ -116,6 +123,14 @@ function ClearIcon() {
   );
 }
 
+function TickIcon() {
+  return (
+    <Svg width={28} height={28} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M5 12.5 9.2 16.7 19 7" stroke="#FFFFFF" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 function MapCredit({ scheme }: { scheme: MapScheme }) {
   const onDark = scheme === 'dark';
   return (
@@ -185,8 +200,12 @@ export function MapShell({
   onToggleDraw,
   onUndoDraw,
   onClearDraw,
+  onConfirmDraw,
   canUndoDraw = false,
   canClearDraw = false,
+  canConfirmDraw = false,
+  confirmPending = false,
+  statusNote = null,
   children,
 }: {
   here: boolean;
@@ -205,8 +224,13 @@ export function MapShell({
   onToggleDraw?: () => void;
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
+  onConfirmDraw?: () => void;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
+  canConfirmDraw?: boolean;
+  confirmPending?: boolean;
+  /** Shown on the map once drawing has finished, including a successful snap. */
+  statusNote?: string | null;
   children: ReactNode;
 }) {
   const theme = useAppTheme();
@@ -255,7 +279,7 @@ export function MapShell({
           </>
         ) : null}
         {drawing ? (
-          <View pointerEvents={'none'} style={{ position: 'absolute', top: 58, left: 8, right: 112, zIndex: 4 }}>
+          <View pointerEvents={'none'} style={{ position: 'absolute', top: 112, left: 8, right: 8, zIndex: 4 }}>
             <T
               maxFontSizeMultiplier={1.5}
               style={{
@@ -272,6 +296,50 @@ export function MapShell({
             >
               {DRAW_FINGER_HINT}
             </T>
+          </View>
+        ) : null}
+        {!drawing && statusNote ? (
+          <View pointerEvents={'none'} style={{ position: 'absolute', top: 58, left: 8, right: 112, zIndex: 4 }}>
+            <T
+              maxFontSizeMultiplier={1.5}
+              style={{
+                alignSelf: 'flex-start',
+                fontSize: 14,
+                lineHeight: 18,
+                color: statusNote === DRAW_SNAPPED ? '#FFFFFF' : INK,
+                backgroundColor: statusNote === DRAW_SNAPPED ? DRAW_TICK_GREEN : 'rgba(255,255,255,0.94)',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 8,
+                overflow: 'hidden',
+              }}
+            >
+              {statusNote}
+            </T>
+          </View>
+        ) : null}
+        {drawing && canConfirmDraw && onConfirmDraw ? (
+          <View pointerEvents={'box-none'} style={{ position: 'absolute', left: 0, right: 0, bottom: 72, alignItems: 'center', zIndex: 7 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={CONFIRM_DRAW}
+              accessibilityState={{ disabled: confirmPending }}
+              disabled={confirmPending}
+              onPress={onConfirmDraw}
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: DRAW_TICK_GREEN,
+                borderWidth: 2,
+                borderColor: '#FFFFFF',
+                opacity: confirmPending ? 0.45 : 1,
+              }}
+            >
+              <TickIcon />
+            </Pressable>
           </View>
         ) : null}
         <MapCredit scheme={scheme} />
@@ -298,8 +366,12 @@ export function MapFrame({
   onToggleDraw,
   onUndoDraw,
   onClearDraw,
+  onConfirmDraw,
   canUndoDraw,
   canClearDraw,
+  canConfirmDraw,
+  confirmPending,
+  statusNote,
 }: {
   here: boolean;
   height?: number;
@@ -319,19 +391,36 @@ export function MapFrame({
   onToggleDraw?: () => void;
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
+  onConfirmDraw?: () => void;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
+  canConfirmDraw?: boolean;
+  confirmPending?: boolean;
+  statusNote?: string | null;
 }) {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<FullScreenPhase>('closed');
   const fullHeight = Math.max(240, window.height - insets.top - insets.bottom);
   const fullMapHeight = bar ? Math.max(180, fullHeight - 260) : fullHeight;
+  const modalVisible = fullScreenModalVisible(phase);
+  const showNativeMap = fullScreenShowsNativeMap(phase);
   function collapse() {
-    setOpen(false);
-    onRestore();
+    setPhase((current) => nextFullScreenPhase(current, 'unmount-map'));
   }
-  const shell = (expanded: boolean, viewHeight: number) => (
+  useEffect(() => {
+    if (phase !== 'opening' && phase !== 'closing') return undefined;
+    const frame = requestAnimationFrame(() => {
+      if (phase === 'opening') {
+        setPhase((current) => nextFullScreenPhase(current, 'mount-map'));
+        return;
+      }
+      setPhase((current) => nextFullScreenPhase(current, 'hide-modal'));
+      onRestore();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [phase, onRestore]);
+  const shell = (expanded: boolean, viewHeight: number, mountMap: boolean) => (
     <MapShell
       here={here}
       height={viewHeight}
@@ -340,7 +429,7 @@ export function MapFrame({
       locating={locating}
       onShowMyLocation={onShowMyLocation}
       onRecentre={onRecentre}
-      onExpand={() => setOpen(true)}
+      onExpand={() => setPhase((current) => nextFullScreenPhase(current, 'expand'))}
       onCollapse={collapse}
       onToggleStyle={onToggleStyle}
       problem={expanded ? null : problem}
@@ -349,18 +438,20 @@ export function MapFrame({
       onToggleDraw={onToggleDraw}
       onUndoDraw={onUndoDraw}
       onClearDraw={onClearDraw}
+      onConfirmDraw={onConfirmDraw}
       canUndoDraw={canUndoDraw}
       canClearDraw={canClearDraw}
+      canConfirmDraw={canConfirmDraw}
+      confirmPending={confirmPending}
+      statusNote={statusNote}
     >
-      {renderMap({ height: viewHeight, expanded })}
+      {mountMap ? renderMap({ height: viewHeight, expanded }) : null}
     </MapShell>
   );
   return (
     <>
-      <View pointerEvents={open ? 'none' : 'auto'}>
-        {shell(false, height)}
-      </View>
-      <Modal visible={open} animationType="fade" onRequestClose={collapse} statusBarTranslucent>
+      {inlineMapMounted(phase) ? shell(false, height, true) : <View style={{ height }} />}
+      <Modal visible={modalVisible} animationType="none" onRequestClose={collapse} statusBarTranslucent>
         <View
           style={{
             flex: 1,
@@ -371,8 +462,8 @@ export function MapFrame({
             backgroundColor: scheme === 'dark' ? '#141414' : '#F7F5F0',
           }}
         >
-          {open ? shell(true, fullMapHeight) : null}
-          {open && bar ? <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>{bar}</View> : null}
+          {modalVisible ? shell(true, fullMapHeight, showNativeMap) : null}
+          {showNativeMap && bar ? <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>{bar}</View> : null}
         </View>
       </Modal>
     </>

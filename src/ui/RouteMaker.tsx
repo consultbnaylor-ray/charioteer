@@ -43,9 +43,11 @@ import {
   combineDrawStrokes,
   commitDrawStroke,
   continuationEnd,
+  drawReadyToSnap,
   joinStroke,
+  rawDrawLine,
+  snappedDrawLine,
   undoDrawStroke,
-  visibleDrawLine,
 } from '@/domain/drawStroke';
 import {
   closeSketchIfLoop,
@@ -59,6 +61,7 @@ import {
   DRAW_NO_PATH,
   DRAW_PEN_HINT,
   DRAW_SNAP_PARTIAL,
+  DRAW_SNAPPED,
   PREFER_PATHS_LABEL,
   PREFER_PATHS_NOTE,
   adjustControlsOn,
@@ -153,7 +156,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [pencil, setPencil] = useState<OutdoorPoint[]>([]);
   const [strokes, setStrokes] = useState<OutdoorPoint[][]>([]);
   const [snappedCount, setSnappedCount] = useState(0);
-  const [drawStack, setDrawStack] = useState<{ plan: RoutePlan | null; snappedCount: number }[]>([]);
+  const [drawStack, setDrawStack] = useState<{ plan: RoutePlan | null; snappedCount: number; keptStrokes: number }[]>([]);
   const [fromDraw, setFromDraw] = useState(false);
   const [lookAt, setLookAt] = useState<OutdoorPoint | null>(null);
   const [lookFocus, setLookFocus] = useState(0);
@@ -169,9 +172,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   planRef.current = plan;
   editRef.current = edit;
   const strokesRef = useRef(strokes);
+  const pencilRef = useRef(pencil);
   const snappedCountRef = useRef(snappedCount);
   const drawGen = useRef(0);
   strokesRef.current = strokes;
+  pencilRef.current = pencil;
   snappedCountRef.current = snappedCount;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
@@ -531,7 +536,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
 
-  async function snapDrawn(points: OutdoorPoint[]) {
+  function holdStroke(points: OutdoorPoint[]) {
     if (points.length === 0) {
       setPencil([]);
       return;
@@ -544,14 +549,19 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setPencil([]);
       return;
     }
+    strokesRef.current = nextStrokes;
+    setStrokes(nextStrokes);
+    setPencil([]);
+    setDrawNote(null);
+    setError(null);
+  }
+
+  async function snapDrawn() {
+    const nextStrokes = strokesRef.current;
     const previous = planRef.current;
     const previousCount = snappedCountRef.current;
     const generation = drawGen.current + 1;
     drawGen.current = generation;
-    strokesRef.current = nextStrokes;
-    setStrokes(nextStrokes);
-    setPencil([]);
-    setDrawStack((stack) => [...stack, { plan: previous, snappedCount: previousCount }].slice(-8));
     setFromDraw(true);
     const combined = combineDrawStrokes(nextStrokes);
     const closed = closeSketchIfLoop(combined);
@@ -605,10 +615,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       }
       setPlan(next);
       planRef.current = next;
+      setDrawStack((stack) => [...stack, { plan: previous, snappedCount: previousCount, keptStrokes: previousCount }].slice(-8));
       setSnappedCount(nextStrokes.length);
       snappedCountRef.current = nextStrokes.length;
       setOriginal(next);
-      setDrawNote(result.matched ? null : DRAW_SNAP_PARTIAL);
+      setDrawNote(result.matched ? DRAW_SNAPPED : DRAW_SNAP_PARTIAL);
       setError(result.matched ? null : DRAW_SNAP_PARTIAL);
       setAcceptedVias([]);
       setShownVias([]);
@@ -636,21 +647,33 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   function undoDraw() {
-    if (pencil.length > 0) {
+    if (pencilRef.current.length > 0) {
       setPencil([]);
       setDrawNote(null);
+      setError(null);
+      return;
+    }
+    if (strokesRef.current.length > snappedCountRef.current) {
+      const next = undoDrawStroke(strokesRef.current);
+      strokesRef.current = next;
+      setStrokes(next);
+      setDrawNote(null);
+      setError(null);
       return;
     }
     drawGen.current += 1;
     setPending(false);
-    setStrokes((current) => {
-      const next = undoDrawStroke(current);
-      strokesRef.current = next;
-      return next;
-    });
     setDrawStack((stack) => {
       const previous = stack[stack.length - 1];
-      if (!previous) return stack;
+      if (!previous) {
+        const next = undoDrawStroke(strokesRef.current);
+        strokesRef.current = next;
+        setStrokes(next);
+        return stack;
+      }
+      const next = strokesRef.current.slice(0, previous.keptStrokes);
+      strokesRef.current = next;
+      setStrokes(next);
       setPlan(previous.plan);
       planRef.current = previous.plan;
       setFromDraw(previous.plan != null);
@@ -658,6 +681,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       snappedCountRef.current = previous.snappedCount;
       setPencil([]);
       setDrawNote(null);
+      setError(null);
       return stack.slice(0, -1);
     });
   }
@@ -687,8 +711,21 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       return !on;
     });
   }
+
+  async function confirmDraw() {
+    if (pencilRef.current.length > 0) holdStroke(pencilRef.current);
+    if (combineDrawStrokes(strokesRef.current).length < 2) {
+      setDrawNote(DRAW_TOO_SHORT);
+      setError(DRAW_TOO_SHORT);
+      return;
+    }
+    await snapDrawn();
+    setDrawing(false);
+  }
+
   const mapHeight = Math.max(180, narrow ? 220 : 360);
-  const drawnLine = visibleDrawLine(plan?.points ?? null, strokes, snappedCount);
+  const snappedLine = snappedDrawLine(plan?.points ?? null, strokes, snappedCount);
+  const rawLine = rawDrawLine(strokes, snappedCount, pencil);
   const howChoice = mode === 'run' ? 'Run' : mode === 'cycle' ? 'Cycle' : 'Walk';
   const shapeChoice = shape === 'a_to_b' ? 'A to B' : 'Loop';
   const distanceChoice = ROUTE_DISTANCE_CHOICES.find((item) => item.id === distanceId)?.label ?? '5 km';
@@ -821,8 +858,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         ) : null}
         <FootpathMap
           routes={[]}
-          sketch={drawnLine}
-          pencil={pencil}
+          sketch={snappedLine}
+          pencil={rawLine}
           pin={pin}
           here={you}
           startPoint={plan?.snappedStart ?? plan?.points[0] ?? start}
@@ -840,19 +877,27 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               );
               setPencil(joined);
             },
-            onEnd: (points) => { void snapDrawn(points); },
+            onEnd: (points) => { holdStroke(points); },
           } : null}
           onToggleDraw={craving ? undefined : toggleDraw}
           onUndoDraw={undoDraw}
           onClearDraw={clearDraw}
+          onConfirmDraw={craving ? undefined : () => { void confirmDraw(); }}
           canUndoDraw={pencil.length > 0 || strokes.length > 0 || drawStack.length > 0}
           canClearDraw={pencil.length > 0 || strokes.length > 0 || fromDraw}
+          canConfirmDraw={drawReadyToSnap(strokes, pencil)}
+          confirmPending={pending}
+          statusNote={drawing ? null : drawNote}
           onShowMyLocation={() => { void showMyLocation(); }}
         />
         {fromDraw && plan ? (
           <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
         ) : null}
-        {drawNote ? <T>{drawNote}</T> : null}
+        {drawNote ? (
+          <T style={drawNote === DRAW_SNAPPED ? { color: statsToneColors(theme.scheme).good.ink, fontFamily: theme.font.bodyStrong } : undefined}>
+            {drawNote}
+          </T>
+        ) : null}
         <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
         {results.map((place) => (
           <Choice
@@ -935,7 +980,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <View accessibilityLabel="Route line">
             <FootpathMap
               routes={[]}
-              sketch={drawnLine}
+              sketch={snappedLine}
+              pencil={rawLine}
               here={you}
               startPoint={plan.snappedStart ?? plan.points[0] ?? null}
               locationFocus={focus}

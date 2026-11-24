@@ -76,6 +76,43 @@ export function pageScrollForMapTouch(expanded: boolean, fingerDown: boolean): b
   return !fingerDown;
 }
 
+/**
+ * The full-screen map is a native MapLibre view inside a React Native modal.
+ * Hiding that modal in the same update that destroys the map tears the map down
+ * during the modal transition. On iOS that locks the main thread, so the screen
+ * freezes. A second MapLibre view left mounted underneath, then destroyed while
+ * the modal animates, is the same lock. A draw layer that still owns the touch
+ * makes it worse: the touch lock is left behind when the view disappears.
+ * Open and close therefore take a spare frame. One map is unmounted, then the
+ * modal shows or hides, and the draw layer is already gone before the modal goes.
+ */
+export type FullScreenPhase = 'closed' | 'opening' | 'open' | 'closing';
+
+export type FullScreenAction = 'expand' | 'mount-map' | 'unmount-map' | 'hide-modal';
+
+export function nextFullScreenPhase(phase: FullScreenPhase, action: FullScreenAction): FullScreenPhase {
+  if (action === 'expand' && phase === 'closed') return 'opening';
+  if (action === 'mount-map' && phase === 'opening') return 'open';
+  if (action === 'unmount-map' && (phase === 'open' || phase === 'opening')) return 'closing';
+  if (action === 'hide-modal' && phase === 'closing') return 'closed';
+  return phase;
+}
+
+/** The modal stays up while the native map is removed, then hides on the next frame. */
+export function fullScreenModalVisible(phase: FullScreenPhase): boolean {
+  return phase !== 'closed';
+}
+
+/** Only the settled full-screen phase hosts a MapLibre view. */
+export function fullScreenShowsNativeMap(phase: FullScreenPhase): boolean {
+  return phase === 'open';
+}
+
+/** The map in the page is mounted only while the modal is fully gone. */
+export function inlineMapMounted(phase: FullScreenPhase): boolean {
+  return phase === 'closed';
+}
+
 export function followCamera(
   current: HeldCamera,
   framed: HeldCamera,

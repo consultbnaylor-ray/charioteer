@@ -13,6 +13,9 @@ import {
   startDrawSession,
   stitchRoute,
   twoFingerView,
+  drawReadyToSnap,
+  rawDrawLine,
+  snappedDrawLine,
   undoDrawStroke,
   visibleDrawLine,
 } from '@/domain/drawStroke';
@@ -66,6 +69,16 @@ describe('draw strokes', () => {
     expect(visibleDrawLine(routed, [[a, b]], 1)).toEqual(routed);
     expect(visibleDrawLine(routed, [], 0)).toEqual(routed);
     expect(visibleDrawLine(null, [[a, b], [b, c]], 0)).toEqual([a, b, c]);
+    expect(snappedDrawLine(routed, strokes, 1)).toEqual(routed);
+    expect(snappedDrawLine(routed, [], 0)).toEqual(routed);
+    expect(snappedDrawLine(routed, strokes, 0)).toEqual([]);
+    expect(rawDrawLine(strokes, 1)).toEqual([snappedEnd, away, c]);
+    expect(rawDrawLine([[a, b]], 0, [b, c])).toEqual([a, b, c]);
+    expect(rawDrawLine([[a, b]], 1)).toEqual([]);
+    expect(drawReadyToSnap([], [])).toBe(false);
+    expect(drawReadyToSnap([], [a])).toBe(false);
+    expect(drawReadyToSnap([], [a, b])).toBe(true);
+    expect(drawReadyToSnap([[a, b]], [])).toBe(true);
     expect(stitchRoute(routed, [snappedEnd, c])).toEqual([...routed, c]);
     expect(stitchRoute(routed, [])).toEqual(routed);
     expect(stitchRoute([], [a, b])).toEqual([a, b]);

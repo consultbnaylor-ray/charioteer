@@ -47,6 +47,8 @@ export default function Outside() {
     <Screen eyebrow="Tools" title={OUTSIDE_SECTION_LABEL} intro="A walk from the menu.">
       <OutingInProgressBanner />
       <Card>
+        <Choice label={PREFER_PATHS_LABEL} selected={preferPaths} tone="good" onPress={() => setPreferPaths(!preferPaths)} />
+        <T variant="muted">{PREFER_PATHS_NOTE}</T>
         <Button label="Find a route" onPress={() => router.push('/find-route' as never)} />
         <Button label="Start a walk" onPress={() => router.push('/activity?kind=walk' as never)} />
         <Button label="Start a run" onPress={() => router.push('/activity?kind=run' as never)} />
@@ -54,9 +56,7 @@ export default function Outside() {
         {SHOW_WALK_THIS_OFF ? (
           <Button label="Walk this off" tone="quiet" onPress={() => router.push('/craving-walk' as never)} />
         ) : null}
-        <Button label="Open the map" tone="quiet" onPress={() => router.push('/outside-map' as never)} />
-        <Choice label={PREFER_PATHS_LABEL} selected={preferPaths} onPress={() => setPreferPaths(!preferPaths)} />
-        <T variant="muted">{PREFER_PATHS_NOTE}</T>
+        <Button label="See previous routes" tone="quiet" onPress={() => router.push('/outside-map' as never)} />
         <T variant="muted">Footpaths come from OpenStreetMap, drawn with OpenFreeMap. The credit stays on the map.</T>
       </Card>
       <ErrorNote>{error}</ErrorNote>

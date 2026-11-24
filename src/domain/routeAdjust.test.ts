@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-import { pageScrollForMapTouch } from '@/ui/mapCamera';
+import {
+  fullScreenModalVisible,
+  fullScreenShowsNativeMap,
+  inlineMapMounted,
+  nextFullScreenPhase,
+  pageScrollForMapTouch,
+} from '@/ui/mapCamera';
 import { appendSketchPoint, type OutdoorPoint } from '@/domain/outdoorRoute';
 import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
@@ -298,10 +304,30 @@ describe('route adjusting', () => {
     expect(native).toContain('flyWhenReady');
     expect(native).toContain('viaPointCollection(adjust?.vias ?? [])');
     const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
-    expect(chrome).toContain('<Modal visible={open}');
-    expect(chrome).toContain("pointerEvents={open ? 'none' : 'auto'}");
+    expect(chrome).toContain('animationType="none"');
+    expect(chrome).toContain('nextFullScreenPhase');
+    expect(chrome).toContain('fullScreenShowsNativeMap');
+    expect(chrome).toContain('inlineMapMounted');
+    expect(chrome).toContain('requestAnimationFrame');
+    expect(chrome).not.toContain('<Modal visible={open}');
+    expect(chrome).not.toContain("pointerEvents={open ? 'none' : 'auto'}");
     expect(chrome).not.toContain('pointerEvents="box-only"');
     expect(chrome).not.toContain('pointerEvents="none"');
+    expect(nextFullScreenPhase('closed', 'expand')).toBe('opening');
+    expect(nextFullScreenPhase('opening', 'mount-map')).toBe('open');
+    expect(nextFullScreenPhase('open', 'unmount-map')).toBe('closing');
+    expect(nextFullScreenPhase('opening', 'unmount-map')).toBe('closing');
+    expect(nextFullScreenPhase('closing', 'hide-modal')).toBe('closed');
+    expect(nextFullScreenPhase('open', 'expand')).toBe('open');
+    expect(fullScreenModalVisible('opening')).toBe(true);
+    expect(fullScreenModalVisible('closing')).toBe(true);
+    expect(fullScreenModalVisible('closed')).toBe(false);
+    expect(fullScreenShowsNativeMap('open')).toBe(true);
+    expect(fullScreenShowsNativeMap('opening')).toBe(false);
+    expect(fullScreenShowsNativeMap('closing')).toBe(false);
+    expect(inlineMapMounted('closed')).toBe(true);
+    expect(inlineMapMounted('open')).toBe(false);
+    expect(inlineMapMounted('closing')).toBe(false);
     expect(pageScrollForMapTouch(false, true)).toBe(false);
     expect(pageScrollForMapTouch(false, false)).toBe(true);
     expect(pageScrollForMapTouch(true, true)).toBeNull();
@@ -336,7 +362,7 @@ describe('route adjusting', () => {
     expect(metresBetween(start, step)).toBeLessThan(12);
     expect(appendSketchPoint([start], step, 2)).toHaveLength(2);
     expect(appendSketchPoint([start], step, 12)).toHaveLength(1);
-    expect(DRAW_FINGER_HINT).toBe('Draw your route with one finger');
+    expect(DRAW_FINGER_HINT).toBe('Draw your route, then tap the green tick to snap it to the nearest paths');
     expect(DRAW_NO_PATH).toBe('No path matched that line.');
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
@@ -377,19 +403,33 @@ describe('route adjusting', () => {
     expect(chrome).toContain('OSM_CONTRIBUTORS');
     expect(chrome).not.toContain('ORS_CREDIT');
     expect(chrome).toContain('DRAW_FINGER_HINT');
+    expect(chrome).toContain('CONFIRM_DRAW');
+    expect(chrome).toContain('DRAW_TICK_GREEN');
+    expect(chrome).toContain('DRAW_SNAPPED');
+    expect(chrome).toContain('canConfirmDraw');
     expect(chrome.match(/<T[^>]*>\{MAP_CREDIT\}/g)).toBeNull();
   });
 
-  it('appends the next stroke to the route and leaves drawing on until Done', () => {
+  it('snaps when the green tick is tapped and leaves drawing on until then', () => {
     expect(DRAW_PEN_HINT).toBe('Use the pen symbol to draw where you want to go and the line will snap to the nearest paths');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
-    expect(snap).toContain('commitDrawStroke');
+    expect(maker).toContain('function holdStroke');
+    expect(maker).toContain('commitDrawStroke');
+    expect(maker).toContain('onEnd: (points) => { holdStroke(points); }');
     expect(snap).toContain('combineDrawStrokes');
     expect(snap).not.toContain('setDrawing(false)');
+    expect(snap).not.toContain('commitDrawStroke');
+    const confirm = maker.slice(maker.indexOf('async function confirmDraw'), maker.indexOf('const mapHeight'));
+    expect(confirm).toContain('holdStroke(pencilRef.current)');
+    expect(confirm).toContain('await snapDrawn()');
+    expect(confirm).toContain('setDrawing(false)');
     expect(maker).toContain('undoDrawStroke');
     expect(maker).toContain('clearDrawStrokes');
-    expect(maker).toContain('visibleDrawLine');
+    expect(maker).toContain('snappedDrawLine');
+    expect(maker).toContain('rawDrawLine');
+    expect(maker).toContain('onConfirmDraw');
+    expect(maker).toContain('DRAW_SNAPPED');
     expect(maker).toContain('continuationEnd');
     const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
     const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
