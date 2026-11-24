@@ -41,6 +41,11 @@ describe('Garmin connect card', () => {
     expect(tip).toContain('GARMIN_CONNECT_BUTTON');
     expect(tip).toContain('GARMIN_CONNECT_HINT');
     expect(tip).toContain('GARMIN_CONNECTED_LABEL');
+    expect(tip).toContain('title="About Garmin"');
+    expect(tip).toContain('title="About disconnecting"');
+    expect(tip.indexOf('GARMIN_CONNECTED_LABEL')).toBeLessThan(tip.indexOf('title="About Garmin"'));
+    expect(tip.indexOf('<GarminPermissionNotice />')).toBeLessThan(tip.indexOf('title="About disconnecting"'));
+    expect(tip.indexOf('title="About disconnecting"')).toBeLessThan(tip.indexOf('label="Disconnect"'));
     expect(tip).toContain('useGarminConnect');
     expect(tip).toContain('label="Disconnect"');
     expect(tip).toContain('GARMIN_DISCONNECT_NOTE');

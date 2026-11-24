@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
+import { explanationSplit } from '@/ui/explanation';
 import { statsToneColors } from '@/ui/statsPalette';
 import { radius, stroke, useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
@@ -113,6 +114,29 @@ export function MoreInfo({
       <MoreInfoButton label={label} expanded={expanded} accessibilityLabel={spoken} onPress={toggle} />
       {expanded ? <View style={{ gap: 8, paddingBottom: 4 }}>{children}</View> : null}
     </View>
+  );
+}
+
+/**
+ * A paragraph longer than one sentence.
+ * The first sentence stays. The rest opens from a titled tab.
+ * A warning in the second sentence stays on the card.
+ */
+export function Explain({
+  title,
+  about,
+  text,
+}: {
+  title: string;
+  about: string;
+  text: string;
+}) {
+  const { lead, rest } = explanationSplit(text);
+  if (!rest) return <T variant="muted">{lead}</T>;
+  return (
+    <MoreInfo title={title} about={about} summary={lead}>
+      <T variant="muted">{rest}</T>
+    </MoreInfo>
   );
 }
 

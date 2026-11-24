@@ -20,7 +20,7 @@ import type { Stage } from '@/domain/stage';
 import { GuidanceRange } from '@/ui/GuidanceRange';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { useAppTheme } from '@/ui/theme';
-import { MoreInfo } from '@/ui/MoreInfo';
+import { Explain, MoreInfo } from '@/ui/MoreInfo';
 import { T } from '@/ui/ui';
 
 const emptyCounts = Object.fromEntries(NHS_DRINKS.map((drink) => [drink.id, 0]));
@@ -66,7 +66,7 @@ export function UnitsGuide({
   return (
     <View style={{ gap: 8, borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.sunken, borderRadius: theme.radius.sm, padding: 12 }}>
       <T variant="label">Common drinks</T>
-      <T variant="muted">Tap plus or minus for a usual week. The total fills the units box, and the estimate below updates as you go.</T>
+      <Explain title="About these drinks" about="these drinks" text="Tap plus or minus for a usual week. The total fills the units box, and the estimate below updates as you go." />
       {NHS_DRINKS.map((drink) => {
         const count = counts[drink.id] ?? 0;
         return (
@@ -129,7 +129,7 @@ export function UnitsGuide({
         </>
       ) : null}
       <T>The UK low-risk guideline is no more than {UK_LOW_RISK_WEEKLY_UNITS} units a week.</T>
-      <T variant="muted">A unit is 10ml of pure alcohol. Strength (ABV) × volume (ml) ÷ 1,000.</T>
+      <Explain title="About a unit" about="a unit" text="A unit is 10ml of pure alcohol. Strength (ABV) × volume (ml) ÷ 1,000." />
       <SourceLink label="NHS: Calculating alcohol units" url={NHS_UNITS_URL} />
     </View>
   );

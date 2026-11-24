@@ -5,6 +5,7 @@ import { PROFILE_PHOTO_WORDING } from '@/domain/profilePhotos';
 import { PHOTO_ALERT_NOTE } from '../../supabase/functions/_shared/buddyPhotoPush';
 import { GENERIC_MESSAGE_ALERT } from '../../supabase/functions/_shared/messagePush';
 import { CONSENT_VERSION } from '@/data/catalogue';
+import { Explain } from '@/ui/MoreInfo';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
@@ -113,10 +114,29 @@ export function ConsentChoices({
           onChange={onTerms}
         />
       ) : null}
-      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos stay private unless you switch that photo on. They are not sent to Thumos. Vision board photos always stay private. They are not sent to Thumos. A vision caption can be shown if you switch that item on. {PROFILE_PHOTO_WORDING}</T>
-      <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
+      <Explain
+        title="About photos"
+        about="photos"
+        text={`Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos stay private unless you switch that photo on. They are not sent to Thumos. Vision board photos always stay private. They are not sent to Thumos. A vision caption can be shown if you switch that item on. ${PROFILE_PHOTO_WORDING}`}
+      />
+      <Explain
+        title="About this wording"
+        about="this wording"
+        text="This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch."
+      />
+      <T variant="muted">Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>
   );
+}
+
+function aboutTitle(title: string): string {
+  if (title === COMMUNITY_SWITCH_TITLE) return 'About Community';
+  if (title === 'Health data') return 'About health data';
+  if (title.startsWith('AI coach')) return 'About the AI coach';
+  if (title === INTERIM_COACH_TITLE) return 'About this temporary choice';
+  if (title === 'Message notifications') return 'About message notifications';
+  if (title === 'Terms') return 'About the terms';
+  return `About ${title}`;
 }
 
 function ConsentRow({ title, body, value, onChange }: { title: string; body: string; value: boolean; onChange: (value: boolean) => void }) {
@@ -127,7 +147,7 @@ function ConsentRow({ title, body, value, onChange }: { title: string; body: str
         <T variant="title" style={{ fontSize: 20, flex: 1 }}>{title}</T>
         <Switch accessibilityLabel={title} value={value} onValueChange={onChange} trackColor={{ true: theme.colors.ink, false: theme.colors.line }} thumbColor={theme.colors.surface} />
       </View>
-      <T variant="muted">{body}</T>
+      <Explain title={aboutTitle(title)} about={title} text={body} />
     </View>
   );
 }

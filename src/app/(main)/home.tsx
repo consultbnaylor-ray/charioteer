@@ -28,6 +28,7 @@ import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
+import { Explain } from '@/ui/MoreInfo';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { DailyTargets } from '@/ui/DailyTargets';
@@ -355,7 +356,7 @@ export default function Home() {
       </Card>
       {sober ? <Card>
         <T variant="label">If you drank</T>
-        <T>A lapse is information, not a verdict. The days you already kept stay in your history. Resetting the clock just starts this stretch again.</T>
+        <Explain title="About resetting" about="resetting the clock" text="A lapse is information, not a verdict. The days you already kept stay in your history. Resetting the clock just starts this stretch again." />
         {relapseOpen ? (
           <View style={{ gap: 10 }}>
             <Field label="Anything you want to remember" value={note} onChangeText={setNote} placeholder="Optional" />

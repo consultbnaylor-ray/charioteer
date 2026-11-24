@@ -698,8 +698,9 @@ function FitnessCompareBar({
         />
       </View>
       <Legend swatch={colors[tone].ink} round label={`You, ${compare.value} ml/kg/min`} />
-      <T variant="muted">A reference, not a target. These ranges are estimates from the studies named here. Not medical advice.</T>
+      <T variant="muted">A reference, not a target.</T>
       <InfoDisclosure about="these ranges">
+        <T variant="muted">These ranges are estimates from the studies named here. Not medical advice.</T>
         {compare.age ? (
           <Legend swatch={colors.good.ink} label={`${compare.age.label}, ${compare.age.low} to ${compare.age.high}`} />
         ) : null}

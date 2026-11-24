@@ -8,6 +8,7 @@ import {
   type ActivityUpdateChoice,
 } from '@/activity/updateDefaults';
 import { AUDIO_DUCK_LINE, SPEECH_GATE_NOTE } from '@/domain/activitySession';
+import { Explain } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
@@ -48,7 +49,7 @@ export function ActivityUpdatesCard() {
           thumbColor={theme.colors.surface}
         />
       </View>
-      <T variant="muted">The default for a walk, run, cycle, or a live session in Workouts. Each one can still change it for that session.</T>
+      <Explain title="About activity updates" about="activity updates" text="The default for a walk, run, cycle, or a live session in Workouts. Each one can still change it for that session." />
       {choice.enabled ? (
         <>
           {([
@@ -67,8 +68,9 @@ export function ActivityUpdatesCard() {
           <Choice label="On screen only" selected={!choice.spoken} onPress={() => save({ ...choice, spoken: false })} />
         </>
       ) : null}
-      {choice.enabled && choice.spoken ? <T variant="muted">{AUDIO_DUCK_LINE}</T> : null}
-      {choice.enabled && choice.spoken ? <T variant="muted">{SPEECH_GATE_NOTE}</T> : null}
+      {choice.enabled && choice.spoken ? (
+        <Explain title="About spoken lines" about="spoken lines" text={`${AUDIO_DUCK_LINE} ${SPEECH_GATE_NOTE}`} />
+      ) : null}
     </Card>
   );
 }

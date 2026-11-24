@@ -4,6 +4,7 @@ import { GARMIN_PRIVACY } from '@/domain/garminConnect';
 import { latestGarminDailyDay } from '@/domain/healthRefresh';
 import { GARMIN_CONNECT_BUTTON, GARMIN_DISCONNECT_NOTE } from '@/domain/garminTip';
 import { GarminWatchLinkNote } from '@/ui/GarminWatchLinkNote';
+import { Explain, MoreInfo } from '@/ui/MoreInfo';
 import { PlanTick } from '@/ui/PlanTick';
 import { useGarminConnect } from '@/ui/useGarminConnect';
 import { Button, Card, ErrorNote, T } from '@/ui/ui';
@@ -19,7 +20,7 @@ export function GarminConnectRow() {
         {connected ? <PlanTick done /> : null}
         <T>{connected ? 'Connected' : 'Not connected'}</T>
       </View>
-      <T variant="muted">{GARMIN_PRIVACY}</T>
+      <Explain title="About Garmin" about="Garmin readings" text={GARMIN_PRIVACY} />
       <GarminWatchLinkNote
         connected={connected}
         lastPushAt={readings.lastPushAt}
@@ -27,7 +28,9 @@ export function GarminConnectRow() {
       />
       {connected ? (
         <>
-          <T variant="muted">{GARMIN_DISCONNECT_NOTE}</T>
+          <MoreInfo title="About disconnecting" about="disconnecting Garmin">
+            <T variant="muted">{GARMIN_DISCONNECT_NOTE}</T>
+          </MoreInfo>
           <Button label="Disconnect" tone="quiet" pending={pending === 'disconnect'} disabled={pending != null} onPress={() => void disconnect()} />
         </>
       ) : (
