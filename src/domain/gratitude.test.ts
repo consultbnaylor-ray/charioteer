@@ -257,7 +257,7 @@ describe('gratitude diary wiring', () => {
       'Body: weight, waist and BMI',
       'Health Plan',
       'Workouts',
-      'Outside is Good',
+      'Map a Route',
       'Progress photos',
       'Shared Photos',
       'Vision Board',

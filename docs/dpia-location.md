@@ -4,7 +4,7 @@ This is a product note for the data protection impact assessment. It is not the 
 
 ## What is new
 
-Outside is Good, build 70, can read the phone's location while the map screen is open. Permission is while using the app. The person can refuse. The home page, the menu, and the saved-route list work without a fix. Walk this off (the craving walk) is parked: the screen stays in the repo behind `SHOW_WALK_THIS_OFF` (off) and is not shown.
+Map a Route, build 70, can read the phone's location while the map screen is open. Permission is while using the app. The person can refuse. The home page, the menu, and the saved-route list work without a fix. Walk this off (the craving walk) is parked: the screen stays in the repo behind `SHOW_WALK_THIS_OFF` (off) and is not shown.
 
 The purpose sentence is: "Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path."
 
@@ -18,7 +18,7 @@ Health share sentence, re-approved by Ben on 26 October 2026. Wording diff: remo
 
 Good to know battery line, approved by Ben on 26 October 2026, as written: "A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after six hours."
 
-Outing in progress banner, approved by Ben on 26 October 2026, as written: "Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it." It is on Outside is Good, the home screen, and an open saved route, with a Stop button, while measuring is still on.
+Outing in progress banner, approved by Ben on 26 October 2026, as written: "Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it." It is on Map a Route, the home screen, and an open saved route, with a Stop button, while measuring is still on.
 
 Saved routes, build 75, approved by Ben on 26 October 2026. His words: "Approve open, use and rename plus Adjust this route in the next build, with the wording as written". Not shipped. No new permission and no new purpose string. Opening and renaming do not call the route service. Use this route copies the saved line into the outing on the phone. That copy is not sent and is not written into the summary. Adjust sends the start, the destination, any points added on the map, and the travel type, and only after consent version `2026-10-26-1`. It does not send the whole saved line. The rename grant and the wider update grant are files and have not been applied.
 
@@ -84,7 +84,7 @@ The phone does not call HeiGIT. The flow, and only after route finding is turned
 
 ## Risk
 
-A start point can be a home or the place where someone is dealing with a craving. HeiGIT keeps a rounded coordinate, about 1 km, with no end date, so an area can still be inferred. The mitigations are: route finding is off until the person turns it on; they can pick an example start instead of where they are; a live fix is not stored; a route is stored only if they tap save; they can delete a saved route; they can turn route finding off, and the app then stops calling the function. The map page does not start the outing watch. An outing uses while-using permission and can continue with the blue mark until Stop, discard, termination, or the time limit. There is no Always permission. The screens say this is not medical advice and name a GP, NHS 111, 999, and Samaritans. Walk this off is parked, so those lines are on the live Outside is Good screens.
+A start point can be a home or the place where someone is dealing with a craving. HeiGIT keeps a rounded coordinate, about 1 km, with no end date, so an area can still be inferred. The mitigations are: route finding is off until the person turns it on; they can pick an example start instead of where they are; a live fix is not stored; a route is stored only if they tap save; they can delete a saved route; they can turn route finding off, and the app then stops calling the function. The map page does not start the outing watch. An outing uses while-using permission and can continue with the blue mark until Stop, discard, termination, or the time limit. There is no Always permission. The screens say this is not medical advice and name a GP, NHS 111, 999, and Samaritans. Walk this off is parked, so those lines are on the live Map a Route screens.
 
 There is no data-processing agreement and no signed agreement with HeiGIT. The terms say not to transmit personal data apart from their account-management data. A coordinate can be personal data. That gap is open.
 

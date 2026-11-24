@@ -30,22 +30,22 @@ import {
   sampleCanalLoop,
 } from '@/domain/outdoorRoute';
 
-describe('Outside is Good phase 1', () => {
-  it('puts Outside is Good in Tools under Workouts and keeps six tabs', () => {
+describe('Map a Route phase 1', () => {
+  it('puts Map a Route in Tools under Workouts and keeps six tabs', () => {
     const labels = APP_SECTIONS.map((section) => section.label);
     const outside = APP_SECTIONS.find((section) => section.id === 'outside');
     expect(outside).toMatchObject({
-      label: 'Outside is Good',
+      label: 'Map a Route',
       href: '/outside',
       icon: 'path',
       group: 'tools',
     });
-    expect(OUTSIDE_SECTION_LABEL).toBe('Outside is Good');
+    expect(OUTSIDE_SECTION_LABEL).toBe('Map a Route');
     expect(outside?.tab).toBeUndefined();
-    expect(labels.indexOf('Outside is Good')).toBe(labels.indexOf('Workouts') + 1);
-    expect(labels.indexOf('Progress photos')).toBe(labels.indexOf('Outside is Good') + 1);
+    expect(labels.indexOf('Map a Route')).toBe(labels.indexOf('Workouts') + 1);
+    expect(labels.indexOf('Progress photos')).toBe(labels.indexOf('Map a Route') + 1);
     expect(TAB_SECTIONS).toHaveLength(6);
-    expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Outside is Good');
+    expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Map a Route');
     expect(menuSectionActive('/outside', '/outside')).toBe(true);
     expect(menuSectionActive('/outside-map', '/outside')).toBe(false);
     expect(menuSectionActive('/craving-walk', '/outside')).toBe(false);
@@ -253,14 +253,14 @@ describe('Outside is Good phase 1', () => {
     expect(home).not.toContain("'/craving-walk'");
     expect(breathe).not.toContain("'/craving-walk'");
     const consent = readFileSync('src/domain/routeConsent.ts', 'utf8');
-    expect(consent).toContain('Not now leaves Outside is Good, saved routes, and the map working.');
+    expect(consent).toContain('Not now leaves Map a Route, saved routes, and the map working.');
     expect(consent).not.toMatch(/craving walk/i);
     const docs = [
       readFileSync('docs/privacy.md', 'utf8'),
       readFileSync('docs/privacy.html', 'utf8'),
       readFileSync('docs/dpia-location.md', 'utf8'),
     ].join('\n');
-    expect(docs).toContain('Outside is Good');
+    expect(docs).toContain('Map a Route');
     expect(docs).toMatch(/Walk this off \(the craving walk\) is parked/);
     expect(docs).not.toContain('Get Outside');
     expect(docs).not.toContain('or the craving walk');
