@@ -68,6 +68,13 @@ export const SNAP_DEVIATION_M = 120;
 export const SPUR_WITHIN_M = 35;
 /** An out-and-back longer than this is kept. It may be a loop the person drew. */
 export const SPUR_MAX_M = 350;
+/**
+ * With the pencil line to compare against, a longer there-and-back is dropped when the pencil
+ * did not go out and back there. One street block out and back fits.
+ */
+export const SPUR_MAX_WITH_SKETCH_M = 1200;
+/** A jut shorter than this is noise in the route geometry, not a spur. */
+const SPUR_MIN_M = 8;
 /** A finger wobble smaller than this is dropped before the route is requested. */
 export const SKETCH_EPSILON_M = 30;
 const SKETCH_RAW_CAP = 500;
@@ -566,37 +573,169 @@ export function discreteFrechetMetres(a: readonly OutdoorPoint[], b: readonly Ou
   return prev[cols - 1];
 }
 
-function stripSpur(line: readonly OutdoorPoint[], withinM: number, maxSpurM: number): OutdoorPoint[] {
-  for (let start = 0; start < line.length - 2; start += 1) {
-    let walked = 0;
-    for (let end = start + 1; end < line.length; end += 1) {
-      walked += metresBetween(line[end - 1], line[end]);
-      if (end < start + 2) continue;
+/** Metres along `reference` for each point of `line`, tracked in order so a closed sketch does not jump ends. */
+function progressAlong(line: readonly OutdoorPoint[], reference: readonly OutdoorPoint[]): number[] {
+  const ref = cleanPoints(reference);
+  const out: number[] = [];
+  if (ref.length < 2) return line.map(() => 0);
+  const cumulative = [0];
+  for (let index = 1; index < ref.length; index += 1) {
+    cumulative.push(cumulative[index - 1] + metresBetween(ref[index - 1], ref[index]));
+  }
+  let previous = 0;
+  for (let index = 0; index < line.length; index += 1) {
+    const point = line[index];
+    const moved = index === 0 ? 0 : metresBetween(line[index - 1], point);
+    const step = index === 0 ? 150 : moved + 30;
+    const low = Math.max(0, previous - step);
+    const high = previous + step;
+    const expected = previous + moved;
+    const candidates: { distance: number; along: number }[] = [];
+    for (let seg = 1; seg < ref.length; seg += 1) {
+      const from = cumulative[seg - 1];
+      const to = cumulative[seg];
+      if (to < low || from > high) continue;
+      const start = ref[seg - 1];
+      const end = ref[seg];
+      const length = to - from;
+      const cos = Math.cos((start.latitude * Math.PI) / 180);
+      const ex = (end.longitude - start.longitude) * 111_320 * cos;
+      const ey = (end.latitude - start.latitude) * 111_320;
+      const px = (point.longitude - start.longitude) * 111_320 * cos;
+      const py = (point.latitude - start.latitude) * 111_320;
+      const t = length < 1 ? 0 : Math.max(0, Math.min(1, (px * ex + py * ey) / (ex * ex + ey * ey)));
+      const along = Math.max(low, Math.min(high, from + t * length));
+      candidates.push({ distance: Math.hypot(px - t * ex, py - t * ey), along });
+    }
+    let bestAlong = previous;
+    if (candidates.length > 0) {
+      const best = Math.min(...candidates.map((item) => item.distance));
+      // Where the pencil retraced itself, two legs tie. The one that keeps pace with the route wins.
+      let pick = Number.POSITIVE_INFINITY;
+      for (const item of candidates) {
+        if (item.distance > best + 2) continue;
+        const gap = Math.abs(item.along - expected);
+        if (gap < pick) {
+          pick = gap;
+          bestAlong = item.along;
+        }
+      }
+    }
+    previous = bestAlong;
+    out.push(bestAlong);
+  }
+  return out;
+}
+
+type SpurCut = { from: number; to: number };
+
+/**
+ * One there-and-back: the line leaves `from`, goes out more than `withinM`,
+ * retraces itself, and is back within `withinM` at `to`.
+ * Every vertex is checked, so a dense route with a short gap between vertices
+ * does not count a straight run as a spur.
+ */
+function findSpur(
+  line: readonly OutdoorPoint[],
+  cumulative: readonly number[],
+  progress: readonly number[] | null,
+  withinM: number,
+  maxSpurM: number,
+  fromIndex: number,
+): SpurCut | null {
+  const lastIndex = line.length - 1;
+  for (let start = fromIndex; start < lastIndex - 1; start += 1) {
+    let peak = 0;
+    let peakIndex = -1;
+    for (let end = start + 1; end <= lastIndex; end += 1) {
+      const walked = cumulative[end] - cumulative[start];
       if (walked > maxSpurM) break;
-      if (metresBetween(line[start], line[end]) > withinM) continue;
-      if (start === 0 && end === line.length - 1) break;
-      return [...line.slice(0, start + 1).map(copyPoint), ...line.slice(end + 1).map(copyPoint)];
+      const away = metresBetween(line[start], line[end]);
+      if (away > peak) {
+        peak = away;
+        peakIndex = end;
+      }
+      // A straight run only gets farther away. A spur comes back toward where it left.
+      if (peak < SPUR_MIN_M || away > withinM || away > peak * 0.5) continue;
+      if (start === 0 && end === lastIndex) break;
+      const cut = tightestCut(line, start, peakIndex, end, cumulative, maxSpurM);
+      const tolerance = Math.min(withinM, Math.max(SPUR_MIN_M, peak * 0.5));
+      if (!retraces(line, cut.from, peakIndex, cut.to, tolerance)) continue;
+      if (progress) {
+        const loopM = cumulative[cut.to] - cumulative[cut.from];
+        const drawnM = Math.abs(progress[cut.to] - progress[cut.from]);
+        // The pencil went out and back here too. That is a spur the person drew.
+        if (drawnM > loopM * 0.5) continue;
+      }
+      return cut;
     }
   }
-  return line.map(copyPoint);
+  return null;
+}
+
+/** The closest pair either side of the spur tip, so the cut is on the path, not a chord. */
+function tightestCut(
+  line: readonly OutdoorPoint[],
+  start: number,
+  peakIndex: number,
+  end: number,
+  cumulative: readonly number[],
+  maxSpurM: number,
+): SpurCut {
+  let best = { from: start, to: end };
+  let bestM = metresBetween(line[start], line[end]);
+  for (let from = start; from < peakIndex; from += 1) {
+    for (let to = Math.max(end, peakIndex + 1); to < line.length; to += 1) {
+      if (cumulative[to] - cumulative[from] > maxSpurM) break;
+      const gap = metresBetween(line[from], line[to]);
+      if (gap < bestM) {
+        bestM = gap;
+        best = { from, to };
+      }
+    }
+  }
+  return best;
+}
+
+/** True when the way back runs over the way out. A loop around a block does not. */
+function retraces(line: readonly OutdoorPoint[], from: number, peakIndex: number, to: number, withinM: number): boolean {
+  if (peakIndex <= from || peakIndex >= to) return false;
+  const out = line.slice(from, peakIndex + 1);
+  const back = line.slice(peakIndex, to + 1);
+  return directedHausdorff(back, out) <= withinM && directedHausdorff(out, back) <= withinM;
 }
 
 /**
- * Drops a there-and-back: the line leaves a point and returns within `withinM`,
- * then carries on. A ring that only meets itself at the finish is kept.
+ * Drops each there-and-back: the line leaves a point, retraces itself, returns within `withinM`,
+ * then carries on. A ring that only meets itself at the finish, or a loop round a block, is kept.
+ * With `sketch`, a spur is only dropped when the pencil did not go out and back there too,
+ * and spurs up to `SPUR_MAX_WITH_SKETCH_M` are dropped.
  */
 export function removeRouteSpurs(
   points: readonly OutdoorPoint[],
   withinM = SPUR_WITHIN_M,
   maxSpurM = SPUR_MAX_M,
+  sketch?: readonly OutdoorPoint[] | null,
 ): OutdoorPoint[] {
-  let line = cleanPoints(points).map(copyPoint);
+  // Not capped like cleanPoints: a long joined route must not lose its far end here.
+  let line = points.map((point) => finitePoint(point)).filter((point): point is OutdoorPoint => point != null).map(copyPoint);
   if (line.length < 3) return line;
-  for (let guard = 0; guard < 12; guard += 1) {
-    const next = stripSpur(line, withinM, maxSpurM);
-    if (next.length === line.length) return line;
+  const reference = sketch ? cleanPoints(sketch) : [];
+  const useSketch = reference.length >= 2;
+  const limit = useSketch ? Math.max(maxSpurM, SPUR_MAX_WITH_SKETCH_M) : maxSpurM;
+  let resume = 0;
+  for (let guard = 0; guard < 200; guard += 1) {
+    const cumulative = [0];
+    for (let index = 1; index < line.length; index += 1) {
+      cumulative.push(cumulative[index - 1] + metresBetween(line[index - 1], line[index]));
+    }
+    const progress = useSketch ? progressAlong(line, reference) : null;
+    const cut = findSpur(line, cumulative, progress, withinM, limit, resume);
+    if (!cut) return line;
+    const next = [...line.slice(0, cut.from + 1), ...line.slice(cut.to + 1)];
     if (next.length < 2) return line;
     line = next;
+    resume = Math.max(0, cut.from - 1);
   }
   return line;
 }
@@ -651,7 +790,7 @@ export function drawnLineAfterSnap(input: {
   const sketch = cleanPoints(input.sketch).map(copyPoint);
   if (sketch.length < 2) return { points: sketch, matched: false };
   if (input.routed && input.routed.length >= 2) {
-    const cleaned = removeRouteSpurs(input.routed);
+    const cleaned = removeRouteSpurs(input.routed, SPUR_WITHIN_M, SPUR_MAX_M, sketch);
     if (cleaned.length >= 2 && snapFollowsSketch(sketch, cleaned)) {
       return { points: cleaned, matched: true };
     }
