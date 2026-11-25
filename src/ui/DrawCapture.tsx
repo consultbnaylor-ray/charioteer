@@ -8,6 +8,7 @@ import {
   PAN_HOLD_REPEAT_MS,
   applyDrawPointers,
   clampDrawZoom,
+  createFrameBatcher,
   fingerInOverlay,
   finishDrawSession,
   sliderFraction,
@@ -40,6 +41,12 @@ type TouchEvent = {
  * One finger draws. Two fingers pinch and pan, and never add a point.
  * A second finger cancels the stroke that was in progress.
  * The page underneath stays locked by the map while draw mode is on.
+ *
+ * Every finger sample is kept here, in a ref. `onChange` is the live preview and
+ * is called at most once per animation frame, never once per sample. A render per
+ * sample held the JS thread, and the new architecture coalesces `touchMove` while
+ * JS is busy, so the samples in between were lost and the first stroke drew one
+ * straight chord from the touch. `onEnd` gets the whole stroke when the finger lifts.
  */
 export function DrawCapture({
   readView,
@@ -59,6 +66,14 @@ export function DrawCapture({
 }) {
   const session = useRef<DrawSession>(startDrawSession());
   const pinch = useRef<PinchStart | null>(null);
+  const changeRef = useRef(onChange);
+  changeRef.current = onChange;
+  const preview = useRef(createFrameBatcher<OutdoorPoint[]>(
+    (points) => changeRef.current(points),
+    (run) => requestAnimationFrame(run),
+    (handle) => cancelAnimationFrame(handle as number),
+  ));
+  useEffect(() => () => preview.current.cancel(), []);
 
   function touchList(event: TouchEvent): DrawTouch[] {
     const native = event.nativeEvent;
@@ -112,7 +127,7 @@ export function DrawCapture({
   function cancelStroke() {
     const hadPoints = session.current.points.length > 0;
     session.current = applyDrawPointers(session.current, 2, null);
-    if (hadPoints) onChange([]);
+    if (hadPoints) preview.current.push([]);
   }
 
   function follow(event: TouchEvent) {
@@ -138,10 +153,11 @@ export function DrawCapture({
     const next = applyDrawPointers(session.current, 1, point);
     if (next.points.length === session.current.points.length) return;
     session.current = next;
-    onChange(next.points);
+    preview.current.push(next.points);
   }
 
   function finish() {
+    preview.current.cancel();
     onFinger?.(false);
     const finished = finishDrawSession(session.current);
     session.current = startDrawSession();
