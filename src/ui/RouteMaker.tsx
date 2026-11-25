@@ -21,6 +21,7 @@ import {
   ROUTE_UNAVAILABLE,
   BOTH_HERE_HINT,
   SEARCH_EMPTY,
+  placeSearchEmptyShown,
   appleMapsUrl,
   nearestPathLine,
   unmatchedDrawnPlan,
@@ -397,6 +398,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setLookAt(place);
     setLookFocus((value) => value + 1);
     setResults([]);
+    setSearched(false);
     setQuery(place.name);
     queryRef.current = place.name;
     setPlan(null);
@@ -422,6 +424,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setLookAt(place);
     setLookFocus((value) => value + 1);
     setEndResults([]);
+    setEndSearched(false);
     setEndQuery(place.name);
     endQueryRef.current = place.name;
     setPlan(null);
@@ -1106,6 +1109,79 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             {DRAW_PEN_HINT}
           </T>
         ) : null}
+        {/* Start, destination and the paths switch sit between the drawing hint and the map. */}
+        <T variant="label">Start</T>
+        {locatingRole === 'start' ? (
+          <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
+        ) : (
+          <Choice label="Where I am" selected={hereSelected} onPress={() => { void whereIAm('start'); }} />
+        )}
+        <T variant="muted">or</T>
+        <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
+        {startName && !hereSelected ? (
+          <Choice key={startPick?.id ?? 'chosen-start'} label={startName} selected onPress={() => undefined} />
+        ) : null}
+        {results.map((place) => (
+          <Choice
+            key={`found-${place.id}`}
+            label={place.name}
+            selected={pin?.id === place.id}
+            selectOnPressIn
+            onPress={() => choosePlace(place)}
+          />
+        ))}
+        {placeSearchEmptyShown(searched, results.length, query, startPick?.name) ? <T>{SEARCH_EMPTY}</T> : null}
+        {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
+        {!craving && shapeTouched && shape === 'a_to_b' ? (
+          <>
+            <T variant="label">Destination</T>
+            {locatingRole === 'end' ? (
+              <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
+            ) : (
+              <Choice label="Where I am" selected={endHereSelected} onPress={() => { void whereIAm('end'); }} />
+            )}
+            <T variant="muted">or</T>
+            <Field label="Search for a destination" value={endQuery} onChangeText={onEndSearchText} maxLength={80} />
+            {endName && !endHereSelected ? (
+              <Choice key={endPick?.id ?? 'chosen-end'} label={endName} selected onPress={() => undefined} />
+            ) : null}
+            {endResults.map((place) => (
+              <Choice
+                key={`end-found-${place.id}`}
+                label={place.name}
+                selected={endPick?.id === place.id}
+                selectOnPressIn
+                onPress={() => chooseEndPlace(place)}
+              />
+            ))}
+            {placeSearchEmptyShown(endSearched, endResults.length, endQuery, endPick?.name) ? <T>{SEARCH_EMPTY}</T> : null}
+            {hereSelected && endHereSelected ? <T variant="muted">{BOTH_HERE_HINT}</T> : null}
+          </>
+        ) : null}
+        {!craving ? (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <T style={{ flex: 1 }}>{PREFER_PATHS_LABEL}</T>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="What this means"
+                accessibilityState={{ expanded: pathsNote }}
+                onPress={() => setPathsNote((open) => !open)}
+                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <T>i</T>
+              </Pressable>
+              <Switch
+                accessibilityLabel={PREFER_PATHS_LABEL}
+                value={preferPaths}
+                onValueChange={setPreferPaths}
+                trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+                thumbColor={theme.colors.surface}
+              />
+            </View>
+            {pathsNote ? <T variant="muted">{PREFER_PATHS_NOTE}</T> : null}
+          </>
+        ) : null}
         {sketchLabel ? <T>{sketchLabel}</T> : null}
         <FootpathMap
           routes={[]}
@@ -1147,78 +1223,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <T style={drawNote === DRAW_SNAPPED ? { color: statsToneColors(theme.scheme).good.ink, fontFamily: theme.font.bodyStrong } : undefined}>
             {drawNote}
           </T>
-        ) : null}
-        <T variant="label">Start</T>
-        {locatingRole === 'start' ? (
-          <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
-        ) : (
-          <Choice label="Where I am" selected={hereSelected} onPress={() => { void whereIAm('start'); }} />
-        )}
-        <T variant="muted">or</T>
-        <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
-        {startName && !hereSelected ? (
-          <Choice key={startPick?.id ?? 'chosen-start'} label={startName} selected onPress={() => undefined} />
-        ) : null}
-        {results.map((place) => (
-          <Choice
-            key={`found-${place.id}`}
-            label={place.name}
-            selected={pin?.id === place.id}
-            selectOnPressIn
-            onPress={() => choosePlace(place)}
-          />
-        ))}
-        {searched && results.length === 0 ? <T>{SEARCH_EMPTY}</T> : null}
-        {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
-        {!craving && shapeTouched && shape === 'a_to_b' ? (
-          <>
-            <T variant="label">Destination</T>
-            {locatingRole === 'end' ? (
-              <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
-            ) : (
-              <Choice label="Where I am" selected={endHereSelected} onPress={() => { void whereIAm('end'); }} />
-            )}
-            <T variant="muted">or</T>
-            <Field label="Search for a destination" value={endQuery} onChangeText={onEndSearchText} maxLength={80} />
-            {endName && !endHereSelected ? (
-              <Choice key={endPick?.id ?? 'chosen-end'} label={endName} selected onPress={() => undefined} />
-            ) : null}
-            {endResults.map((place) => (
-              <Choice
-                key={`end-found-${place.id}`}
-                label={place.name}
-                selected={endPick?.id === place.id}
-                selectOnPressIn
-                onPress={() => chooseEndPlace(place)}
-              />
-            ))}
-            {endSearched && endResults.length === 0 ? <T>{SEARCH_EMPTY}</T> : null}
-            {hereSelected && endHereSelected ? <T variant="muted">{BOTH_HERE_HINT}</T> : null}
-          </>
-        ) : null}
-        {!craving ? (
-          <>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <T style={{ flex: 1 }}>{PREFER_PATHS_LABEL}</T>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="What this means"
-                accessibilityState={{ expanded: pathsNote }}
-                onPress={() => setPathsNote((open) => !open)}
-                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <T>i</T>
-              </Pressable>
-              <Switch
-                accessibilityLabel={PREFER_PATHS_LABEL}
-                value={preferPaths}
-                onValueChange={setPreferPaths}
-                trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
-                thumbColor={theme.colors.surface}
-              />
-            </View>
-            {pathsNote ? <T variant="muted">{PREFER_PATHS_NOTE}</T> : null}
-          </>
         ) : null}
         <Button
           label={craving ? 'Make this walk' : 'Make the route'}

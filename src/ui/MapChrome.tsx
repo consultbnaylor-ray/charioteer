@@ -1,10 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
+import { Modal, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { OSM_CONTRIBUTORS } from '@/domain/routeConsent';
 import { CONFIRM_DRAW, DRAW_FINGER_HINT, DRAW_SNAP_FAILED, DRAW_SNAPPED, DRAW_TICK_GREEN } from '@/domain/routeAdjust';
+import {
+  FULL_SCREEN_PANEL_GAP,
+  fullScreenControlLift,
+  fullScreenMapHeight,
+  fullScreenPanelMaxHeight,
+} from '@/domain/fullScreenMap';
 import { MAP_CREDIT, type MapScheme } from '@/domain/outdoorRoute';
 import {
   fullScreenModalVisible,
@@ -131,10 +137,10 @@ function TickIcon() {
   );
 }
 
-function MapCredit({ scheme }: { scheme: MapScheme }) {
+function MapCredit({ scheme, lift = 0 }: { scheme: MapScheme; lift?: number }) {
   const onDark = scheme === 'dark';
   return (
-    <View pointerEvents={'none'} style={{ position: 'absolute', left: 56, right: 8, bottom: 8, zIndex: 4 }}>
+    <View pointerEvents={'none'} style={{ position: 'absolute', left: 56, right: 8, bottom: 8 + lift, zIndex: 4 }}>
       <T
         variant="muted"
         maxFontSizeMultiplier={1.4}
@@ -206,6 +212,7 @@ export function MapShell({
   canConfirmDraw = false,
   confirmPending = false,
   statusNote = null,
+  panel = null,
   children,
 }: {
   here: boolean;
@@ -231,10 +238,18 @@ export function MapShell({
   confirmPending?: boolean;
   /** Shown on the map once drawing has finished, including a successful snap. */
   statusNote?: string | null;
+  /**
+   * Route figures floated on the full screen map near the bottom. The map keeps
+   * the whole screen; the bottom controls are lifted above this panel.
+   */
+  panel?: ReactNode;
   children: ReactNode;
 }) {
   const theme = useAppTheme();
   const base = mapLabel?.trim() || 'Map with footpaths';
+  const [panelHeight, setPanelHeight] = useState(0);
+  const showPanel = expanded && panel != null && panel !== false;
+  const lift = fullScreenControlLift(showPanel, panelHeight);
   return (
     <View style={expanded ? { flex: 1, height } : { gap: 8 }}>
       <View
@@ -258,7 +273,7 @@ export function MapShell({
             <ExpandIcon />
           </CornerButton>
         )}
-        <CornerButton label={MAP_STYLE_SWITCH} bottom={8} left={8} onPress={onToggleStyle}>
+        <CornerButton label={MAP_STYLE_SWITCH} bottom={8 + lift} left={8} onPress={onToggleStyle}>
           {scheme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </CornerButton>
         {onRecentre ? <RecentreButton onPress={onRecentre} /> : null}
@@ -323,7 +338,7 @@ export function MapShell({
           </View>
         ) : null}
         {drawing && canConfirmDraw && onConfirmDraw ? (
-          <View pointerEvents={'box-none'} style={{ position: 'absolute', left: 0, right: 0, bottom: 72, alignItems: 'center', zIndex: 7 }}>
+          <View pointerEvents={'box-none'} style={{ position: 'absolute', left: 0, right: 0, bottom: 72 + lift, alignItems: 'center', zIndex: 7 }}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={CONFIRM_DRAW}
@@ -346,7 +361,40 @@ export function MapShell({
             </Pressable>
           </View>
         ) : null}
-        <MapCredit scheme={scheme} />
+        <MapCredit scheme={scheme} lift={lift} />
+        {showPanel ? (
+          <View
+            accessibilityLabel="Route figures"
+            onLayout={(event) => {
+              const next = event.nativeEvent.layout.height;
+              setPanelHeight((current) => (Math.abs(current - next) > 1 ? next : current));
+            }}
+            style={{
+              position: 'absolute',
+              left: FULL_SCREEN_PANEL_GAP,
+              right: FULL_SCREEN_PANEL_GAP,
+              bottom: FULL_SCREEN_PANEL_GAP,
+              maxHeight: fullScreenPanelMaxHeight(height),
+              zIndex: 8,
+              borderRadius: 14,
+              backgroundColor: theme.colors.surface,
+              shadowColor: '#000000',
+              shadowOpacity: 0.18,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 4,
+            }}
+          >
+            <ScrollView
+              style={{ flexGrow: 0 }}
+              contentContainerStyle={{ padding: 10 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+            >
+              {panel}
+            </ScrollView>
+          </View>
+        ) : null}
       </View>
       {problem ? <T variant="muted">{problem}</T> : null}
     </View>
@@ -389,7 +437,7 @@ export function MapFrame({
   renderMap: (view: { height: number; expanded: boolean }) => ReactNode;
   /** Accessible name of the map. The footpath name stays when this is omitted. */
   mapLabel?: string;
-  /** Figures and route buttons, shown under the map only while it is full screen. */
+  /** Figures and route buttons, floated on the bottom of the map only while it is full screen. */
   bar?: ReactNode;
   drawing?: boolean;
   onToggleDraw?: () => void;
@@ -405,8 +453,10 @@ export function MapFrame({
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const [phase, setPhase] = useState<FullScreenPhase>('closed');
-  const fullHeight = Math.max(240, window.height - insets.top - insets.bottom);
-  const fullMapHeight = bar ? Math.max(180, fullHeight - 260) : fullHeight;
+  // The full screen map takes the whole screen between the safe-area insets.
+  // The route figures float on it (see MapShell's panel) instead of reserving
+  // a band under a shortened map, which left a large blank area.
+  const fullHeight = fullScreenMapHeight(window.height, insets.top, insets.bottom);
   const modalVisible = fullScreenModalVisible(phase);
   const showNativeMap = fullScreenShowsNativeMap(phase);
   function collapse() {
@@ -424,7 +474,7 @@ export function MapFrame({
     });
     return () => cancelAnimationFrame(frame);
   }, [phase, onRestore]);
-  const shell = (expanded: boolean, viewHeight: number, mountMap: boolean) => (
+  const shell = (expanded: boolean, viewHeight: number, mountMap: boolean, panel: ReactNode = null) => (
     <MapShell
       here={here}
       height={viewHeight}
@@ -448,6 +498,7 @@ export function MapFrame({
       canConfirmDraw={canConfirmDraw}
       confirmPending={confirmPending}
       statusNote={statusNote}
+      panel={panel}
     >
       {mountMap ? renderMap({ height: viewHeight, expanded }) : null}
     </MapShell>
@@ -466,8 +517,7 @@ export function MapFrame({
             backgroundColor: scheme === 'dark' ? '#141414' : '#F7F5F0',
           }}
         >
-          {modalVisible ? shell(true, fullMapHeight, showNativeMap) : null}
-          {showNativeMap && bar ? <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>{bar}</View> : null}
+          {modalVisible ? shell(true, fullHeight, showNativeMap, showNativeMap ? bar : null) : null}
         </View>
       </Modal>
     </>
