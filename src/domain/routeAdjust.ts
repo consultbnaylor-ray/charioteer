@@ -65,6 +65,9 @@ export const DRAW_NO_PATH = 'No path matched that line.';
 export const DRAW_SNAP_PARTIAL = 'Couldn\'t match all of that to paths — showing your line';
 
 /** The snap was refused. The pencil line stays a sketch. */
+/** Most of the line snapped. A short piece the paths did not match follows the pencil. */
+export const DRAW_SNAP_MOSTLY = 'Snapped to paths. A short part follows your line.';
+
 export const DRAW_SNAP_FAILED = 'Couldn\'t snap to paths';
 
 /** The route service's own cap: too many points, too long a leg, or too big a request. */

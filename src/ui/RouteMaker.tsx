@@ -61,6 +61,7 @@ import {
   DRAW_PEN_HINT,
   DRAW_SNAP_FAILED,
   DRAW_SNAP_LIMIT,
+  DRAW_SNAP_MOSTLY,
   DRAW_SNAP_PARTIAL,
   DRAW_SNAP_TRY_AGAIN,
   DRAW_SNAPPED,
@@ -718,7 +719,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         }
         throw result.error instanceof Error ? result.error : new Error(DRAW_NO_PATH);
       }
-      const next = result.matched && result.plan
+      const next = (result.matched || result.partial) && result.plan
         ? result.plan
         : unmatchedDrawnPlan({
           mode: drawMode,
@@ -739,8 +740,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setSnappedCount(nextStrokes.length);
       snappedCountRef.current = nextStrokes.length;
       setOriginal(next);
-      setDrawNote(result.matched ? DRAW_SNAPPED : DRAW_SNAP_PARTIAL);
-      setError(result.matched ? null : DRAW_SNAP_PARTIAL);
+      const snapNote = result.matched ? DRAW_SNAPPED : result.partial ? DRAW_SNAP_MOSTLY : DRAW_SNAP_PARTIAL;
+      setDrawNote(snapNote);
+      setError(result.matched || result.partial ? null : DRAW_SNAP_PARTIAL);
       setAcceptedVias([]);
       setShownVias([]);
       setHistory([]);

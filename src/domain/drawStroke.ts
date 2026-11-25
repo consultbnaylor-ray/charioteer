@@ -5,6 +5,9 @@ import {
   type OutdoorPoint,
   cleanPoints,
   metresBetween,
+  removeRouteSpurs,
+  SPUR_MAX_M,
+  SPUR_WITHIN_M,
 } from '@/domain/outdoorRoute';
 
 /**
@@ -379,9 +382,39 @@ function appendRouted(line: OutdoorPoint[], next: readonly OutdoorPoint[]): Outd
   return [...line, ...added.slice(skip)];
 }
 
+/** Climb across every routed piece, not the last piece stretched over the whole line. */
+function combinedPlan(plans: readonly RoutePlan[], partial: boolean): RoutePlan | null {
+  const last = plans[plans.length - 1];
+  if (!last) return null;
+  const distanceM = plans.reduce((sum, item) => sum + Math.max(0, item.distanceM), 0);
+  const durationMinutes = plans.reduce((sum, item) => sum + Math.max(0, item.durationMinutes), 0);
+  const sum = (pick: (item: RoutePlan) => number | null | undefined): number | null => {
+    let total = 0;
+    for (const item of plans) {
+      const value = pick(item);
+      if (value == null || !Number.isFinite(value)) return null;
+      total += value;
+    }
+    return total;
+  };
+  return {
+    ...last,
+    distanceM: Math.max(1, distanceM),
+    durationMinutes: Math.max(1, durationMinutes),
+    // Part of the line is the pencil, so its climb is not known.
+    ascentM: partial ? null : sum((item) => item.ascentM),
+    descentM: partial ? null : sum((item) => item.descentM),
+    elevationsM: plans.length === 1 ? last.elevationsM ?? null : null,
+    maxGradientPct: plans.length === 1 ? last.maxGradientPct ?? null : null,
+    averageGradientPct: plans.length === 1 ? last.averageGradientPct ?? null : null,
+  };
+}
+
 /**
  * Snaps each stroke, and routes each gap along paths.
  * A limit is refused before any call. A later failure does not pretend the earlier part snapped.
+ * The joined line loses any there-and-back the pencil did not draw, including one where two pieces meet.
+ * `matched` is true when every piece snapped. `partial` is true when some snapped and some are the pencil.
  */
 export async function snapDrawnStrokes(input: {
   strokes: readonly (readonly OutdoorPoint[])[];
@@ -389,23 +422,23 @@ export async function snapDrawnStrokes(input: {
   closeLoop?: boolean;
   send: (waypoints: readonly OutdoorPoint[]) => Promise<RoutePlan>;
 }): Promise<
-  | { ok: true; matched: boolean; points: OutdoorPoint[]; plan: RoutePlan | null }
+  | { ok: true; matched: boolean; partial: boolean; points: OutdoorPoint[]; plan: RoutePlan | null }
   | { ok: false; limit: true }
   | { ok: false; limit: false; error: unknown }
 > {
   const built = buildDrawSnapRequests(input.strokes, input.anchor, input.closeLoop === true);
   if (built.limit) return { ok: false, limit: true };
   if (built.requests.length === 0) return { ok: false, limit: false, error: new Error('short') };
-  let matched = true;
-  let sawPlan = false;
+  let missed = false;
   let line: OutdoorPoint[] = [];
-  let plan: RoutePlan | null = null;
+  let reference: OutdoorPoint[] = [];
+  const plans: RoutePlan[] = [];
   for (const request of built.requests) {
+    reference = appendRouted(reference, request.waypoints);
     if (request.routedGap) {
       try {
         const next = await input.send(request.waypoints);
-        sawPlan = true;
-        plan = next;
+        plans.push(next);
         line = appendRouted(line, next.points);
       } catch (error) {
         return { ok: false, limit: false, error };
@@ -414,17 +447,21 @@ export async function snapDrawnStrokes(input: {
     }
     const result = await matchDrawnSketch({ sketch: request.waypoints, send: input.send });
     if (!result.matched && !result.sawRoute) return { ok: false, limit: false, error: result.error };
-    if (!result.matched) matched = false;
-    else {
-      sawPlan = true;
-      plan = result.plan;
-    }
+    if (!result.matched) missed = true;
+    else plans.push(result.plan);
     line = appendRouted(line, result.matched ? result.plan.points : request.waypoints);
   }
+  if (plans.length > 0 && built.requests.length > 1) {
+    line = removeRouteSpurs(line, SPUR_WITHIN_M, SPUR_MAX_M, reference);
+  }
   if (line.length < 2) return { ok: false, limit: false, error: new Error('short') };
+  const sawPlan = plans.length > 0;
+  const partial = missed && sawPlan;
+  const plan = combinedPlan(plans, partial);
   return {
     ok: true,
-    matched: matched && sawPlan,
+    matched: !missed && sawPlan,
+    partial,
     points: line,
     plan: plan ? adoptSnappedLine(plan, line) : null,
   };
