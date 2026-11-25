@@ -584,6 +584,41 @@ export function preferLast<T>(_current: T, incoming: T): T {
   return incoming;
 }
 
+function filledFields(row: Record<string, unknown>): number {
+  let count = 0;
+  for (const value of Object.values(row)) {
+    if (value == null || value === '') continue;
+    count += 1;
+  }
+  return count;
+}
+
+/**
+ * The row with more filled fields. A tie keeps the row that arrived later.
+ * Null and an empty string do not count. Zero does.
+ */
+export function preferLastComplete<T extends Record<string, unknown>>(current: T, incoming: T): T {
+  const left = filledFields(current);
+  const right = filledFields(incoming);
+  if (right > left) return incoming;
+  if (left > right) return current;
+  return incoming;
+}
+
+/**
+ * One row per conflict key inside a single upsert batch.
+ * Postgres 21000 rejects ON CONFLICT DO UPDATE when the same key appears twice.
+ * The kept row is the later one, unless an earlier row has more filled fields.
+ */
+export function dedupeUpsertRows<T extends Record<string, unknown>>(rows: readonly T[], onConflict: string): T[] {
+  const columns = onConflict.split(',').map((column) => column.trim()).filter(Boolean);
+  return dedupeBy(
+    rows,
+    (row) => columns.map((column) => String(row[column] ?? '')).join('\u0000'),
+    preferLastComplete,
+  );
+}
+
 /**
  * Longer duration, then the later local start. A full tie keeps the row that arrived later.
  * A missing duration loses to a recorded one. A missing start loses to a recorded one.

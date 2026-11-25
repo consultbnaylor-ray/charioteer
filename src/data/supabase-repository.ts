@@ -16,6 +16,7 @@ import {
   WEAK_PASSWORD_MESSAGE,
   asUserFacing,
   isTransientNetworkError,
+  signInWithPasswordOnce,
 } from '@/domain/errors';
 import { omitSharedLocation } from '@/domain/sharedPayload';
 import { parseEntitlementOverride } from '@/domain/entitlementOverride';
@@ -1040,8 +1041,14 @@ export class SupabaseRepository implements Repository {
   }
 
   async signIn(email: string, password: string): Promise<void> {
-    const { error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) throw asUserFacing(error, 'sign-in');
+    const trimmed = email.trim();
+    let result: { error: unknown };
+    try {
+      result = await signInWithPasswordOnce(() => this.client.auth.signInWithPassword({ email: trimmed, password }));
+    } catch (error) {
+      throw asUserFacing(error, 'sign-in');
+    }
+    if (result.error) throw asUserFacing(result.error, 'sign-in');
     await this.finishSignIn();
   }
 

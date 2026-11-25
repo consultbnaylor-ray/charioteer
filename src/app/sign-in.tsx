@@ -8,7 +8,7 @@ import { appleSignInEnabled } from '@/config/publicEnv';
 import { useRepository, useSnapshot } from '@/data';
 import { crisisHelplines } from '@/data/catalogue';
 import { DEMO_PASSWORD } from '@/data/demo-seed';
-import { RESET_SENT_MESSAGE, asUserFacing } from '@/domain/errors';
+import { RESET_SENT_MESSAGE, asUserFacing, signInNetworkHint } from '@/domain/errors';
 import { Button, Card, ErrorNote, Field, Mark, Screen, T, Wordmark } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -29,6 +29,7 @@ export default function SignIn() {
   const [resetPending, setResetPending] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const helplines = crisisHelplines(snap.resources);
+  const networkHint = signInNetworkHint(error);
 
   useEffect(() => {
     const next = firstParam(params.email);
@@ -117,6 +118,7 @@ export default function SignIn() {
         <T variant="body" style={{ textDecorationLine: 'underline' }}>Forgot password?</T>
       </Pressable>
       <ErrorNote>{error}</ErrorNote>
+      {networkHint ? <T variant="muted">{networkHint}</T> : null}
       {notice ? <T variant="muted">{notice}</T> : null}
       <Button label="Sign in" pending={pending} onPress={() => submit(email, password)} />
       {appleSignInEnabled() ? (

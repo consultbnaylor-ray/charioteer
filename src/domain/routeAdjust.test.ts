@@ -416,7 +416,7 @@ describe('route adjusting', () => {
   });
 
   it('snaps when the green tick is tapped and leaves drawing on until then', () => {
-    expect(DRAW_PEN_HINT).toBe('Use the pen symbol to draw where you want to go and the line will snap to the nearest paths');
+    expect(DRAW_PEN_HINT).toBe('Use the optional settings above to create a route, or use the pen symbol on the map and the line will snap to the nearest paths');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
     expect(maker).toContain('function holdStroke');

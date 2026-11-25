@@ -5,11 +5,12 @@ import {
   clearGarminCredentials,
   dailyRowsFor,
   dedupeBy,
+  dedupeUpsertRows,
   hrvRowsFor,
   mapGarminPush,
   missingRelation,
   preferLargerDuration,
-  preferLast,
+  preferLastComplete,
   pulseOxRowsFor,
   respirationRowsFor,
   sleepRowsFor,
@@ -89,32 +90,32 @@ Deno.serve(async (req) => {
   const activities = dedupeBy(
     activityRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const sleep = dedupeBy(
     sleepRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const metrics = dedupeBy(
     userMetricRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const respiration = dedupeBy(
     respirationRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const pulseOx = dedupeBy(
     pulseOxRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const hrv = dedupeBy(
     hrvRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   if (!(await saveRows(admin, 'garmin_dailies', dailies, { onConflict: 'user_id,calendar_date' }))) {
     return json({ ok: false, code: 'daily' }, 500);
@@ -195,18 +196,19 @@ async function saveRows(
   conflict: { onConflict: string },
   optional = false,
 ): Promise<boolean> {
-  if (!rows.length) return true;
-  let saved = await admin.from(table).upsert(rows, conflict);
+  const batch = dedupeUpsertRows(rows, conflict.onConflict);
+  if (!batch.length) return true;
+  let saved = await admin.from(table).upsert(batch, conflict);
   if (saved.error && table === 'garmin_dailies' && columnMissing(saved.error.message)) {
-    const base = rows.map((row) => {
+    const base = dedupeUpsertRows(batch.map((row) => {
       const next: Record<string, unknown> = {};
       for (const key of DAILY_BASE) next[key] = row[key] ?? null;
       return next;
-    });
+    }), conflict.onConflict);
     saved = await admin.from(table).upsert(base, conflict);
   }
   if (!saved.error) return true;
-  console.error(`garmin-webhook: ${table} ${sqlState(saved.error)} ${rows.length}`);
+  console.error(`garmin-webhook: ${table} ${sqlState(saved.error)} ${batch.length}`);
   if (optional && missingRelation(saved.error.message)) return true;
   return false;
 }

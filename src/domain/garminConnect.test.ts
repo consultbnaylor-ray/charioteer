@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { summaryRows } from '../../supabase/functions/_shared/garminSummaries';
 import { buildThumosContext } from '../../supabase/functions/_shared/thumos';
 import {
   GARMIN_BACKFILL_TYPES,
@@ -15,6 +16,8 @@ import {
   forgetGarminAccount,
   dailyRowsFor,
   dedupeBy,
+  dedupeUpsertRows,
+  preferLastComplete,
   emptyGarminReadings,
   garminAllowedForCoach,
   garminAppReturn,
@@ -427,6 +430,117 @@ describe('Garmin webhook mapping', () => {
     expect(rows[0]).toMatchObject({ steps: 20, duration_seconds: 100 });
     expect(rows[0]).not.toHaveProperty('localStartSeconds');
     expect(JSON.stringify(rows)).not.toContain('1700000000');
+  });
+
+  it('collapses duplicate upsert keys and keeps the last complete row', () => {
+    const sparse = {
+      user_id: 'user-1',
+      summary_id: 'epoch-1',
+      calendar_date: '2026-11-25',
+      active_seconds: null,
+      steps: 12,
+      distance_metres: null,
+      mean_heart_rate_bpm: null,
+    };
+    const complete = {
+      user_id: 'user-1',
+      summary_id: 'epoch-1',
+      calendar_date: '2026-11-25',
+      active_seconds: 900,
+      steps: 40,
+      distance_metres: 30,
+      mean_heart_rate_bpm: 110,
+    };
+    const other = {
+      user_id: 'user-1',
+      summary_id: 'epoch-2',
+      calendar_date: '2026-11-25',
+      active_seconds: 60,
+      steps: 5,
+      distance_metres: 4,
+      mean_heart_rate_bpm: null,
+    };
+    const epochs = dedupeUpsertRows([sparse, complete, other, sparse], 'user_id,summary_id');
+    expect(epochs).toHaveLength(2);
+    expect(epochs[0]).toEqual(complete);
+    expect(epochs[1]).toMatchObject({ summary_id: 'epoch-2', steps: 5 });
+    type EpochRow = { user_id: string; summary_id: string; steps: number; distance_metres: number | null };
+    const fuller: EpochRow = { user_id: 'user-1', summary_id: 'epoch-1', steps: 40, distance_metres: 30 };
+    const thinner: EpochRow = { user_id: 'user-1', summary_id: 'epoch-1', steps: 12, distance_metres: null };
+    expect(preferLastComplete(fuller, thinner)).toEqual(fuller);
+    const tied = dedupeUpsertRows(
+      [
+        { user_id: 'user-1', summary_id: 'sleep-1', duration_seconds: 100, sleep_score: 70 },
+        { user_id: 'user-1', summary_id: 'sleep-1', duration_seconds: 27000, sleep_score: 81 },
+      ],
+      'user_id,summary_id',
+    );
+    expect(tied).toEqual([{ user_id: 'user-1', summary_id: 'sleep-1', duration_seconds: 27000, sleep_score: 81 }]);
+    const days = dedupeUpsertRows(
+      [
+        { user_id: 'user-1', calendar_date: '2026-11-25', steps: 1 },
+        { user_id: 'user-1', calendar_date: '2026-11-24', steps: 2 },
+        { user_id: 'user-1', calendar_date: '2026-11-25', steps: 9, distance_metres: 10 },
+      ],
+      'user_id,calendar_date',
+    );
+    expect(days.map((row) => row.calendar_date)).toEqual(['2026-11-25', '2026-11-24']);
+    expect(days[0]).toMatchObject({ steps: 9, distance_metres: 10 });
+    const longer = { user_id: 'user-1', calendar_date: '2026-11-25', duration_seconds: 5000, steps: 1 };
+    const shorter = { user_id: 'user-1', calendar_date: '2026-11-25', duration_seconds: 100, steps: 9, distance_metres: 10, floors_climbed: 2 };
+    const ranked = dedupeBy([longer, shorter], (row) => `${row.user_id}:${row.calendar_date}`, preferLargerDuration);
+    expect(ranked).toEqual([longer]);
+    expect(dedupeUpsertRows(ranked, 'user_id,calendar_date')).toEqual([longer]);
+
+    const plan = mapGarminPush({
+      epochs: [
+        { userId: 'garmin1', summaryId: 'epoch-1', calendarDate: '2026-11-25', steps: 12 },
+        {
+          userId: 'garmin1',
+          summaryId: 'epoch-1',
+          calendarDate: '2026-11-25',
+          steps: 40,
+          distanceInMeters: 30,
+          activeTimeInSeconds: 900,
+          meanHeartRateInBeatsPerMinute: 110,
+        },
+      ],
+      sleeps: [
+        { userId: 'garmin1', summaryId: 'night-1', calendarDate: '2026-11-25', durationInSeconds: 100 },
+        { userId: 'garmin1', summaryId: 'night-1', calendarDate: '2026-11-25', durationInSeconds: 27000, overallSleepScore: { value: 81 } },
+      ],
+    });
+    const users = new Map([['garmin1', 'user-1']]);
+    const epochRows = summaryRows(plan.epochs, users, (row) => ({
+      active_seconds: row.activeSeconds,
+      steps: row.steps,
+      distance_metres: row.distanceMetres,
+      mean_heart_rate_bpm: row.meanHeartRateBpm,
+    }));
+    expect(epochRows).toHaveLength(2);
+    expect(dedupeUpsertRows(epochRows, 'user_id,summary_id')).toEqual([
+      expect.objectContaining({ user_id: 'user-1', summary_id: 'epoch-1', steps: 40, distance_metres: 30, active_seconds: 900, mean_heart_rate_bpm: 110 }),
+    ]);
+    const nightRows = dedupeUpsertRows(sleepRowsFor(plan, users), 'user_id,summary_id');
+    expect(nightRows).toHaveLength(1);
+    expect(nightRows[0]).toMatchObject({ summary_id: 'night-1', duration_seconds: 27000, sleep_score: 81 });
+
+    const webhook = readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8');
+    const save = webhook.slice(webhook.indexOf('async function saveRows'), webhook.indexOf('function columnMissing'));
+    expect(save.indexOf('dedupeUpsertRows')).toBeGreaterThan(-1);
+    expect(save.indexOf('dedupeUpsertRows')).toBeLessThan(save.indexOf('.upsert('));
+    expect(webhook.match(/\.upsert\(/g)).toHaveLength(2);
+    expect(webhook.indexOf('.upsert(')).toBeGreaterThan(webhook.indexOf('async function saveRows'));
+    for (const table of ['garmin_dailies', 'garmin_activities', 'garmin_sleep', 'garmin_user_metrics', 'garmin_respiration', 'garmin_pulse_ox', 'garmin_hrv', 'garmin_epoch', 'garmin_blood_pressure', 'garmin_body_comp', 'garmin_skin_temp', 'garmin_stress', 'garmin_health_snapshot', 'garmin_move_iq', 'garmin_activity_detail', 'garmin_activity_file']) {
+      expect(webhook, table).toContain(`'${table}'`);
+    }
+    expect(webhook).toContain('preferLastComplete');
+    expect(webhook).toContain('preferLargerDuration');
+    const callback = readFileSync('supabase/functions/garmin-oauth-callback/index.ts', 'utf8');
+    expect(callback.match(/\.upsert\(/g)).toHaveLength(1);
+    expect(callback).toContain(".from('garmin_connections').upsert({");
+    expect(readFileSync('supabase/functions/garmin-refresh/index.ts', 'utf8')).not.toContain('.upsert(');
+    expect(readFileSync('supabase/functions/garmin-disconnect/index.ts', 'utf8')).not.toContain('.upsert(');
   });
 
   it('keeps VO2 max from a user metrics push and drops a path', () => {
