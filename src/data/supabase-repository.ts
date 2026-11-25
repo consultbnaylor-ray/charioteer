@@ -2840,7 +2840,14 @@ export class SupabaseRepository implements Repository {
         timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
         requestId,
       });
-      const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
+      const data = invoked.data as {
+        ok?: boolean;
+        items?: unknown;
+        source?: string;
+        code?: string;
+        message?: string;
+        providerUnavailable?: boolean;
+      } | null;
       const category = mealEstimateCategoryFromStatus(invoked.status, data?.code);
       if (category === 'consent') {
         throw new MealEstimateError('consent', typeof data?.message === 'string' ? data.message : undefined);
@@ -2855,12 +2862,13 @@ export class SupabaseRepository implements Repository {
       }
       const items = parseMealEstimate({ items: data?.items });
       const model = data?.source === 'model';
+      const rough = data?.providerUnavailable === true && !model;
       if (invoked.status < 400 && data?.ok === true && items && (!photo || model)) {
-        return { items, source: model ? 'model' : 'local' };
+        return { items, source: model ? 'model' : 'local', providerUnavailable: rough };
       }
       if (!photo) {
         const typed = estimateFromText(text);
-        if (typed.length) return { items: typed, source: 'local' };
+        if (typed.length) return { items: typed, source: 'local', providerUnavailable: rough };
       }
       this.noteMeal(photo ? 'unreadable' : 'provider');
       throw new MealEstimateError(photo ? 'unreadable' : 'provider');

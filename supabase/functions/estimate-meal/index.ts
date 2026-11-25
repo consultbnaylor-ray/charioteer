@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
+import { mealProviderResult, type MealProviderFault } from '../_shared/mealProvider.ts';
 import { MEAL_ESTIMATE_PROMPT, PHOTO_READ_FAIL, estimateFromText, parseMealEstimate } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
@@ -21,7 +22,7 @@ function requestLabel(req: Request): string {
   return /^[0-9a-f-]{8,40}$/i.test(raw) ? raw : '';
 }
 
-/** Category only. The photo and the meal text are not logged. */
+/** Category only. The photo, the meal text, the key, and provider bodies are not logged. */
 function note(requestId: string, code: string): void {
   console.error('estimate-meal', requestId || 'no-request', code);
 }
@@ -73,10 +74,22 @@ Deno.serve(async (req) => {
   }
 
   const typed = text ? estimateFromText(text) : [];
-  const unreadPhoto = () => json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
   const warnMeal = (reason: string) => {
     console.warn(`meal-estimate ${reason}`);
     note(requestId, reason);
+  };
+  const replyFor = (fault: MealProviderFault) => {
+    const decision = mealProviderResult(Boolean(image), fault);
+    if (decision.outcome === 'unread') {
+      return json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
+    }
+    if (decision.outcome === 'unavailable') {
+      return json({ ok: false, code: decision.code, requestId: requestId || null }, 503);
+    }
+    if (decision.providerUnavailable) {
+      return json({ ok: true, items: typed, source: 'local', providerUnavailable: true });
+    }
+    return json({ ok: true, items: typed, source: 'local' });
   };
   /**
    * Supabase stops an edge function at 150s on the Free plan and 400s on Pro.
@@ -90,12 +103,14 @@ Deno.serve(async (req) => {
     userOptIn: await readInterimCoachOptIn(userClient, userData.user.id),
   });
   if (!apiKey) {
-    if (image) warnMeal('no_key');
-    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    warnMeal('no_key');
+    return replyFor({ kind: 'missing_key' });
   }
   if (!personalDataEnabled) {
     if (image) warnMeal('gate');
-    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    // The model is not called. That is not a photo the model failed to read.
+    if (image) return json({ ok: false, code: 'provider_unavailable', requestId: requestId || null }, 503);
+    return json({ ok: true, items: typed, source: 'local' });
   }
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
@@ -148,20 +163,19 @@ Deno.serve(async (req) => {
       signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) {
-      if (image) warnMeal(`http ${response.status}`);
-      return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+      await response.body?.cancel().catch(() => undefined);
+      warnMeal(`http ${response.status}`);
+      return replyFor({ kind: 'http', status: response.status });
     }
     const parsed = parseMealEstimate(completionText(await response.json()));
     if (!parsed) {
-      if (image) warnMeal('parse');
-      return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+      warnMeal('parse');
+      return replyFor({ kind: 'unparsed' });
     }
     return json({ ok: true, items: parsed, source: 'model', requestId: requestId || null });
   } catch (error) {
-    if (image) {
-      const name = error instanceof Error ? error.name : '';
-      warnMeal(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'http');
-    }
-    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    const name = error instanceof Error ? error.name : '';
+    warnMeal(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'http');
+    return replyFor(name === 'TimeoutError' || name === 'AbortError' ? { kind: 'timeout' } : { kind: 'network' });
   }
 });

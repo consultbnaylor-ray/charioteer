@@ -413,7 +413,12 @@ export type FoodLogUpdate = {
   portion: number;
 };
 
-export type MealEstimate = { items: FoodItem[]; source: 'model' | 'local' };
+export type MealEstimate = {
+  items: FoodItem[];
+  source: 'model' | 'local';
+  /** The text figures are the on-device estimate because the model could not be called. */
+  providerUnavailable?: boolean;
+};
 
 export interface Repository {
   subscribe(listener: () => void): () => void;
