@@ -722,6 +722,74 @@ export function applyDrawPointers(
   return { cancelled: false, points: appendFingerPoint(session.points, point, FINGER_GAP_M) };
 }
 
+/**
+ * The live pencil, at most once per animation frame.
+ *
+ * React Native's new architecture delivers `touchMove` as a coalesced event:
+ * while the JS thread is busy, every pending move is replaced by the newest one.
+ * When each finger sample re-rendered the whole route screen (and the map, which
+ * re-serialises its style on every render), the first sample of a stroke held the
+ * JS thread long enough that the moves in between were thrown away. The next move
+ * that arrived was already far along the finger's path, so the stroke became one
+ * straight chord from the touch, then followed the finger again.
+ *
+ * Samples are kept in full by the caller. Only the drawing of them waits for a
+ * frame, and only the newest value is drawn.
+ */
+export type FrameBatcher<T> = {
+  push: (value: T) => void;
+  flush: () => void;
+  cancel: () => void;
+  pending: () => boolean;
+};
+
+export function createFrameBatcher<T>(
+  publish: (value: T) => void,
+  schedule: (run: () => void) => unknown,
+  unschedule: (handle: unknown) => void,
+): FrameBatcher<T> {
+  let handle: unknown = null;
+  let scheduled = false;
+  let waiting = false;
+  let latest: T | undefined;
+  function run() {
+    scheduled = false;
+    handle = null;
+    if (!waiting) return;
+    waiting = false;
+    const value = latest as T;
+    latest = undefined;
+    publish(value);
+  }
+  function stop() {
+    if (scheduled && handle != null) unschedule(handle);
+    scheduled = false;
+    handle = null;
+  }
+  return {
+    push(value: T) {
+      latest = value;
+      waiting = true;
+      if (scheduled) return;
+      scheduled = true;
+      const next = schedule(run);
+      if (scheduled) handle = next;
+    },
+    flush() {
+      stop();
+      run();
+    },
+    cancel() {
+      stop();
+      waiting = false;
+      latest = undefined;
+    },
+    pending() {
+      return waiting;
+    },
+  };
+}
+
 /** A cancelled gesture commits no stroke. */
 export function finishDrawSession(session: DrawSession): OutdoorPoint[] {
   if (session.cancelled) return [];

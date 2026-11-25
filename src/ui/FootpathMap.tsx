@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentType, type ReactNode, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type ComponentType, type ReactNode, type Ref } from 'react';
 import { View } from 'react-native';
 
 import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
@@ -221,6 +221,31 @@ export function FootpathMap({
   );
 }
 
+type LiveStrokeHandle = { show: (points: OutdoorPoint[]) => void };
+
+/**
+ * The stroke under the finger, while it is being drawn.
+ * It keeps its own state, so a new sample re-renders only this source and layer.
+ * The route screen and the rest of the map do not re-render until the finger lifts.
+ * A render of the whole screen per sample held the JS thread, the coalesced
+ * touchMove events in between were dropped, and the first stroke became a chord.
+ */
+function LiveStroke({ maps, colour, ref }: { maps: Maps; colour: string; ref?: Ref<LiveStrokeHandle> }) {
+  const [points, setPoints] = useState<OutdoorPoint[]>([]);
+  useImperativeHandle(ref, () => ({ show: (next: OutdoorPoint[]) => setPoints(next) }), []);
+  return (
+    <>
+      <maps.GeoJSONSource id="guide-live" tolerance={0} data={sketchLineCollection(points)} />
+      <maps.Layer
+        id="guide-live-line"
+        type="line"
+        source="guide-live"
+        paint={{ 'line-color': colour, 'line-width': 7 }}
+      />
+    </>
+  );
+}
+
 function NativeCanvas({
   maps,
   height,
@@ -278,6 +303,7 @@ function NativeCanvas({
   const box = useRef({ ready: false, originX: 0, originY: 0, width: 0, height: 0 });
   const drawRef = useRef(draw);
   drawRef.current = draw;
+  const live = useRef<LiveStrokeHandle>(null);
   const moved = useRef(onUserMove);
   moved.current = onUserMove;
   const scroller = useScreenScroller();
@@ -463,6 +489,7 @@ function NativeCanvas({
         source="guide"
         paint={{ 'line-color': pencilColour(scheme), 'line-width': 7 }}
       />
+      <LiveStroke ref={live} maps={maps} colour={pencilColour(scheme)} />
       <maps.GeoJSONSource id="gap" tolerance={0} data={sketchLinesCollection(gaps)} />
       <maps.Layer
         id="gap-line"
@@ -515,8 +542,13 @@ function NativeCanvas({
           centre: { latitude: held.current.latitude, longitude: held.current.longitude },
           zoom: held.current.zoom,
         })}
-        onChange={(points) => drawRef.current?.onChange(points)}
-        onEnd={(points) => drawRef.current?.onEnd(points)}
+        // The live line stays inside the map while the finger is down. The route
+        // screen hears about the stroke once, when the finger lifts.
+        onChange={(points) => live.current?.show(points)}
+        onEnd={(points) => {
+          live.current?.show([]);
+          drawRef.current?.onEnd(points);
+        }}
         onView={showDrawnView}
       />
     ) : null}
