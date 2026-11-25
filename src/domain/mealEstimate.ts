@@ -9,9 +9,17 @@ export type MealEstimateCategory =
   | 'network'
   | 'timeout'
   | 'provider'
+  | 'unavailable'
   | 'credits'
   | 'unreadable'
   | 'consent';
+
+/** Shown when the model cannot be called. It does not blame the photo. */
+export const PHOTO_PROVIDER_UNAVAILABLE =
+  'Photo reading is unavailable right now. Please type the meal instead.';
+
+/** Shown beside a text estimate that fell back on the device because the model was down. */
+export const ROUGH_ESTIMATE_NOTE = 'Rough estimate, AI unavailable right now.';
 
 const MESSAGES: Record<MealEstimateCategory, string> = {
   preparation: 'Could not prepare that photo. Try again, or type the meal.',
@@ -19,6 +27,7 @@ const MESSAGES: Record<MealEstimateCategory, string> = {
   network: 'The meal estimate lost the connection. Tap to retry.',
   timeout: 'The meal estimate took too long. Tap to retry.',
   provider: 'The meal estimate did not answer. Tap to retry.',
+  unavailable: PHOTO_PROVIDER_UNAVAILABLE,
   credits: 'This meal estimate needs an AI credit.',
   unreadable: PHOTO_READ_FAIL,
   consent: 'Reading a meal needs the coach consent. You can still type the meal in yourself.',
@@ -43,6 +52,7 @@ export class MealEstimateError extends UserFacingError {
 export function mealEstimateCategoryFromStatus(status: number, code?: string | null): MealEstimateCategory | null {
   if (code === 'unread') return 'unreadable';
   if (code === 'consent') return 'consent';
+  if (code === 'provider_unavailable' || code === 'provider_busy') return 'unavailable';
   if (code === 'limit_reached' || code === 'subscription_required' || status === 402 || status === 429) return 'credits';
   if (status === 401) return 'auth';
   if (status === 408 || status === 504) return 'timeout';

@@ -10,7 +10,7 @@ import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
 import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
-import { isMealPickerCancel, MealEstimateError, mealEstimateLog, mealEstimateMessage, mealPhotoFailure } from '@/domain/mealEstimate';
+import { isMealPickerCancel, MealEstimateError, mealEstimateLog, mealEstimateMessage, mealPhotoFailure, ROUGH_ESTIMATE_NOTE } from '@/domain/mealEstimate';
 import { randomId } from '@/domain/id';
 import {
   APPLE_HEALTH_MEAL_NOTE,
@@ -358,6 +358,7 @@ export default function Nutrition() {
   const [estimateErrorDay, setEstimateErrorDay] = useState<string | null>(null);
   const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
   const [estimateFlash, setEstimateFlash] = useState(false);
+  const [roughEstimate, setRoughEstimate] = useState(false);
   const [mealWeeks, setMealWeeks] = useState(1);
   const savedRowRef = useRef<View>(null);
   const dayAnchorRef = useRef<View>(null);
@@ -578,10 +579,11 @@ export default function Nutrition() {
     setError(null);
   }
 
-  function showEstimate(next: Draft) {
+  function showEstimate(next: Draft, rough = false) {
     setEstimateError(null);
     setEstimateReady(true);
     setEstimateFlash(true);
+    setRoughEstimate(rough);
     openDraft(next);
   }
 
@@ -622,7 +624,7 @@ export default function Nutrition() {
           estimated: true,
           previewUri: null,
           photoBase64: null,
-        });
+        }, estimate.providerUnavailable === true);
       } catch (err) {
         const failure = mealPhotoFailure(err);
         if (!(err instanceof MealEstimateError)) {
@@ -800,12 +802,12 @@ export default function Nutrition() {
     });
   }
 
-  function estimateEdited(text: string): Promise<FoodItem[]> {
+  function estimateEdited(text: string): Promise<{ items: FoodItem[]; providerUnavailable?: boolean }> {
     return new Promise((resolve, reject) => {
       run('meal-estimate', async () => {
         try {
           const estimate = await repo.estimateMeal({ text });
-          resolve(estimate.items);
+          resolve({ items: estimate.items, providerUnavailable: estimate.providerUnavailable === true });
         } catch (err) {
           reject(err);
         }
@@ -1117,6 +1119,7 @@ export default function Nutrition() {
             setEstimateReady(false);
             setEstimateFlash(false);
             setEstimateError(null);
+            setRoughEstimate(false);
             openDraft({
               meal,
               source: 'manual',
@@ -1144,6 +1147,7 @@ export default function Nutrition() {
         <Card style={estimateFlash ? { borderColor: theme.colors.accent, borderWidth: stroke.featured } : undefined}>
           <T variant="label">{draft.source === 'photo' ? 'Confirm this photo' : 'Confirm this meal'}</T>
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
+          {draft.estimated && roughEstimate ? <T variant="muted">{ROUGH_ESTIMATE_NOTE}</T> : null}
           {photoNote ? <T>{photoNote}</T> : null}
           <T>{ESTIMATE_HINT}</T>
           {powderReadingNote(draft.note || text) ? <T variant="muted">{POWDER_NOT_PROTEIN}</T> : null}

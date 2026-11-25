@@ -6,6 +6,7 @@ import type { FoodLogUpdate } from '@/data/types';
 import { isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
+import { ROUGH_ESTIMATE_NOTE } from '@/domain/mealEstimate';
 import {
   APPLE_HEALTH_MEAL_NOTE,
   ESTIMATE_HINT,
@@ -60,7 +61,7 @@ export function MealEdit({
   estimating: boolean;
   showHealthNote: boolean;
   onSave: (patch: FoodLogUpdate) => void;
-  onEstimate: (text: string) => Promise<FoodItem[]>;
+  onEstimate: (text: string) => Promise<{ items: FoodItem[]; providerUnavailable?: boolean }>;
   onCancel: () => void;
   onError: (message: string | null) => void;
 }) {
@@ -76,6 +77,7 @@ export function MealEdit({
   const [items, setItems] = useState<DraftItem[]>(() => log.items.map(draftFrom));
   const [fatText, setFatText] = useState(() => log.items.map((item) => String(fatGrams(draftFrom(item)))));
   const [estimated, setEstimated] = useState(log.estimated);
+  const [rough, setRough] = useState(false);
   const appliedRef = useRef(openedPortion);
   const draftRef = useRef(items);
 
@@ -177,7 +179,8 @@ export function MealEdit({
       return;
     }
     const factor = typedPortion ?? appliedPortion;
-    void onEstimate(description).then((foods) => {
+    void onEstimate(description).then((result) => {
+      const foods = result.items;
       if (!foods.length) {
         onError('Could not read that meal. You can still type the figures in.');
         return;
@@ -189,6 +192,7 @@ export function MealEdit({
         setAppliedPortion(typedPortion);
       }
       setEstimated(true);
+      setRough(result.providerUnavailable === true);
       onError(null);
     }).catch((err: unknown) => {
       onError(shownError(err, 'Could not read that meal. You can still type the figures in.'));
@@ -219,6 +223,7 @@ export function MealEdit({
       />
       <TimeField label="Time" value={time} onChange={setTime} />
       {estimated ? <T>{ESTIMATE_LABEL}</T> : null}
+      {estimated && rough ? <T variant="muted">{ROUGH_ESTIMATE_NOTE}</T> : null}
       {items.map((item, index) => (
         <View key={`${log.id}-${index}`} style={{ gap: 8 }}>
           <Field label="Food" value={item.name} onChangeText={(name) => updateItem(index, { name })} />
