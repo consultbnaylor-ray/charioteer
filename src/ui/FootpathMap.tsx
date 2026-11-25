@@ -8,12 +8,16 @@ import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
+  DRAW_GAP_DASH,
+  DRAW_GAP_WIDTH,
+  drawGapColour,
   mapLineColour,
   pencilColour,
   pinCollection,
   openFreeMapStyle,
   savedLineCollection,
   sketchLineCollection,
+  sketchLinesCollection,
   startCollection,
   trackLineCollection,
   trackLineColour,
@@ -80,6 +84,8 @@ export function FootpathMap({
   bar = null,
   mapLabel,
   pencil = [],
+  pencilLines = null,
+  gaps = [],
   lookAt = null,
   lookFocus = 0,
   draw = null,
@@ -117,8 +123,12 @@ export function FootpathMap({
   bar?: ReactNode;
   /** Accessible name. Omitted maps keep "Map with footpaths". */
   mapLabel?: string;
-  /** The finger sketch, shown dashed until a snapped route replaces it. */
+  /** The finger sketch, one line. `pencilLines` draws each stroke on its own. */
   pencil?: readonly OutdoorPoint[];
+  /** Each stroke on its own. A gap between strokes is not part of these lines. */
+  pencilLines?: readonly (readonly OutdoorPoint[])[] | null;
+  /** Thin dashed hints between strokes. Not a finger stroke. */
+  gaps?: readonly (readonly OutdoorPoint[])[];
   /** A searched place. `lookFocus` increments when the map should move there. */
   lookAt?: OutdoorPoint | null;
   lookFocus?: number;
@@ -200,6 +210,8 @@ export function FootpathMap({
           adjust={adjust}
           expanded={expanded}
           pencil={pencil}
+          pencilLines={pencilLines}
+          gaps={gaps}
           pin={pin}
           draw={draw}
           mapStyle={mapStyle}
@@ -226,6 +238,8 @@ function NativeCanvas({
   adjust,
   expanded,
   pencil,
+  pencilLines,
+  gaps,
   pin,
   draw,
   mapStyle,
@@ -246,6 +260,8 @@ function NativeCanvas({
   adjust: MapAdjust | null;
   expanded: boolean;
   pencil: readonly OutdoorPoint[];
+  pencilLines: readonly (readonly OutdoorPoint[])[] | null;
+  gaps: readonly (readonly OutdoorPoint[])[];
   pin: OutdoorPoint | null;
   draw: {
     enabled: boolean;
@@ -402,12 +418,23 @@ function NativeCanvas({
         paint={{ 'circle-radius': 6, 'circle-color': green, 'circle-stroke-width': 2, 'circle-stroke-color': '#F3F3EE' }}
       />
       {/* tolerance 0: the default Douglas-Peucker turns a finger curve into long chords. */}
-      <maps.GeoJSONSource id="guide" tolerance={0} data={sketchLineCollection(pencil)} />
+      <maps.GeoJSONSource id="guide" tolerance={0} data={pencilLines ? sketchLinesCollection(pencilLines) : sketchLineCollection(pencil)} />
       <maps.Layer
         id="guide-line"
         type="line"
         source="guide"
         paint={{ 'line-color': pencilColour(scheme), 'line-width': 7 }}
+      />
+      <maps.GeoJSONSource id="gap" tolerance={0} data={sketchLinesCollection(gaps)} />
+      <maps.Layer
+        id="gap-line"
+        type="line"
+        source="gap"
+        paint={{
+          'line-color': drawGapColour(scheme),
+          'line-width': DRAW_GAP_WIDTH,
+          'line-dasharray': DRAW_GAP_DASH,
+        }}
       />
       <maps.GeoJSONSource id="vias" data={viaPointCollection(adjust?.vias ?? [])} />
       <maps.Layer

@@ -393,7 +393,12 @@ describe('route adjusting', () => {
       expect(source).toContain('pencilColour');
       expect(source).toContain("'line-width': 7");
       expect(source).toContain("'line-width': 6");
-      expect(source).not.toContain('line-dasharray');
+      const quoted = source.slice(source.indexOf("id: 'guide-line'"), source.indexOf("id: 'gap-line'"));
+      const jsx = source.slice(source.indexOf('id="guide-line"'), source.indexOf('id="gap-line"'));
+      const guide = quoted.length > 0 ? quoted : jsx;
+      expect(guide.length).toBeGreaterThan(0);
+      expect(guide).not.toContain('line-dasharray');
+      expect(source).toContain('line-dasharray');
     }
     expect(native).toContain('attribution={false}');
     expect(web).toContain('attributionControl: false');
@@ -434,11 +439,13 @@ describe('route adjusting', () => {
     const failedSnap = snap.slice(snap.indexOf('} catch'));
     expect(failedSnap).toContain('return false');
     expect(failedSnap).not.toContain('setSnappedCount');
+    expect(failedSnap).not.toContain('noteRouteRequest');
+    expect(snap).toContain('DRAW_SNAP_LIMIT');
     expect(maker).toContain('DRAW_SNAP_FAILED');
     expect(maker).toContain('DRAW_SNAP_TRY_AGAIN');
     expect(maker).toContain('RouteSnapSummary');
-    expect(maker).toContain('sketchDistanceLabel(pathMetres(rawLine))');
-    expect(maker).toContain('pencil={rawLine}');
+    expect(maker).toContain('sketchDistanceLabel(drawnMetres)');
+    expect(maker).toContain('pencilLines={strokeLines}');
     expect(maker).toContain('statusNote={snapMiss ? DRAW_SNAP_FAILED : drawing ? null : drawNote}');
     const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
     expect(chrome).toContain('DRAW_SNAP_FAILED');
@@ -448,16 +455,20 @@ describe('route adjusting', () => {
     expect(maker).toContain('undoDrawStroke');
     expect(maker).toContain('clearDrawStrokes');
     expect(maker).toContain('snappedDrawLine');
-    expect(maker).toContain('rawDrawLine');
+    expect(maker).toContain('rawStrokeLines');
     expect(maker).toContain('onConfirmDraw');
     expect(maker).toContain('DRAW_SNAPPED');
-    expect(maker).toContain('continuationEnd');
+    expect(maker).toContain('buildDrawSnapRequests');
     const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
     const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
     for (const source of [native, web]) {
       expect(source).toContain('useFootpathStyle(scheme, styleUrl)');
       expect(source).toContain('openFreeMapStyle(scheme)');
-      expect(source).not.toContain('line-dasharray');
+      const guide = source.slice(source.indexOf("id: 'guide-line'"), source.indexOf("id: 'gap-line'"));
+      const nativeGuide = source.slice(source.indexOf('id="guide-line"'), source.indexOf('id="gap-line"'));
+      const solid = guide.length > 0 ? guide : nativeGuide;
+      expect(solid).not.toContain('line-dasharray');
+      expect(source).toContain('line-dasharray');
     }
   });
 });

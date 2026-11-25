@@ -66,6 +66,7 @@ import {
   SEARCH_TEN_MINUTE_CAP,
   NO_PATH_MESSAGE,
   ORS_FREE_DIRECTIONS_PER_DAY,
+  ROUTE_LIMIT_MESSAGE,
   RATE_LIMITED_MESSAGE,
   SNAP_RADIUS_M,
   UNAVAILABLE_MESSAGE,
@@ -489,6 +490,10 @@ describe('route finding', () => {
     expect(classifyOrsFailure(400, { message: 'bad coordinate 51.450123' })).toEqual({
       status: 400,
       body: { ok: false, code: 'bad_request', message: ROUTE_BAD_REQUEST },
+    });
+    expect(classifyOrsFailure(400, { error: { code: 2004, message: 'distance 51.450123' } })).toEqual({
+      status: 400,
+      body: { ok: false, code: 'limit', message: ROUTE_LIMIT_MESSAGE },
     });
     expect(classifyOrsFailure(500, { error: { code: 2099 } }).status).toBe(503);
 

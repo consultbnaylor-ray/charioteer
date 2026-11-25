@@ -1,3 +1,4 @@
+import { adoptSnappedLine, matchDrawnSketch, type RoutePlan } from '@/domain/findRoute';
 import {
   centreKeepingPoint,
   viewToPoint,
@@ -8,7 +9,8 @@ import {
 
 /**
  * A drawn route is a stack of finger strokes.
- * A new stroke continues from the current end, even when the finger starts away from it.
+ * Each stroke is only the finger path. A previous end is not copied onto the next stroke,
+ * and the phone's location is not copied onto the first stroke.
  * Undo drops the last stroke. Clear drops every stroke.
  */
 
@@ -52,26 +54,23 @@ export function continuationEnd(
   return drawEnd(strokes);
 }
 
-/** Prepends the current end so the stroke is joined, even when the finger starts away from it. */
-export function joinStroke(end: OutdoorPoint | null, stroke: readonly OutdoorPoint[]): OutdoorPoint[] {
-  const clean = copyPoints(stroke);
-  const start = end ? copyPoints([end])[0] : undefined;
-  if (!start) return clean;
-  if (clean.length === 0) return [start];
-  if (samePoint(clean[0], start)) return clean;
-  return [start, ...clean];
+/**
+ * The finger path only.
+ * `end` is ignored. A previous end, and the blue location dot, are not inserted.
+ */
+export function joinStroke(_end: OutdoorPoint | null, stroke: readonly OutdoorPoint[]): OutdoorPoint[] {
+  return copyPoints(stroke);
 }
 
-/** Appends one stroke. A stroke that does not move is left off the stack. */
+/** Appends one stroke. A stroke that does not move is left off the stack. Nothing is prepended. */
 export function commitDrawStroke(
   strokes: readonly (readonly OutdoorPoint[])[],
   stroke: readonly OutdoorPoint[],
-  end: OutdoorPoint | null = drawEnd(strokes),
 ): OutdoorPoint[][] {
   const kept = strokes.map((item) => copyPoints(item));
-  const joined = joinStroke(end, stroke);
-  if (joined.length < 2) return kept;
-  return [...kept, joined];
+  const clean = copyPoints(stroke);
+  if (clean.length < 2) return kept;
+  return [...kept, clean];
 }
 
 /** Drops the last stroke. The earlier strokes stay. */
@@ -149,18 +148,286 @@ export function snappedDrawLine(
   return combineDrawStrokes(strokes.slice(0, count));
 }
 
-/** Hand-drawn points that are not on a snapped route yet, plus the finger still down. */
+/** Hand-drawn points that are not on a snapped route yet, plus the finger still down. One list, for a length. */
 export function rawDrawLine(
   strokes: readonly (readonly OutdoorPoint[])[],
   snappedCount: number,
   pencil: readonly OutdoorPoint[] = [],
 ): OutdoorPoint[] {
+  return combineDrawStrokes(rawStrokeLines(strokes, snappedCount, pencil));
+}
+
+/**
+ * Each unfinished stroke on its own.
+ * The finger still down is its own stroke. Nothing is drawn between strokes.
+ */
+export function rawStrokeLines(
+  strokes: readonly (readonly OutdoorPoint[])[],
+  snappedCount: number,
+  pencil: readonly OutdoorPoint[] = [],
+): OutdoorPoint[][] {
   const count = strokeCount(snappedCount, strokes.length);
-  const pending = combineDrawStrokes(strokes.slice(count));
+  const lines = strokes.slice(count).map((stroke) => copyPoints(stroke)).filter((stroke) => stroke.length >= 2);
   const finger = copyPoints(pencil);
-  if (finger.length === 0) return pending;
-  if (pending.length === 0) return finger;
-  return stitchRoute(pending, finger);
+  if (finger.length >= 2) lines.push(finger);
+  return lines;
+}
+
+/**
+ * A thin hint of the order of strokes. Not part of the pencil.
+ * The phone's location is never one of these ends.
+ */
+export function drawGapLines(
+  strokes: readonly (readonly OutdoorPoint[])[],
+  snapped: readonly OutdoorPoint[] | null,
+  snappedCount: number,
+  pencil: readonly OutdoorPoint[] = [],
+): OutdoorPoint[][] {
+  const count = strokeCount(snappedCount, strokes.length);
+  const pieces: OutdoorPoint[][] = [];
+  const snap = snapped ? copyPoints(snapped) : [];
+  if (count > 0 && snap.length >= 2) pieces.push(snap);
+  else {
+    for (const stroke of strokes.slice(0, count)) {
+      const clean = copyPoints(stroke);
+      if (clean.length >= 2) pieces.push(clean);
+    }
+  }
+  for (const stroke of rawStrokeLines(strokes, snappedCount, pencil)) pieces.push(stroke);
+  const gaps: OutdoorPoint[][] = [];
+  for (let index = 1; index < pieces.length; index += 1) {
+    const previous = pieces[index - 1];
+    const next = pieces[index];
+    const end = previous?.[previous.length - 1];
+    const start = next?.[0];
+    if (!end || !start) continue;
+    if (samePoint(end, start) || metresBetween(end, start) < 8) continue;
+    gaps.push([end, start]);
+  }
+  return gaps;
+}
+
+/** How far apart snap waypoints sit along a stroke. The 2 m finger samples are not sent. */
+export const SNAP_SPACING_M = 150;
+
+/** One directions call stays under the service cap of 50, and under the corner budget of 25. */
+export const SNAP_CHUNK_CAP = 25;
+
+/**
+ * HeiGIT refuses a directions call whose straight-line length is over 100 km.
+ * A single leg over that cannot be split.
+ */
+export const SNAP_MAX_LEG_M = 100_000;
+
+/** A gap at least this long is its own two-point route, so the turn is not forced straight. */
+export const SNAP_GAP_SPLIT_M = 20;
+
+export type DrawSnapRequest = {
+  waypoints: OutdoorPoint[];
+  /** The straight chord between strokes, or from Where I am. It is not a finger stroke. */
+  routedGap: boolean;
+};
+
+export type DrawSnapPlan = {
+  requests: DrawSnapRequest[];
+  limit: boolean;
+};
+
+function dedupeClose(points: readonly OutdoorPoint[]): OutdoorPoint[] {
+  const kept: OutdoorPoint[] = [];
+  for (const point of points) {
+    const last = kept[kept.length - 1];
+    if (last && metresBetween(last, point) < 8) {
+      kept[kept.length - 1] = point;
+      continue;
+    }
+    kept.push(point);
+  }
+  return kept;
+}
+
+/**
+ * Samples along the finger path.
+ * A bend that leaves the chord by more than 35 m is kept. Points are not added on a gap.
+ */
+export function resampleDrawnPath(points: readonly OutdoorPoint[], spacingM = SNAP_SPACING_M): OutdoorPoint[] {
+  const line = points.filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180);
+  if (line.length <= 2) return line.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+  const spacing = Math.max(20, spacingM);
+  const kept: OutdoorPoint[] = [];
+  const first = line[0];
+  if (!first) return [];
+  kept.push(first);
+  let origin = first;
+  let windowStart = 0;
+  let since = 0;
+  for (let index = 1; index < line.length; index += 1) {
+    const prev = line[index - 1];
+    const point = line[index];
+    if (!prev || !point) continue;
+    since += metresBetween(prev, point);
+    const last = index === line.length - 1;
+    if (since < spacing && !last) continue;
+    let farthest = -1;
+    let farM = 35;
+    for (let cursor = windowStart + 1; cursor < index; cursor += 1) {
+      const sample = line[cursor];
+      if (!sample) continue;
+      const deviation = chordMetres(sample, origin, point);
+      if (deviation > farM) {
+        farM = deviation;
+        farthest = cursor;
+      }
+    }
+    if (farthest > windowStart) {
+      const bend = line[farthest];
+      if (bend) kept.push(bend);
+    }
+    kept.push(point);
+    origin = point;
+    windowStart = index;
+    since = 0;
+  }
+  return dedupeClose(kept).map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+}
+
+function splitCapped(points: readonly OutdoorPoint[], cap: number): OutdoorPoint[][] {
+  if (points.length <= cap) return [points.map((point) => ({ ...point }))];
+  const chunks: OutdoorPoint[][] = [];
+  let index = 0;
+  while (index < points.length - 1) {
+    const end = Math.min(points.length, index + cap);
+    const slice = points.slice(index, end).map((point) => ({ ...point }));
+    if (slice.length >= 2) chunks.push(slice);
+    if (end >= points.length) break;
+    index = end - 1;
+  }
+  return chunks;
+}
+
+function legTooLong(points: readonly OutdoorPoint[]): boolean {
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const point = points[index];
+    if (!previous || !point) continue;
+    const leg = metresBetween(previous, point);
+    if (leg > SNAP_MAX_LEG_M) return true;
+    total += leg;
+    if (total > SNAP_MAX_LEG_M) return true;
+  }
+  return false;
+}
+
+/**
+ * Waypoints for the route service.
+ * Each stroke is resampled on its own. A gap is the two ends only, routed along paths.
+ * `anchor` is the Where I am point. It is not copied onto a stroke.
+ */
+export function buildDrawSnapRequests(
+  strokes: readonly (readonly OutdoorPoint[])[],
+  anchor: OutdoorPoint | null,
+  closeLoop = false,
+): DrawSnapPlan {
+  const sampled = strokes
+    .map((stroke) => resampleDrawnPath(stroke))
+    .filter((stroke) => stroke.length >= 2);
+  if (closeLoop && sampled.length > 0) {
+    const first = sampled[0]?.[0];
+    const lastStroke = sampled[sampled.length - 1];
+    if (first && lastStroke && lastStroke.length > 0) {
+      lastStroke[lastStroke.length - 1] = { latitude: first.latitude, longitude: first.longitude };
+    }
+  }
+  if (sampled.length === 0) return { requests: [], limit: false };
+  const requests: DrawSnapRequest[] = [];
+  const lead = anchor ? copyPoints([anchor])[0] : undefined;
+  const strokeStart = sampled[0]?.[0];
+  if (lead && strokeStart) {
+    const gap = metresBetween(lead, strokeStart);
+    if (gap > SNAP_MAX_LEG_M) return { requests: [], limit: true };
+    if (gap >= 8) requests.push({ waypoints: [lead, strokeStart], routedGap: true });
+  }
+  for (let index = 0; index < sampled.length; index += 1) {
+    const stroke = sampled[index];
+    if (!stroke) continue;
+    for (const piece of splitCapped(stroke, SNAP_CHUNK_CAP)) {
+      if (legTooLong(piece)) return { requests: [], limit: true };
+      requests.push({ waypoints: piece, routedGap: false });
+    }
+    const next = sampled[index + 1];
+    const end = stroke[stroke.length - 1];
+    const start = next?.[0];
+    if (!end || !start) continue;
+    const gap = metresBetween(end, start);
+    if (gap > SNAP_MAX_LEG_M) return { requests: [], limit: true };
+    if (gap >= SNAP_GAP_SPLIT_M) requests.push({ waypoints: [end, start], routedGap: true });
+  }
+  if (requests.some((request) => request.waypoints.length > SNAP_CHUNK_CAP || legTooLong(request.waypoints))) {
+    return { requests: [], limit: true };
+  }
+  return { requests, limit: false };
+}
+
+function appendRouted(line: OutdoorPoint[], next: readonly OutdoorPoint[]): OutdoorPoint[] {
+  const added = copyPoints(next);
+  if (line.length === 0) return added;
+  if (added.length === 0) return line;
+  const end = line[line.length - 1];
+  const start = added[0];
+  const skip = end && start && metresBetween(end, start) < 8 ? 1 : 0;
+  return [...line, ...added.slice(skip)];
+}
+
+/**
+ * Snaps each stroke, and routes each gap along paths.
+ * A limit is refused before any call. A later failure does not pretend the earlier part snapped.
+ */
+export async function snapDrawnStrokes(input: {
+  strokes: readonly (readonly OutdoorPoint[])[];
+  anchor: OutdoorPoint | null;
+  closeLoop?: boolean;
+  send: (waypoints: readonly OutdoorPoint[]) => Promise<RoutePlan>;
+}): Promise<
+  | { ok: true; matched: boolean; points: OutdoorPoint[]; plan: RoutePlan | null }
+  | { ok: false; limit: true }
+  | { ok: false; limit: false; error: unknown }
+> {
+  const built = buildDrawSnapRequests(input.strokes, input.anchor, input.closeLoop === true);
+  if (built.limit) return { ok: false, limit: true };
+  if (built.requests.length === 0) return { ok: false, limit: false, error: new Error('short') };
+  let matched = true;
+  let sawPlan = false;
+  let line: OutdoorPoint[] = [];
+  let plan: RoutePlan | null = null;
+  for (const request of built.requests) {
+    if (request.routedGap) {
+      try {
+        const next = await input.send(request.waypoints);
+        sawPlan = true;
+        plan = next;
+        line = appendRouted(line, next.points);
+      } catch (error) {
+        return { ok: false, limit: false, error };
+      }
+      continue;
+    }
+    const result = await matchDrawnSketch({ sketch: request.waypoints, send: input.send });
+    if (!result.matched && !result.sawRoute) return { ok: false, limit: false, error: result.error };
+    if (!result.matched) matched = false;
+    else {
+      sawPlan = true;
+      plan = result.plan;
+    }
+    line = appendRouted(line, result.matched ? result.plan.points : request.waypoints);
+  }
+  if (line.length < 2) return { ok: false, limit: false, error: new Error('short') };
+  return {
+    ok: true,
+    matched: matched && sawPlan,
+    points: line,
+    plan: plan ? adoptSnappedLine(plan, line) : null,
+  };
 }
 
 /** The green tick waits until a stroke has actually moved. */
