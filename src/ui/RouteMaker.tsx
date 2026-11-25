@@ -8,6 +8,7 @@ import { currentLive } from '@/activity/oneSession';
 import { useRepository } from '@/data';
 import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/activitySession';
 import { SHOW_IN_APP_OUTING } from '@/domain/outsideSection';
+import { randomId } from '@/domain/id';
 import { UserFacingError, shownError } from '@/domain/errors';
 import {
   APPLE_MAPS_NOTE,
@@ -21,7 +22,6 @@ import {
   BOTH_HERE_HINT,
   SEARCH_EMPTY,
   appleMapsUrl,
-  matchDrawnSketch,
   nearestPathLine,
   unmatchedDrawnPlan,
   routeAskFromChoices,
@@ -37,18 +37,18 @@ import {
   type RouteTimeChoice,
 } from '@/domain/findRoute';
 import {
+  buildDrawSnapRequests,
   clearDrawStrokes,
   combineDrawStrokes,
   commitDrawStroke,
-  continuationEnd,
+  drawGapLines,
   drawReadyToSnap,
-  joinStroke,
-  rawDrawLine,
+  rawStrokeLines,
+  snapDrawnStrokes,
   snappedDrawLine,
   undoDrawStroke,
 } from '@/domain/drawStroke';
 import {
-  closeSketchIfLoop,
   pathMetres,
   sketchDistanceLabel,
   sketchIsClosed,
@@ -60,6 +60,7 @@ import {
   DRAW_NO_PATH,
   DRAW_PEN_HINT,
   DRAW_SNAP_FAILED,
+  DRAW_SNAP_LIMIT,
   DRAW_SNAP_PARTIAL,
   DRAW_SNAP_TRY_AGAIN,
   DRAW_SNAPPED,
@@ -70,6 +71,7 @@ import {
   armPlacement,
   countsPhoneRouteRequest,
   createPlaceSearch,
+  snapLimitMessage,
   createRedrawScheduler,
   placeQueryKey,
   placeSearchOnce,
@@ -633,8 +635,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setPencil([]);
       return;
     }
-    const end = continuationEnd(strokesRef.current, planRef.current?.points ?? null, snappedCountRef.current);
-    const nextStrokes = commitDrawStroke(strokesRef.current, points, end);
+    const nextStrokes = commitDrawStroke(strokesRef.current, points);
     if (nextStrokes.length === strokesRef.current.length) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
@@ -657,30 +658,41 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     const generation = drawGen.current + 1;
     drawGen.current = generation;
     setFromDraw(true);
+    const anchor = startName === 'Where I am' ? start : null;
     const combined = combineDrawStrokes(nextStrokes);
-    const closed = closeSketchIfLoop(combined);
-    if (closed.length < 2) {
+    const drawnShape = sketchIsClosed(combined) ? 'loop' : 'a_to_b';
+    const preview = buildDrawSnapRequests(nextStrokes, anchor, drawnShape === 'loop');
+    if (preview.limit) {
+      const line = previous ? `${DRAW_SNAP_LIMIT} ${ROUTE_UNCHANGED}` : DRAW_SNAP_LIMIT;
+      setSnapMiss(line);
+      setDrawNote(DRAW_SNAP_FAILED);
+      setError(line);
+      return false;
+    }
+    if (preview.requests.length === 0) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
       setSnapMiss(null);
       return false;
     }
-    const origin = closed[0];
-    const finish = closed[closed.length - 1];
+    const origin = anchor ?? combined[0];
+    const finish = combined[combined.length - 1];
     if (!origin || !finish) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
       setSnapMiss(null);
       return false;
     }
-    const drawnShape = sketchIsClosed(closed) ? 'loop' : 'a_to_b';
     const drawMode = craving ? 'walk' : mode;
     routeFlight.current = true;
     setPending(true);
     setError(null);
+    const requestId = randomId();
     try {
-      const result = await matchDrawnSketch({
-        sketch: combined,
+      const result = await snapDrawnStrokes({
+        strokes: nextStrokes,
+        anchor,
+        closeLoop: drawnShape === 'loop',
         send: (waypoints) => repo.planOutdoorRoute({
           mode: drawMode,
           shape: craving ? 'loop' : drawnShape,
@@ -689,21 +701,29 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           distanceM: null,
           minutes: null,
           via: [],
-          sketch: closeSketchIfLoop(waypoints),
+          sketch: [...waypoints],
           preferPaths: preferRef.current,
+          requestId,
         }),
       });
       if (drawGen.current !== generation) return false;
-      if (!result.matched && !result.sawRoute) {
+      if (!result.ok) {
+        if (result.limit) {
+          const line = previous ? `${DRAW_SNAP_LIMIT} ${ROUTE_UNCHANGED}` : DRAW_SNAP_LIMIT;
+          setSnapMiss(line);
+          setDrawNote(DRAW_SNAP_FAILED);
+          setError(line);
+          return false;
+        }
         throw result.error instanceof Error ? result.error : new Error(DRAW_NO_PATH);
       }
-      const next = result.matched
+      const next = result.matched && result.plan
         ? result.plan
         : unmatchedDrawnPlan({
           mode: drawMode,
           shape: craving ? 'loop' : drawnShape,
           preferPaths: preferRef.current,
-          points: combined,
+          points: result.points,
         });
       if (next.points.length < 2) {
         setDrawNote(DRAW_NO_PATH);
@@ -743,8 +763,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     } catch (err) {
       if (drawGen.current !== generation) return false;
       const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
-      if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
-      const line = previous ? `${message} ${ROUTE_UNCHANGED}` : message;
+      const shown = snapLimitMessage(message) ?? message;
+      const line = previous ? `${shown} ${ROUTE_UNCHANGED}` : shown;
       setSnapMiss(line);
       setDrawNote(DRAW_SNAP_FAILED);
       setError(line);
@@ -829,7 +849,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   async function confirmDraw() {
     if (pencilRef.current.length > 0) holdStroke(pencilRef.current);
-    if (combineDrawStrokes(strokesRef.current).length < 2) {
+    if (!drawReadyToSnap(strokesRef.current, [])) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
       setSnapMiss(null);
@@ -841,8 +861,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const snappedLine = snappedDrawLine(plan?.points ?? null, strokes, snappedCount);
-  const rawLine = rawDrawLine(strokes, snappedCount, pencil);
-  const sketchLabel = sketchDistanceLabel(pathMetres(rawLine));
+  const strokeLines = rawStrokeLines(strokes, snappedCount, pencil);
+  const gaps = drawGapLines(strokes, plan?.points ?? null, snappedCount, pencil);
+  const drawnMetres = strokeLines.reduce((sum, line) => sum + pathMetres(line), 0);
+  const sketchLabel = sketchDistanceLabel(drawnMetres);
   function snapFigures() {
     if (snapMiss) {
       return (
@@ -1085,7 +1107,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         <FootpathMap
           routes={[]}
           sketch={snappedLine}
-          pencil={rawLine}
+          pencilLines={strokeLines}
+          gaps={gaps}
           pin={pin}
           here={you}
           startPoint={plan?.snappedStart ?? plan?.points[0] ?? start}
@@ -1098,12 +1121,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           draw={drawing ? {
             enabled: true,
             onChange: (points) => {
-              // The pencil is the finger path. Snapping waits for the green tick.
-              const joined = joinStroke(
-                continuationEnd(strokesRef.current, planRef.current?.points ?? null, snappedCountRef.current),
-                points,
-              );
-              setPencil(joined);
+              // The pencil is the finger path. The location dot is not copied on. Snapping waits for the green tick.
+              setPencil(points);
             },
             onEnd: (points) => { holdStroke(points); },
           } : null}
@@ -1244,7 +1263,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             <FootpathMap
               routes={[]}
               sketch={snappedLine}
-              pencil={rawLine}
+              pencilLines={strokeLines}
+              gaps={gaps}
               here={you}
               startPoint={plan.snappedStart ?? plan.points[0] ?? null}
               locationFocus={focus}

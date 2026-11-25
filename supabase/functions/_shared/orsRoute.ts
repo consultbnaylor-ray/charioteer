@@ -168,6 +168,20 @@ export const VIA_POINT_CAP = 5;
 export const ORS_WAYPOINT_LIMIT = 50;
 
 /**
+ * HeiGIT refuses a foot or cycle route whose straight-line length is over 100 km.
+ * One leg over that cannot be split into a shorter call.
+ */
+export const ORS_MAX_LEG_M = 100_000;
+
+/** A sketch body larger than this is refused before it is parsed into points. */
+export const ORS_MAX_SKETCH_BYTES = 64_000;
+
+/** A leg longer than this is a gap, not a corner. Forcing a straight exit refuses the turn. */
+export const STRAIGHT_CORNER_M = 400;
+
+export const ROUTE_LIMIT_MESSAGE = 'That snap is over the route limit. Draw a shorter section.';
+
+/**
  * How far a sketch corner may snap to the path network, in metres.
  * Wide enough for a finger that sits just off a path. Short of the next street.
  */
@@ -215,6 +229,37 @@ function coordinateOf(point: PlacePoint): [number, number] {
   return [round6(point.longitude), round6(point.latitude)];
 }
 
+function legsAreCorners(sketch: readonly PlacePoint[]): boolean {
+  for (let index = 1; index < sketch.length; index += 1) {
+    const previous = sketch[index - 1];
+    const point = sketch[index];
+    if (!previous || !point) continue;
+    if (haversineM(previous, point) > STRAIGHT_CORNER_M) return false;
+  }
+  return true;
+}
+
+/** A waypoint cap, a 100 km leg, or a huge body. Null when the sketch can be sent. */
+export function sketchLimitMessage(
+  points: readonly PlacePoint[] | null,
+  rawBytes = 0,
+): string | null {
+  if (rawBytes > ORS_MAX_SKETCH_BYTES) return ROUTE_LIMIT_MESSAGE;
+  if (!points) return null;
+  if (points.length > ORS_WAYPOINT_LIMIT) return ROUTE_LIMIT_MESSAGE;
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const point = points[index];
+    if (!previous || !point) continue;
+    const leg = haversineM(previous, point);
+    if (leg > ORS_MAX_LEG_M) return ROUTE_LIMIT_MESSAGE;
+    total += leg;
+    if (total > ORS_MAX_LEG_M) return ROUTE_LIMIT_MESSAGE;
+  }
+  return null;
+}
+
 /** Missing means no sketch. More than the waypoint limit, or a bad point, is refused. */
 export function readSketchPoints(value: unknown): PlacePoint[] | null {
   if (value == null) return [];
@@ -246,7 +291,7 @@ export function buildDirectionsBody(input: {
       // One radius per corner. continue_straight refuses a u-turn at a corner,
       // which is the out-and-back a point on the wrong side of a junction causes.
       radiuses: sketch.map(() => SKETCH_SNAP_RADIUS_M),
-      continue_straight: true,
+      continue_straight: legsAreCorners(sketch),
       elevation: true,
       instructions: false,
       ...routeOptions(null, preferPaths),
@@ -353,7 +398,7 @@ export const BAD_REQUEST_MESSAGE = 'That route request could not be used.';
 export const UNAVAILABLE_MESSAGE =
   'The route service is not available right now. Nothing was saved.';
 
-export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request';
+export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request' | 'limit';
 
 export type RouteFailure = {
   status: 422 | 503 | 429 | 400;
@@ -366,6 +411,9 @@ export function classifyOrsFailure(status: number, payload: unknown): RouteFailu
     return { status: 429, body: { ok: false, code: 'rate_limited', message: RATE_LIMITED_MESSAGE } };
   }
   if (status === 400) {
+    if (orsErrorCode(payload) === 2004) {
+      return { status: 400, body: { ok: false, code: 'limit', message: ROUTE_LIMIT_MESSAGE } };
+    }
     return { status: 400, body: { ok: false, code: 'bad_request', message: BAD_REQUEST_MESSAGE } };
   }
   const code = orsErrorCode(payload);

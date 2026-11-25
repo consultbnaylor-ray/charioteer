@@ -27,6 +27,9 @@ export const ROUTE_RATE_LIMITED =
 
 export const ROUTE_BAD_REQUEST = 'That route request could not be used.';
 
+/** A snap the route service will not take because of its own limits. */
+export const ROUTE_SNAP_LIMIT = 'That snap is over the route limit. Draw a shorter section.';
+
 export const ROUTE_SIGN_IN = 'Please sign in again.';
 
 export const ROUTE_OFFLINE = 'Check your connection and try again.';
@@ -840,6 +843,7 @@ export function messageForRouteBody(body: unknown, status: number | null): strin
   if (named === 'unauthorised' || named === 'unauthorized') return ROUTE_SIGN_IN;
   if (named === 'no_path' || status === 422) return calmOr(body, ROUTE_NO_PATH);
   if (named === 'rate_limited' || named === 'rate' || status === 429) return calmOr(body, ROUTE_RATE_LIMITED);
+  if (named === 'limit') return calmOr(body, ROUTE_SNAP_LIMIT);
   if (named === 'bad_request' || named === 'input' || status === 400) return calmOr(body, ROUTE_BAD_REQUEST);
   if (named === 'unavailable' || status === 503) return calmOr(body, ROUTE_UNAVAILABLE);
   return ROUTE_UNAVAILABLE;

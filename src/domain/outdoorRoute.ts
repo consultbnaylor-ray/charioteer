@@ -781,6 +781,22 @@ export function sketchLineCollection(points: readonly OutdoorPoint[]) {
   };
 }
 
+/** One line per stroke. A gap between strokes is not filled in. */
+export function sketchLinesCollection(lines: readonly (readonly OutdoorPoint[])[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: lineFeatures(lines.map((points, index) => ({ id: `line-${index}`, points }))),
+  };
+}
+
+/** Thin dashed hint between strokes. Lighter than the pencil on both map styles. */
+export function drawGapColour(scheme: MapScheme): string {
+  return scheme === 'dark' ? '#D6D3D1' : '#A8A29E';
+}
+
+export const DRAW_GAP_WIDTH = 2;
+export const DRAW_GAP_DASH: [number, number] = [1, 1.8];
+
 /** The line of an outing still on screen. Callers keep the points in memory and do not save them. */
 export function trackLineCollection(points: readonly OutdoorPoint[]) {
   return {

@@ -10,6 +10,9 @@ import {
   ROUTE_TEN_MINUTE_CAP,
   SEARCH_DAILY_CAP,
   SEARCH_TEN_MINUTE_CAP,
+  ORS_MAX_SKETCH_BYTES,
+  ORS_WAYPOINT_LIMIT,
+  ROUTE_LIMIT_MESSAGE,
   SNAP_RADIUS_M,
   UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
@@ -28,6 +31,7 @@ import {
   readShape,
   readSketchPoints,
   readViaPoints,
+  sketchLimitMessage,
   routeLengthM,
   routingMode,
   snapUrl,
@@ -174,8 +178,14 @@ Deno.serve(async (req) => {
     const vias = readViaPoints(body.via);
     if (!vias) return json({ ok: false, code: 'bad_request', message: 'Choose up to five points on the route.' }, 400);
     const preferPaths = body.preferPaths === true;
+    const sketchBytes = JSON.stringify(body.sketch ?? '').length;
+    if (sketchBytes > ORS_MAX_SKETCH_BYTES || (Array.isArray(body.sketch) && body.sketch.length > ORS_WAYPOINT_LIMIT)) {
+      return json({ ok: false, code: 'limit', message: ROUTE_LIMIT_MESSAGE }, 400);
+    }
     const sketch = readSketchPoints(body.sketch);
     if (!sketch) return json({ ok: false, code: 'bad_request', message: 'Choose fewer points on the sketch.' }, 400);
+    const limited = sketchLimitMessage(sketch);
+    if (limited) return json({ ok: false, code: 'limit', message: limited }, 400);
     const lengthM = routeLengthM({ mode, distanceM: body.distanceM, minutes: body.minutes });
     if (!lengthM && vias.length === 0 && sketch.length < 2) return json({ ok: false, code: 'bad_request', message: 'Choose a distance or a time.' }, 400);
     const routed = routingMode(mode, preferPaths);

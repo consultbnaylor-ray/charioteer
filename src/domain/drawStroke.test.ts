@@ -10,9 +10,11 @@ import {
   applyDrawPointers,
   clearDrawStrokes,
   combineDrawStrokes,
+  buildDrawSnapRequests,
   commitDrawStroke,
   continuationEnd,
   drawEnd,
+  drawGapLines,
   finishDrawSession,
   joinStroke,
   panViewport,
@@ -25,6 +27,11 @@ import {
   zoomFromSlider,
   drawReadyToSnap,
   rawDrawLine,
+  rawStrokeLines,
+  resampleDrawnPath,
+  SNAP_CHUNK_CAP,
+  SNAP_SPACING_M,
+  snapDrawnStrokes,
   snappedDrawLine,
   undoDrawStroke,
   visibleDrawLine,
@@ -38,19 +45,21 @@ const away: OutdoorPoint = { latitude: 51.453, longitude: -2.584 };
 const snappedEnd: OutdoorPoint = { latitude: 51.4524, longitude: -2.5876 };
 
 describe('draw strokes', () => {
-  it('joins a new stroke to the current end even when the finger starts away from it', () => {
+  it('keeps a new stroke at the finger and does not prepend the previous end', () => {
     expect(joinStroke(null, [a, b])).toEqual([a, b]);
     expect(joinStroke(b, [b, c])).toEqual([b, c]);
-    expect(joinStroke(b, [away, c])).toEqual([b, away, c]);
-    expect(joinStroke(b, [])).toEqual([b]);
+    expect(joinStroke(b, [away, c])).toEqual([away, c]);
+    expect(joinStroke(b, [])).toEqual([]);
 
     const first = commitDrawStroke([], [a, b]);
     expect(first).toEqual([[a, b]]);
     expect(drawEnd(first)).toEqual(b);
-    const second = commitDrawStroke(first, [away, c], b);
-    expect(second).toEqual([[a, b], [b, away, c]]);
+    const second = commitDrawStroke(first, [away, c]);
+    expect(second).toEqual([[a, b], [away, c]]);
+    expect(rawStrokeLines(second, 0)).toEqual([[a, b], [away, c]]);
+    expect(drawGapLines(second, null, 0)).toEqual([[b, away]]);
     expect(combineDrawStrokes(second)).toEqual([a, b, away, c]);
-    expect(commitDrawStroke(first, [b], b)).toEqual(first);
+    expect(commitDrawStroke(first, [b])).toEqual(first);
     expect(commitDrawStroke([], [a])).toEqual([]);
   });
 
@@ -62,7 +71,7 @@ describe('draw strokes', () => {
   });
 
   it('undo removes only the last stroke and clear removes every stroke', () => {
-    const strokes = commitDrawStroke(commitDrawStroke([], [a, b]), [away, c], b);
+    const strokes = commitDrawStroke(commitDrawStroke([], [a, b]), [away, c]);
     const undone = undoDrawStroke(strokes);
     expect(undone).toEqual([[a, b]]);
     expect(combineDrawStrokes(undone)).toEqual([a, b]);
@@ -173,8 +182,10 @@ describe('draw strokes', () => {
     const hold = maker.slice(maker.indexOf('function holdStroke'), maker.indexOf('async function snapDrawn'));
     expect(hold).not.toMatch(/planOutdoorRoute|matchDrawnSketch|sketchWaypoints|noteRouteRequest/);
     const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
-    expect(snap).toContain('matchDrawnSketch');
+    expect(snap).toContain('snapDrawnStrokes');
     expect(snap).toContain('planOutdoorRoute');
+    expect(snap).not.toContain('joinStroke');
+    expect(readFileSync('src/domain/drawStroke.ts', 'utf8')).toContain('matchDrawnSketch');
 
     const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
     const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
@@ -221,5 +232,90 @@ describe('draw strokes', () => {
     const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
     expect(native).toContain('drawing && expanded ? <DrawViewControls');
     expect(web).toContain('draw?.enabled && expanded ? <DrawViewControls');
+  });
+
+  it('starts a stroke at the finger and routes the gap instead of drawing it', async () => {
+    const here = { latitude: a.latitude + 0.002, longitude: a.longitude };
+    const strokes = commitDrawStroke(commitDrawStroke([], [a, b]), [away, c]);
+    expect(strokes).toEqual([[a, b], [away, c]]);
+    expect(strokes[0]?.[0]).toEqual(a);
+    expect(rawStrokeLines(strokes, 0)).toEqual([[a, b], [away, c]]);
+    expect(JSON.stringify(rawStrokeLines(strokes, 0))).not.toContain(String(here.latitude));
+    expect(drawGapLines(strokes, null, 0)).toEqual([[b, away]]);
+    expect(JSON.stringify(drawGapLines(strokes, null, 0))).not.toContain(String(here.latitude));
+
+    const plain = buildDrawSnapRequests(strokes, null);
+    expect(plain.limit).toBe(false);
+    expect(plain.requests[0]?.waypoints[0]).toEqual(a);
+    expect(plain.requests.some((request) => request.waypoints.some((point) => point.latitude === here.latitude))).toBe(false);
+    const gap = plain.requests.find((request) => request.routedGap);
+    expect(gap?.waypoints).toEqual([b, away]);
+    expect(gap?.waypoints).toHaveLength(2);
+
+    const anchored = buildDrawSnapRequests(strokes, here);
+    const lead = anchored.requests.find((request) => request.routedGap && request.waypoints[0]?.latitude === here.latitude);
+    expect(lead?.waypoints).toEqual([here, a]);
+    expect(rawStrokeLines(strokes, 0).flat()).not.toContainEqual(here);
+
+    const far = { latitude: a.latitude + 2, longitude: a.longitude };
+    const tooLong = buildDrawSnapRequests([[a, b], [far, { latitude: far.latitude + 0.01, longitude: far.longitude }]], null);
+    expect(tooLong.limit).toBe(true);
+    expect(tooLong.requests).toEqual([]);
+
+    const dense = Array.from({ length: 4001 }, (_, index) => ({
+      latitude: a.latitude + index * (2 / 111_320),
+      longitude: a.longitude,
+    }));
+    const resampled = resampleDrawnPath(dense);
+    expect(resampled.length).toBeGreaterThan(2);
+    expect(resampled.length).toBeLessThan(dense.length / 10);
+    expect(resampled[0]).toEqual(dense[0]);
+    expect(resampled[resampled.length - 1]).toEqual(dense[dense.length - 1]);
+    for (let index = 1; index < resampled.length; index += 1) {
+      const step = Math.abs(resampled[index]!.latitude - resampled[index - 1]!.latitude) * 111_320;
+      expect(step).toBeLessThanOrEqual(SNAP_SPACING_M * 1.5);
+    }
+    const capped = buildDrawSnapRequests([dense], null);
+    expect(capped.limit).toBe(false);
+    expect(capped.requests.length).toBeGreaterThan(1);
+    expect(capped.requests.every((request) => request.waypoints.length <= SNAP_CHUNK_CAP && request.waypoints.length > 1)).toBe(true);
+
+    const sent: { latitude: number; longitude: number }[][] = [];
+    let calls = 0;
+    const result = await snapDrawnStrokes({
+      strokes,
+      anchor: null,
+      send: async (waypoints) => {
+        calls += 1;
+        sent.push(waypoints.map((point) => ({ ...point })));
+        return {
+          mocked: false,
+          mode: 'walk',
+          shape: 'a_to_b',
+          profile: 'foot-walking',
+          distanceM: 100,
+          durationMinutes: 2,
+          ascentM: null,
+          points: waypoints.map((point) => ({ ...point })),
+          snappedStart: null,
+          snapDistanceM: null,
+        };
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(sent).toContainEqual([b, away]);
+    expect(calls).toBe(plain.requests.length);
+
+    let limitedCalls = 0;
+    const refused = await snapDrawnStrokes({
+      strokes: [[a, b], [far, { latitude: far.latitude + 0.01, longitude: far.longitude }]],
+      anchor: null,
+      send: async () => {
+        limitedCalls += 1;
+        throw new Error('should not send');
+      },
+    });
+    expect(refused).toEqual({ ok: false, limit: true });
+    expect(limitedCalls).toBe(0);
   });
 });

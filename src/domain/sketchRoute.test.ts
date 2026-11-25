@@ -26,11 +26,13 @@ import {
 import {
   ORS_WAYPOINT_LIMIT as SERVER_WAYPOINT_LIMIT,
   PREFER_PATH_WEIGHTINGS,
+  ROUTE_LIMIT_MESSAGE,
   SKETCH_SNAP_RADIUS_M,
   buildDirectionsBody,
   directionsUrl,
   readSketchPoints,
   routingMode,
+  sketchLimitMessage,
 } from '../../supabase/functions/_shared/orsRoute';
 
 const start: OutdoorPoint = { latitude: 51.45, longitude: -2.59 };
@@ -140,6 +142,14 @@ describe('sketch routes', () => {
     expect(sketched?.coordinates).toEqual([[-2.59, 51.45], [-2.588, 51.452], [-2.59, 51.45]]);
     expect(sketched?.options).toEqual({ profile_params: { weightings: { green: 1, quiet: 1 } } });
     expect(sketched?.continue_straight).toBe(true);
+    const longLeg = buildDirectionsBody({
+      mode: 'walk',
+      shape: 'a_to_b',
+      start,
+      lengthM: 5000,
+      sketch: [start, { latitude: start.latitude + 0.01, longitude: start.longitude }],
+    });
+    expect(longLeg?.continue_straight).toBe(false);
     expect(sketched?.radiuses).toEqual([
       SKETCH_SNAP_RADIUS_M,
       SKETCH_SNAP_RADIUS_M,
@@ -156,6 +166,10 @@ describe('sketch routes', () => {
     expect(directionsUrl(routingMode('walk', true))).toContain('/foot-hiking/');
     expect(directionsUrl(routingMode('walk', false))).toContain('/foot-walking/');
     expect(directionsUrl(routingMode('cycle', true))).toContain('/cycling-regular/');
+    expect(sketchLimitMessage(line(2, 0.001))).toBeNull();
+    expect(sketchLimitMessage(line(2, 2))).toBe(ROUTE_LIMIT_MESSAGE);
+    expect(sketchLimitMessage(line(51))).toBe(ROUTE_LIMIT_MESSAGE);
+    expect(readSketchPoints(line(51))).toBeNull();
   });
 
   it('reads a short geocode list and ignores a bad hit', () => {

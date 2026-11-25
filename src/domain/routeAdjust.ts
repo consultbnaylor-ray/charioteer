@@ -1,6 +1,6 @@
 import { isoDay } from '@/domain/dates';
 import type { RoutePlace } from '@/domain/findRoute';
-import { ROUTE_OFFLINE, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { ROUTE_OFFLINE, ROUTE_SNAP_LIMIT, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import { simplifyLine, sketchWaypoints, type OutdoorPoint } from '@/domain/outdoorRoute';
 
 export const VIA_POINT_CAP = 5;
@@ -66,6 +66,17 @@ export const DRAW_SNAP_PARTIAL = 'Couldn\'t match all of that to paths — showi
 
 /** The snap was refused. The pencil line stays a sketch. */
 export const DRAW_SNAP_FAILED = 'Couldn\'t snap to paths';
+
+/** The route service's own cap: too many points, too long a leg, or too big a request. */
+export const DRAW_SNAP_LIMIT = ROUTE_SNAP_LIMIT;
+
+/** A server limit, including the message the deployed function still uses for too many points. */
+export function snapLimitMessage(message: string | null): string | null {
+  if (!message) return null;
+  if (message === DRAW_SNAP_LIMIT || /fewer points on the sketch/i.test(message)) return DRAW_SNAP_LIMIT;
+  if (/over the route limit/i.test(message)) return DRAW_SNAP_LIMIT;
+  return null;
+}
 
 export const DRAW_SNAP_TRY_AGAIN = 'Try again';
 

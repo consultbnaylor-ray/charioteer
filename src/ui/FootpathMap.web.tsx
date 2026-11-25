@@ -5,14 +5,18 @@ import { viaPointCollection } from '@/domain/routeAdjust';
 import { clampDrawZoom, panViewport, type PanDirection } from '@/domain/drawStroke';
 import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
+  DRAW_GAP_DASH,
+  DRAW_GAP_WIDTH,
   YOU_HERE_FILL,
   YOU_HERE_RING,
+  drawGapColour,
   mapLineColour,
   openFreeMapStyle,
   pencilColour,
   pinCollection,
   savedLineCollection,
   sketchLineCollection,
+  sketchLinesCollection,
   startCollection,
   trackLineCollection,
   trackLineColour,
@@ -34,6 +38,7 @@ type PaintInput = {
   startJson: string;
   youJson: string;
   guideJson: string;
+  gapJson: string;
   pinJson: string;
   viaJson: string;
   selectedJson: string;
@@ -78,6 +83,8 @@ export function FootpathMap({
   bar = null,
   mapLabel,
   pencil = [],
+  pencilLines = null,
+  gaps = [],
   lookAt = null,
   lookFocus = 0,
   draw = null,
@@ -120,7 +127,12 @@ export function FootpathMap({
   bar?: ReactNode;
   /** Accessible name. Omitted maps keep "Map with footpaths". */
   mapLabel?: string;
+  /** The finger sketch, one line. `pencilLines` draws each stroke on its own. */
   pencil?: readonly OutdoorPoint[];
+  /** Each stroke on its own. A gap between strokes is not part of these lines. */
+  pencilLines?: readonly (readonly OutdoorPoint[])[] | null;
+  /** Thin dashed hints between strokes. Not a finger stroke. */
+  gaps?: readonly (readonly OutdoorPoint[])[];
   lookAt?: OutdoorPoint | null;
   lookFocus?: number;
   draw?: {
@@ -196,7 +208,8 @@ export function FootpathMap({
   const frame = useRef({ width: 0, height: 0 });
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
-  const guideJson = JSON.stringify(sketchLineCollection(pencil));
+  const guideJson = JSON.stringify(pencilLines ? sketchLinesCollection(pencilLines) : sketchLineCollection(pencil));
+  const gapJson = JSON.stringify(sketchLinesCollection(gaps));
   const pinJson = JSON.stringify(pinCollection(pin));
   const viaJson = JSON.stringify(viaPointCollection(adjust?.vias ?? []));
   const selectedVia = adjust?.selectedIndex != null ? adjust.vias[adjust.selectedIndex] ?? null : null;
@@ -245,6 +258,7 @@ export function FootpathMap({
             savedJson={savedJson}
             sketchJson={sketchJson}
             guideJson={guideJson}
+            gapJson={gapJson}
             pinJson={pinJson}
             viaJson={viaJson}
             selectedJson={selectedJson}
@@ -318,6 +332,20 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
       },
     },
     {
+      id: 'gap',
+      data: input.gapJson,
+      layer: {
+        id: 'gap-line',
+        type: 'line',
+        source: 'gap',
+        paint: {
+          'line-color': drawGapColour(input.scheme),
+          'line-width': DRAW_GAP_WIDTH,
+          'line-dasharray': DRAW_GAP_DASH,
+        },
+      },
+    },
+    {
       id: 'vias',
       data: input.viaJson,
       layer: {
@@ -379,7 +407,7 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
     if (source) source.setData(data);
     else {
       // Default tolerance runs Douglas-Peucker and turns a finger curve into long chords.
-      map.addSource(row.id, row.id === 'guide' ? { type: 'geojson', data, tolerance: 0 } : { type: 'geojson', data });
+      map.addSource(row.id, row.id === 'guide' || row.id === 'gap' ? { type: 'geojson', data, tolerance: 0 } : { type: 'geojson', data });
     }
     if (map.getLayer(String(row.layer.id))) {
       const paint = row.layer.paint as Record<string, unknown>;
@@ -400,6 +428,7 @@ function WebCanvas({
   savedJson,
   sketchJson,
   guideJson,
+  gapJson,
   pinJson,
   viaJson,
   selectedJson,
@@ -422,6 +451,7 @@ function WebCanvas({
   savedJson: string;
   sketchJson: string;
   guideJson: string;
+  gapJson: string;
   pinJson: string;
   viaJson: string;
   selectedJson: string;
@@ -445,8 +475,8 @@ function WebCanvas({
   const [ready, setReady] = useState(0);
   const applied = useRef<string | null>(null);
   const styleListener = useRef<(() => void) | null>(null);
-  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, pinJson, viaJson, selectedJson });
-  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, pinJson, viaJson, selectedJson };
+  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, gapJson, pinJson, viaJson, selectedJson });
+  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, gapJson, pinJson, viaJson, selectedJson };
   const adjustRef = useRef(adjust);
   adjustRef.current = adjust;
   const drawingRef = useRef(drawing);
@@ -557,7 +587,7 @@ function WebCanvas({
       return;
     }
     paintMap(map, paint.current);
-  }, [scheme, basemap, basemapKey, savedJson, sketchJson, guideJson, pinJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
+  }, [scheme, basemap, basemapKey, savedJson, sketchJson, guideJson, gapJson, pinJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
 
   useEffect(() => {
     holdMapGestures(mapRef.current, drawing);
