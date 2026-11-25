@@ -26,9 +26,13 @@ import {
   twoFingerView,
   zoomFromSlider,
   drawReadyToSnap,
+  fingerInOverlay,
+  freshOverlayMeasure,
+  nextOverlayMeasure,
   rawDrawLine,
   rawStrokeLines,
   resampleDrawnPath,
+  strokePointFromTouch,
   SNAP_CHUNK_CAP,
   SNAP_SPACING_M,
   snapDrawnStrokes,
@@ -37,6 +41,7 @@ import {
   visibleDrawLine,
 } from '@/domain/drawStroke';
 import { metresBetween, viewToPoint, type OutdoorPoint } from '@/domain/outdoorRoute';
+import { routePlanBody } from '@/domain/routeAdjust';
 
 const a: OutdoorPoint = { latitude: 51.45, longitude: -2.59 };
 const b: OutdoorPoint = { latitude: 51.452, longitude: -2.588 };
@@ -317,5 +322,179 @@ describe('draw strokes', () => {
     });
     expect(refused).toEqual({ ok: false, limit: true });
     expect(limitedCalls).toBe(0);
+  });
+
+  it('drops a sample until two window measurements agree, including a first origin of zero', () => {
+    const layout = { width: 402, height: 780 };
+    const premature = { x: 0, y: 0, width: 402, height: 780 };
+    const placed = { x: 12, y: 62, width: 402, height: 780 };
+    const first = nextOverlayMeasure(freshOverlayMeasure(), premature, layout);
+    expect(first.state.ready).toBeNull();
+    expect(first.again).toBe(true);
+    const moved = nextOverlayMeasure(first.state, placed, layout);
+    expect(moved.state.ready).toBeNull();
+    expect(moved.again).toBe(true);
+    const confirmed = nextOverlayMeasure(moved.state, placed, layout);
+    expect(confirmed.again).toBe(false);
+    expect(confirmed.state.ready).toEqual(placed);
+    const frame = {
+      ready: false,
+      originX: 0,
+      originY: 0,
+      width: 0,
+      height: 0,
+      centre: a,
+      zoom: 16,
+    };
+    const touch = { pageX: 210, pageY: 430, locationX: 210, locationY: 430 };
+    expect(strokePointFromTouch(touch, frame)).toBeNull();
+    expect(strokePointFromTouch(touch, {
+      ...frame,
+      ready: true,
+      originX: placed.x,
+      originY: placed.y,
+      width: placed.width,
+      height: placed.height,
+    })).toEqual(viewToPoint({
+      centre: a,
+      zoom: 16,
+      width: placed.width,
+      height: placed.height,
+      x: touch.pageX - placed.x,
+      y: touch.pageY - placed.y,
+    }));
+  });
+
+  it('puts the first point on the touch, with no vertical offset and no centre point', () => {
+    const centre = a;
+    const frame = {
+      ready: true,
+      originX: 12,
+      originY: 62,
+      width: 402,
+      height: 780,
+      centre,
+      zoom: 16,
+    };
+    // The first responder event reports locationY in page space, originY too far down.
+    const first = { pageX: 210, pageY: 430, locationX: 210, locationY: 430 };
+    expect(fingerInOverlay(first, frame)).toEqual({ x: 198, y: 368 });
+    const point = strokePointFromTouch(first, frame);
+    const expected = viewToPoint({ centre, zoom: 16, width: 402, height: 780, x: 198, y: 368 });
+    expect(point).toEqual(expected);
+    const shiftedSouth = viewToPoint({ centre, zoom: 16, width: 402, height: 780, x: 210, y: 430 });
+    expect(point?.latitude).toBeGreaterThan(shiftedSouth?.latitude ?? 90);
+    expect(point).not.toEqual(centre);
+
+    const later = { pageX: 210, pageY: 430, locationX: 198, locationY: 368 };
+    expect(fingerInOverlay(later, frame)).toEqual({ x: 198, y: 368 });
+    expect(strokePointFromTouch(later, frame)).toEqual(point);
+
+    expect(strokePointFromTouch(first, { ...frame, ready: false })).toBeNull();
+    expect(strokePointFromTouch(first, { ...frame, width: 0 })).toBeNull();
+    expect(strokePointFromTouch(first, { ...frame, height: 0 })).toBeNull();
+    expect(applyDrawPointers(startDrawSession(), 1, null).points).toEqual([]);
+
+    const samples = [0, 40, 80].map((east) => ({
+      pageX: 120 + east + frame.originX,
+      pageY: 300 + frame.originY,
+      locationX: 120 + east + frame.originX,
+      locationY: 300 + frame.originY,
+    }));
+    let session = startDrawSession();
+    const drawn = samples.map((sample) => strokePointFromTouch(sample, frame));
+    for (const next of drawn) session = applyDrawPointers(session, 1, next);
+    expect(drawn.every((item) => item != null)).toBe(true);
+    expect(session.points[0]).toEqual(drawn[0]);
+    expect(session.points.map((item) => item.longitude)).toEqual(
+      [...session.points].map((item) => item.longitude).sort((left, right) => left - right),
+    );
+    expect(session.points.some((item) => item.latitude === centre.latitude && item.longitude === centre.longitude)).toBe(false);
+
+    const second = [
+      { latitude: centre.latitude + 0.01, longitude: centre.longitude + 0.01 },
+      { latitude: centre.latitude + 0.012, longitude: centre.longitude + 0.012 },
+    ];
+    const strokes = commitDrawStroke(commitDrawStroke([], session.points), second);
+    expect(strokes).toHaveLength(2);
+    expect(strokes[0]?.[0]).toEqual(session.points[0]);
+    expect(rawStrokeLines(strokes, 0)).toHaveLength(2);
+    expect(rawStrokeLines(strokes, 0)[1]).toEqual(second);
+
+    const capture = readFileSync('src/ui/DrawCapture.tsx', 'utf8');
+    expect(capture).toContain('strokePointFromTouch');
+    expect(capture).not.toContain('locationY : touch.pageY');
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    expect(native).toContain('measureInWindow');
+    expect(native).toContain('nextOverlayMeasure');
+    expect(native).toContain("pointerEvents={drawing ? 'none' : 'auto'}");
+    expect(native).toContain('if (drawRef.current?.enabled) return;');
+    expect(readFileSync('src/ui/FootpathMap.web.tsx', 'utf8')).toContain('nextOverlayMeasure');
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    expect(maker).toContain('follow={drawing ? false : undefined}');
+    expect(maker).toContain('logDrawSnapFailure(err)');
+  });
+
+  it('builds and sends a snap request for a jog-length stroke', async () => {
+    const start = a;
+    const north = (metres: number): OutdoorPoint => ({
+      latitude: start.latitude + metres / 111_320,
+      longitude: start.longitude,
+    });
+    const jog = Array.from({ length: 1501 }, (_, index) => north(index * 2));
+    const here = north(-80);
+    const strokes = commitDrawStroke([], jog);
+    expect(strokes).toHaveLength(1);
+    expect(strokes[0]?.[0]).toEqual(start);
+    expect(rawStrokeLines(strokes, 0)[0]?.[0]).toEqual(start);
+    expect(JSON.stringify(rawStrokeLines(strokes, 0))).not.toContain(String(here.latitude));
+
+    const built = buildDrawSnapRequests(strokes, null);
+    expect(built.limit).toBe(false);
+    expect(built.requests.length).toBeGreaterThan(0);
+    expect(built.requests[0]?.waypoints[0]).toEqual(start);
+    expect(built.requests.every((request) => request.waypoints.length >= 2)).toBe(true);
+    expect(built.requests.some((request) => request.waypoints.some((point) => point.latitude === here.latitude))).toBe(false);
+
+    const body = routePlanBody({
+      mode: 'walk',
+      shape: 'a_to_b',
+      start: built.requests[0]?.waypoints[0] ?? start,
+      end: built.requests[0]?.waypoints[built.requests[0].waypoints.length - 1] ?? north(3000),
+      distanceM: null,
+      minutes: null,
+      via: [],
+      sketch: built.requests[0]?.waypoints ?? [],
+      preferPaths: true,
+    });
+    expect(body.action).toBe('route');
+    expect(body.sketch.length).toBeGreaterThanOrEqual(2);
+    expect(body.sketch[0]).toEqual(start);
+    expect(body.distanceM).toBeNull();
+
+    const sent: OutdoorPoint[][] = [];
+    const result = await snapDrawnStrokes({
+      strokes,
+      anchor: null,
+      send: async (waypoints) => {
+        sent.push(waypoints.map((point) => ({ ...point })));
+        return {
+          mocked: false,
+          mode: 'walk',
+          shape: 'a_to_b',
+          profile: 'foot-walking',
+          distanceM: 3000,
+          durationMinutes: 30,
+          ascentM: null,
+          points: waypoints.map((point) => ({ ...point })),
+          snappedStart: null,
+          snapDistanceM: null,
+        };
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(sent.length).toBe(built.requests.length);
+    expect(sent[0]?.[0]).toEqual(start);
+    expect(sent.some((waypoints) => waypoints.some((point) => point.latitude === here.latitude))).toBe(false);
   });
 });

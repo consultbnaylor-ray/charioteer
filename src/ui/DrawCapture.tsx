@@ -8,22 +8,19 @@ import {
   PAN_HOLD_REPEAT_MS,
   applyDrawPointers,
   clampDrawZoom,
+  fingerInOverlay,
   finishDrawSession,
   sliderFraction,
   startDrawSession,
+  strokePointFromTouch,
   twoFingerView,
   zoomFromSlider,
+  type DrawOverlay,
   type DrawSession,
+  type DrawTouch,
   type PanDirection,
 } from '@/domain/drawStroke';
-import { viewToPoint, type OutdoorPoint } from '@/domain/outdoorRoute';
-
-type ViewFrame = {
-  centre: OutdoorPoint;
-  zoom: number;
-  width: number;
-  height: number;
-};
+import { type OutdoorPoint } from '@/domain/outdoorRoute';
 
 type Finger = { x: number; y: number };
 
@@ -36,11 +33,7 @@ type PinchStart = {
 };
 
 type TouchEvent = {
-  nativeEvent: {
-    locationX: number;
-    locationY: number;
-    touches?: { locationX?: number; locationY?: number; pageX?: number; pageY?: number }[];
-  };
+  nativeEvent: DrawTouch & { touches?: DrawTouch[] };
 };
 
 /**
@@ -54,32 +47,31 @@ export function DrawCapture({
   onEnd,
   onView,
   onFinger,
+  prepare,
 }: {
-  readView: () => ViewFrame;
+  readView: () => DrawOverlay;
   onChange: (points: OutdoorPoint[]) => void;
   onEnd: (points: OutdoorPoint[]) => void;
   onView?: (next: { centre: OutdoorPoint; zoom: number }) => void;
   onFinger?: (down: boolean) => void;
+  /** Measures the overlay again. The result arrives after this call returns. */
+  prepare?: () => void;
 }) {
   const session = useRef<DrawSession>(startDrawSession());
   const pinch = useRef<PinchStart | null>(null);
 
-  function fingersOf(event: TouchEvent): Finger[] {
+  function touchList(event: TouchEvent): DrawTouch[] {
     const native = event.nativeEvent;
     const touches = native.touches ?? [];
-    const fingers = touches.flatMap((touch) => {
-      const x = typeof touch.locationX === 'number' ? touch.locationX : touch.pageX;
-      const y = typeof touch.locationY === 'number' ? touch.locationY : touch.pageY;
-      if (typeof x !== 'number' || typeof y !== 'number') return [];
-      return [{ x, y }];
-    });
-    if (fingers.length > 0) return fingers;
-    return [{ x: native.locationX, y: native.locationY }];
+    if (touches.length >= 2) return touches;
+    return [native];
   }
 
-  function pointAt(finger: Finger): OutdoorPoint | null {
-    const frame = readView();
-    return viewToPoint({ ...frame, x: finger.x, y: finger.y });
+  function fingersOf(event: TouchEvent, frame: DrawOverlay): Finger[] {
+    return touchList(event).flatMap((touch) => {
+      const finger = fingerInOverlay(touch, frame);
+      return finger ? [finger] : [];
+    });
   }
 
   function beginPinch(fingers: Finger[]) {
@@ -124,11 +116,15 @@ export function DrawCapture({
   }
 
   function follow(event: TouchEvent) {
-    const fingers = fingersOf(event);
-    if (fingers.length >= 2) {
+    const frame = readView();
+    const rawCount = event.nativeEvent.touches?.length ?? 0;
+    const fingers = fingersOf(event, frame);
+    if (rawCount >= 2 || fingers.length >= 2) {
       cancelStroke();
-      if (!pinch.current) beginPinch(fingers);
-      else movePinch(fingers);
+      if (fingers.length >= 2) {
+        if (!pinch.current) beginPinch(fingers);
+        else movePinch(fingers);
+      }
       return;
     }
     if (session.current.cancelled || pinch.current) {
@@ -136,8 +132,9 @@ export function DrawCapture({
       session.current = applyDrawPointers(session.current, 2, null);
       return;
     }
-    const finger = fingers[0];
-    const point = finger ? pointAt(finger) : null;
+    const touch = touchList(event)[0];
+    const point = touch ? strokePointFromTouch(touch, frame) : null;
+    if (!point) return;
     const next = applyDrawPointers(session.current, 1, point);
     if (next.points.length === session.current.points.length) return;
     session.current = next;
@@ -162,6 +159,7 @@ export function DrawCapture({
       onMoveShouldSetResponderCapture={() => true}
       onResponderTerminationRequest={() => false}
       onResponderGrant={(event) => {
+        prepare?.();
         session.current = startDrawSession();
         pinch.current = null;
         onFinger?.(true);

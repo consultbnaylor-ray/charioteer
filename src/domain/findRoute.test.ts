@@ -23,6 +23,7 @@ import {
   ROUTE_OFFLINE,
   ROUTE_RATE_LIMITED,
   ROUTE_SIGN_IN,
+  ROUTE_SLOW,
   ROUTE_UNAVAILABLE,
   appleMapsUrl,
   elevationProfileSamples,
@@ -521,6 +522,18 @@ describe('route finding', () => {
       message: 'Failed to send a request to the Edge Function',
       context: new TypeError('Failed to fetch'),
     })).toBe(ROUTE_OFFLINE);
+    expect(await explainRouteFailure({
+      name: 'FunctionsFetchError',
+      message: 'Failed to send a request to the Edge Function',
+      context: new UserFacingError(ROUTE_FINDING_OFF, 'generic'),
+    })).toBe(ROUTE_FINDING_OFF);
+    const timedOut = new Error('The request timed out.');
+    timedOut.name = 'TimeoutError';
+    expect(await explainRouteFailure({
+      name: 'FunctionsFetchError',
+      message: 'Failed to send a request to the Edge Function',
+      context: timedOut,
+    })).toBe(ROUTE_SLOW);
     expect(await explainRouteFailure(new TypeError('Failed to fetch'))).toBe(ROUTE_OFFLINE);
     expect(await explainRouteFailure({ name: 'FunctionsRelayError', message: 'Relay Error invoking the Edge Function' })).toBe(ROUTE_UNAVAILABLE);
     expect(shownError(new UserFacingError(ROUTE_SIGN_IN, 'generic'), ROUTE_UNAVAILABLE)).toBe(ROUTE_SIGN_IN);
@@ -533,6 +546,9 @@ describe('route finding', () => {
     const plan = repo.slice(repo.indexOf('async planOutdoorRoute'), repo.indexOf('async searchRoutePlaces'));
     expect(plan.indexOf('assertRouteFindingAllowed')).toBeLessThan(plan.indexOf('routeCoordinate'));
     expect(plan.indexOf('routeCoordinate')).toBeLessThan(plan.indexOf("functions.invoke('outdoor-route'"));
+    expect(plan.indexOf('accessToken()')).toBeGreaterThan(plan.indexOf('routeCoordinate'));
+    expect(plan.indexOf('accessToken()')).toBeLessThan(plan.indexOf("functions.invoke('outdoor-route'"));
+    expect(plan).toContain('Authorization: `Bearer ${token}`');
     expect(plan).toContain('explainRouteFailure(invoked.error)');
     expect(plan).not.toContain('calmRouteMessage');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');

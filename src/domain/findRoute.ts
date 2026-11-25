@@ -668,15 +668,54 @@ function calmOr(value: unknown, fallback: string): string {
   return text;
 }
 
+function isFunctionsFetchError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { name?: unknown }).name === 'FunctionsFetchError');
+}
+
+/** The error `functions.invoke` wrapped. A local rejection sits on `context` and never left the phone. */
+function routeErrorCause(error: unknown): unknown {
+  if (!isFunctionsFetchError(error)) return error;
+  const context = (error as { context?: unknown }).context;
+  return context ?? error;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const name = (error as { name?: unknown }).name;
+  if (name === 'TimeoutError') return true;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === 'string' && /timed out|\btimeout\b/i.test(message);
+}
+
+/** Dev log. A token, a key, or a coordinate is not written. */
+function logRouteRequestFailure(cause: unknown): void {
+  const record = cause && typeof cause === 'object' ? cause as { name?: unknown; message?: unknown } : null;
+  const name = typeof record?.name === 'string' && record.name ? record.name : 'Error';
+  const message = typeof record?.message === 'string' ? record.message : '';
+  const safe = `${name}: ${message}`.replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!safe || /eyJ|bearer|sb_publishable|sb_secret|latitude|longitude|\d+\.\d{4,}/i.test(safe)) {
+    console.error('route request failed');
+    return;
+  }
+  console.error('route request failed', safe);
+}
+
 /**
  * Why a route call did not return a line.
  * `functions.invoke` leaves a non-2xx body on `error.context`, with `data` null.
  * A 401 or a dropped connection never reaches the function, so those are not "the route service".
+ * A failure thrown before `fetch` is wrapped the same way. Its own message is the one shown.
  */
 export async function explainRouteFailure(error: unknown, now = Date.now()): Promise<string> {
-  const status = statusOf(error);
+  const cause = routeErrorCause(error);
+  logRouteRequestFailure(cause);
+  if (cause instanceof UserFacingError) return cause.message;
+  if (isTimeoutError(cause)) return ROUTE_SLOW;
+  const status = statusOf(error) ?? statusOf(cause);
   if (status === 401) return ROUTE_SIGN_IN;
-  if (isRouteNetworkError(error)) return ROUTE_OFFLINE;
+  if (isRouteNetworkError(cause) || (isFunctionsFetchError(error) && (cause === error || isRouteNetworkError(cause)))) {
+    return ROUTE_OFFLINE;
+  }
   const body = await readInvokeBody(error);
   const message = messageForRouteBody(body, status);
   if (status === 429 || isRateLimitedBody(body)) {
