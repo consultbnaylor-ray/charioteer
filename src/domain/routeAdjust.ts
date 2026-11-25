@@ -56,7 +56,7 @@ export const DRAW_TICK_GREEN = '#047857';
 export const DRAW_SNAPPED = 'Snapped to the nearest paths.';
 
 export const DRAW_PEN_HINT =
-  'Use the pen symbol to draw where you want to go and the line will snap to the nearest paths';
+  'Use the optional settings above to create a route, or use the pen symbol on the map and the line will snap to the nearest paths';
 
 /** Shown when a lift does not come back as a path. The pencil line stays. */
 export const DRAW_NO_PATH = 'No path matched that line.';

@@ -10,6 +10,14 @@ export type UserFacingCode =
 
 export const OFFLINE_MESSAGE = "Couldn't reach Charioteer, check your connection and try again.";
 
+/** Shown under the lost-connection line on sign-in and sign-up. A wrong password does not get this. */
+export const VPN_SIGN_IN_TIP = 'Using a VPN? Try turning it off or switching to a UK server, then try again.';
+
+/** The helper under the network error. Any other message, including a wrong password, stays alone. */
+export function signInNetworkHint(message: string | null): string | null {
+  return message === OFFLINE_MESSAGE ? VPN_SIGN_IN_TIP : null;
+}
+
 /** A successful load this recently means one blip is not a sustained outage. */
 export const OFFLINE_QUIET_MS = 15 * 60 * 1000;
 
@@ -69,6 +77,23 @@ function httpStatus(error: unknown): number | null {
 function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   return (error as { name?: unknown }).name === 'AbortError';
+}
+
+/**
+ * One more password grant when the first reply never arrived.
+ * The server can return 200 while the phone drops that body. A second grant
+ * reads the session. A wrong password, and any other answered error, is not sent again.
+ */
+export async function signInWithPasswordOnce<T extends { error: unknown }>(
+  attempt: () => Promise<T>,
+): Promise<T> {
+  try {
+    const first = await attempt();
+    if (!first.error || !isTransientNetworkError(first.error)) return first;
+  } catch (error) {
+    if (!isTransientNetworkError(error)) throw error;
+  }
+  return attempt();
 }
 
 /**
