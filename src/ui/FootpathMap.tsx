@@ -3,7 +3,8 @@ import { View } from 'react-native';
 
 import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
 import { clampDrawZoom } from '@/domain/drawStroke';
-import { DrawCapture, DrawZoomButtons } from '@/ui/DrawCapture';
+import { panViewport, type PanDirection } from '@/domain/drawStroke';
+import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -92,6 +93,7 @@ export function FootpathMap({
   canConfirmDraw = false,
   confirmPending = false,
   statusNote = null,
+  homeTick = 0,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -137,6 +139,8 @@ export function FootpathMap({
   confirmPending?: boolean;
   /** Shown on the map after drawing finishes. A snap uses the green chip. */
   statusNote?: string | null;
+  /** Increments to frame the map on the current location, or the default view. */
+  homeTick?: number;
 }) {
   const [scheme, choose] = useMapScheme();
   const styleUrl = openFreeMapStyle(scheme);
@@ -150,7 +154,7 @@ export function FootpathMap({
       scroller?.current?.setScrollEnabled?.(true);
     };
   }, [drawingOn, scroller]);
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus, homeTick);
   const [maps, setMaps] = useState<Maps | null>(null);
   useEffect(() => {
     setMaps(loadMaps());
@@ -260,6 +264,10 @@ function NativeCanvas({
   const green = mapLineColour(scheme);
   const walked = trackLineColour(scheme);
   const place = held.current;
+  const [zoom, setZoom] = useState(held.current.zoom);
+  useEffect(() => {
+    setZoom(held.current.zoom);
+  }, [held, frameTick, restoreTick]);
 
   const holdPage = (fingerDown: boolean) => {
     if (drawRef.current?.enabled) {
@@ -308,6 +316,28 @@ function NativeCanvas({
     };
     remember(place);
     jumpWhenReady(camera.current, place);
+    setZoom(place.zoom);
+  }
+
+  function zoomTo(nextZoom: number) {
+    const current = held.current;
+    showDrawnView({
+      centre: { latitude: current.latitude, longitude: current.longitude },
+      zoom: nextZoom,
+    });
+  }
+
+  function pan(direction: PanDirection) {
+    const current = held.current;
+    const centre = panViewport({
+      centre: { latitude: current.latitude, longitude: current.longitude },
+      zoom: current.zoom,
+      width: size.current.width,
+      height: size.current.height || height,
+      direction,
+    });
+    if (!centre) return;
+    showDrawnView({ centre, zoom: current.zoom });
   }
 
   function zoomBy(delta: number) {
@@ -371,7 +401,8 @@ function NativeCanvas({
         source="start"
         paint={{ 'circle-radius': 6, 'circle-color': green, 'circle-stroke-width': 2, 'circle-stroke-color': '#F3F3EE' }}
       />
-      <maps.GeoJSONSource id="guide" data={sketchLineCollection(pencil)} />
+      {/* tolerance 0: the default Douglas-Peucker turns a finger curve into long chords. */}
+      <maps.GeoJSONSource id="guide" tolerance={0} data={sketchLineCollection(pencil)} />
       <maps.Layer
         id="guide-line"
         type="line"
@@ -420,7 +451,8 @@ function NativeCanvas({
         onView={showDrawnView}
       />
     ) : null}
-    {drawing ? <DrawZoomButtons onZoom={zoomBy} /> : null}
+    {drawing && expanded ? <DrawViewControls zoom={zoom} onZoom={zoomTo} onPan={pan} /> : null}
+    {drawing && !expanded ? <DrawZoomButtons onZoom={zoomBy} /> : null}
     </View>
   );
 }

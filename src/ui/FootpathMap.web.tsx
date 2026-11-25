@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { viaPointCollection } from '@/domain/routeAdjust';
-import { clampDrawZoom } from '@/domain/drawStroke';
-import { DrawCapture, DrawZoomButtons } from '@/ui/DrawCapture';
+import { clampDrawZoom, panViewport, type PanDirection } from '@/domain/drawStroke';
+import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -91,6 +91,7 @@ export function FootpathMap({
   canConfirmDraw = false,
   confirmPending = false,
   statusNote = null,
+  homeTick = 0,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -137,6 +138,8 @@ export function FootpathMap({
   canConfirmDraw?: boolean;
   confirmPending?: boolean;
   statusNote?: string | null;
+  /** Increments to frame the map on the current location, or the default view. */
+  homeTick?: number;
 }) {
   const [scheme, choose] = useMapScheme();
   const styleUrl = openFreeMapStyle(scheme);
@@ -150,8 +153,12 @@ export function FootpathMap({
       scroller?.current?.setScrollEnabled?.(true);
     };
   }, [drawingOn, scroller]);
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus, homeTick);
   const applyView = useRef<(next: HeldCamera) => void>(() => {});
+  const [drawnZoom, setDrawnZoom] = useState(camera.held.current.zoom);
+  useEffect(() => {
+    setDrawnZoom(camera.held.current.zoom);
+  }, [camera.frameTick, camera.restoreTick, camera.held]);
   function showDrawnView(next: { centre: OutdoorPoint; zoom: number }) {
     const place = {
       longitude: next.centre.longitude,
@@ -160,6 +167,23 @@ export function FootpathMap({
     };
     camera.remember(place);
     applyView.current(place);
+    setDrawnZoom(place.zoom);
+  }
+  function zoomTo(zoom: number) {
+    const current = camera.held.current;
+    showDrawnView({ centre: { latitude: current.latitude, longitude: current.longitude }, zoom });
+  }
+  function pan(direction: PanDirection) {
+    const current = camera.held.current;
+    const centre = panViewport({
+      centre: { latitude: current.latitude, longitude: current.longitude },
+      zoom: current.zoom,
+      width: frame.current.width,
+      height: frame.current.height || height,
+      direction,
+    });
+    if (!centre) return;
+    showDrawnView({ centre, zoom: current.zoom });
   }
   function zoomBy(delta: number) {
     const current = camera.held.current;
@@ -204,7 +228,7 @@ export function FootpathMap({
       canConfirmDraw={canConfirmDraw}
       confirmPending={confirmPending}
       statusNote={statusNote}
-      renderMap={({ height: viewHeight }) => (
+      renderMap={({ height: viewHeight, expanded }) => (
         <View
           style={{ height: viewHeight }}
           onLayout={(event) => {
@@ -247,7 +271,8 @@ export function FootpathMap({
               onView={showDrawnView}
             />
           ) : null}
-          {draw?.enabled ? <DrawZoomButtons onZoom={zoomBy} /> : null}
+          {draw?.enabled && expanded ? <DrawViewControls zoom={drawnZoom} onZoom={zoomTo} onPan={pan} /> : null}
+          {draw?.enabled && !expanded ? <DrawZoomButtons onZoom={zoomBy} /> : null}
         </View>
       )}
     />
@@ -352,7 +377,10 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
     const data = JSON.parse(row.data) as unknown;
     const source = map.getSource(row.id);
     if (source) source.setData(data);
-    else map.addSource(row.id, { type: 'geojson', data });
+    else {
+      // Default tolerance runs Douglas-Peucker and turns a finger curve into long chords.
+      map.addSource(row.id, row.id === 'guide' ? { type: 'geojson', data, tolerance: 0 } : { type: 'geojson', data });
+    }
     if (map.getLayer(String(row.layer.id))) {
       const paint = row.layer.paint as Record<string, unknown>;
       for (const [name, value] of Object.entries(paint)) map.setPaintProperty(String(row.layer.id), name, value);

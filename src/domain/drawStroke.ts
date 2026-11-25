@@ -1,5 +1,4 @@
 import {
-  appendSketchPoint,
   centreKeepingPoint,
   viewToPoint,
   type OutdoorPoint,
@@ -185,9 +184,134 @@ export function startDrawSession(): DrawSession {
   return { cancelled: false, points: [] };
 }
 
+/** A new finger sample closer than this is the same place. */
+export const FINGER_GAP_M = 2;
+
+/**
+ * Past this many samples, a point that already sits on the segment between its
+ * neighbours can be dropped. A bend stays. The line is not redrawn as chords.
+ */
+export const FINGER_POINT_CAP = 1500;
+
+/** Only a point this close to that segment is dropped. A field-sized bend is kept. */
+export const FINGER_CHORD_M = 4;
+
+/** One tap moves the map by this share of the screen. */
+export const PAN_VIEW_FRACTION = 1 / 3;
+
+/** Wait before a held pan arrow repeats, then the gap between repeats. */
+export const PAN_HOLD_BEFORE_REPEAT_MS = 280;
+export const PAN_HOLD_REPEAT_MS = 90;
+
+export type PanDirection = 'north' | 'east' | 'south' | 'west';
+
+function copyFinger(points: readonly OutdoorPoint[]): OutdoorPoint[] {
+  return points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+}
+
+function fingerPoint(point: OutdoorPoint): OutdoorPoint | null {
+  if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return null;
+  if (Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180) return null;
+  return { latitude: point.latitude, longitude: point.longitude };
+}
+
+function chordMetres(point: OutdoorPoint, start: OutdoorPoint, end: OutdoorPoint): number {
+  const originLat = (start.latitude * Math.PI) / 180;
+  const east = (value: OutdoorPoint) => (value.longitude - start.longitude) * 111_320 * Math.cos(originLat);
+  const north = (value: OutdoorPoint) => (value.latitude - start.latitude) * 111_320;
+  const px = east(point);
+  const py = north(point);
+  const ex = east(end);
+  const ey = north(end);
+  const length = Math.hypot(ex, ey);
+  if (length < 1) return Math.hypot(px, py);
+  const along = Math.max(0, Math.min(1, (px * ex + py * ey) / (length * length)));
+  return Math.hypot(px - along * ex, py - along * ey);
+}
+
+/**
+ * Drops points that are already on the straight segment between their neighbours.
+ * A point that leaves that segment by more than a few metres stays, so the line
+ * is not replaced by long chords.
+ */
+export function thinFingerLine(points: readonly OutdoorPoint[], cap = FINGER_POINT_CAP): OutdoorPoint[] {
+  const next = copyFinger(points);
+  const limit = Math.max(2, Math.round(cap));
+  while (next.length > limit) {
+    let index = -1;
+    let nearest = FINGER_CHORD_M;
+    for (let cursor = 1; cursor < next.length - 1; cursor += 1) {
+      const prev = next[cursor - 1];
+      const point = next[cursor];
+      const end = next[cursor + 1];
+      if (!prev || !point || !end) continue;
+      const deviation = chordMetres(point, prev, end);
+      if (deviation <= nearest) {
+        nearest = deviation;
+        index = cursor;
+      }
+    }
+    if (index < 0) break;
+    next.splice(index, 1);
+  }
+  return next;
+}
+
+/**
+ * The finger path, with only a short gap left out.
+ * Nothing here snaps to a path or replaces a bend with a chord.
+ */
+export function appendFingerPoint(
+  points: readonly OutdoorPoint[],
+  next: OutdoorPoint,
+  minMetres = FINGER_GAP_M,
+): OutdoorPoint[] {
+  const point = fingerPoint(next);
+  if (!point) return copyFinger(points);
+  const last = points[points.length - 1];
+  if (last && metresBetween(last, point) < minMetres) return copyFinger(points);
+  return thinFingerLine([...copyFinger(points), point]);
+}
+
+/** Top of the slider is the closest zoom. Bottom is the furthest. */
+export function zoomFromSlider(fraction: number): number {
+  if (!Number.isFinite(fraction)) return clampDrawZoom(DRAW_ZOOM_MIN);
+  const clamped = Math.min(1, Math.max(0, fraction));
+  return clampDrawZoom(DRAW_ZOOM_MIN + clamped * (DRAW_ZOOM_MAX - DRAW_ZOOM_MIN));
+}
+
+export function sliderFraction(zoom: number): number {
+  const span = DRAW_ZOOM_MAX - DRAW_ZOOM_MIN;
+  if (!(span > 0)) return 0;
+  return Math.min(1, Math.max(0, (clampDrawZoom(zoom) - DRAW_ZOOM_MIN) / span));
+}
+
+/** Moves the centre by about a third of the screen. North is up. */
+export function panViewport(input: {
+  centre: OutdoorPoint;
+  zoom: number;
+  width: number;
+  height: number;
+  direction: PanDirection;
+  fraction?: number;
+}): OutdoorPoint | null {
+  const fraction = input.fraction ?? PAN_VIEW_FRACTION;
+  const across = input.direction === 'east' ? 1 : input.direction === 'west' ? -1 : 0;
+  const down = input.direction === 'south' ? 1 : input.direction === 'north' ? -1 : 0;
+  return viewToPoint({
+    centre: input.centre,
+    zoom: input.zoom,
+    width: input.width,
+    height: input.height,
+    x: input.width / 2 + input.width * fraction * across,
+    y: input.height / 2 + input.height * fraction * down,
+  });
+}
+
 /**
  * One finger adds a point. Two or more fingers cancel the stroke and add nothing.
  * After a cancel, a later one-finger move in the same gesture still adds nothing.
+ * The points are the finger path. They are not snapped and not sent anywhere.
  */
 export function applyDrawPointers(
   session: DrawSession,
@@ -196,7 +320,7 @@ export function applyDrawPointers(
 ): DrawSession {
   if (pointerCount >= 2 || session.cancelled) return { cancelled: true, points: [] };
   if (pointerCount !== 1 || !point) return session;
-  return { cancelled: false, points: appendSketchPoint(session.points, point, 2) };
+  return { cancelled: false, points: appendFingerPoint(session.points, point, FINGER_GAP_M) };
 }
 
 /** A cancelled gesture commits no stroke. */

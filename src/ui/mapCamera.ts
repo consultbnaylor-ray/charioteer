@@ -123,10 +123,16 @@ export function followCamera(
   return framed;
 }
 
+/** The map with nothing drawn. A known location uses that point. Otherwise the default view. */
+export function restingMapCamera(here: OutdoorPoint | null): HeldCamera {
+  return frameOf([], [], here, 0, []);
+}
+
 /**
  * The last pan and zoom. A new route or "show my location" frames the map.
  * Closing full screen restores this camera instead of jumping back to the start.
  * An outing passes follow so a pan sticks until re-centre.
+ * `homeTick` applies that frame again after the person resets, even if they had panned.
  */
 export function useHeldCamera(
   routes: readonly OutdoorRoute[],
@@ -137,6 +143,7 @@ export function useHeldCamera(
   track: readonly OutdoorPoint[] = [],
   pinned: OutdoorPoint | null = null,
   pinTick = 0,
+  homeTick = 0,
 ) {
   const next = frameOf(routes, sketch, here, locationFocus, track);
   const held = useRef<HeldCamera>(follow === true ? { ...next, zoom: 16 } : next);
@@ -165,12 +172,28 @@ export function useHeldCamera(
   }, []);
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
+  const focusRef = useRef(locationFocus);
+  const followRef = useRef(follow);
+  focusRef.current = locationFocus;
+  followRef.current = follow;
   useEffect(() => {
     const place = pinnedRef.current;
     if (!place || pinTick <= 0) return;
     held.current = { longitude: place.longitude, latitude: place.latitude, zoom: 15 };
     setFrameTick((value) => value + 1);
   }, [pinTick]);
+  useEffect(() => {
+    if (homeTick <= 0) return;
+    const following = followRef.current;
+    const nextCamera = followCamera(held.current, nextRef.current, following);
+    if (!nextCamera) return;
+    const same = held.current.latitude === nextCamera.latitude
+      && held.current.longitude === nextCamera.longitude
+      && held.current.zoom === nextCamera.zoom;
+    held.current = nextCamera;
+    seen.current = `${nextCamera.latitude.toFixed(5)}:${nextCamera.longitude.toFixed(5)}:${nextCamera.zoom}:${focusRef.current}:${following === false ? 'still' : 'move'}`;
+    if (!same) setFrameTick((value) => value + 1);
+  }, [homeTick]);
   return { held, frameTick, restoreTick, remember, restore };
 }
 

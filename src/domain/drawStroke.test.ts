@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  DRAW_ZOOM_MAX,
+  DRAW_ZOOM_MIN,
+  FINGER_GAP_M,
+  PAN_VIEW_FRACTION,
+  appendFingerPoint,
   applyDrawPointers,
   clearDrawStrokes,
   combineDrawStrokes,
@@ -9,17 +15,21 @@ import {
   drawEnd,
   finishDrawSession,
   joinStroke,
+  panViewport,
   pinchZoom,
+  sliderFraction,
   startDrawSession,
   stitchRoute,
+  thinFingerLine,
   twoFingerView,
+  zoomFromSlider,
   drawReadyToSnap,
   rawDrawLine,
   snappedDrawLine,
   undoDrawStroke,
   visibleDrawLine,
 } from '@/domain/drawStroke';
-import type { OutdoorPoint } from '@/domain/outdoorRoute';
+import { metresBetween, viewToPoint, type OutdoorPoint } from '@/domain/outdoorRoute';
 
 const a: OutdoorPoint = { latitude: 51.45, longitude: -2.59 };
 const b: OutdoorPoint = { latitude: 51.452, longitude: -2.588 };
@@ -115,5 +125,101 @@ describe('draw strokes', () => {
     expect(wider?.zoom).toBe(15);
     expect(wider?.centre.latitude).toBeCloseTo(a.latitude, 4);
     expect(wider?.centre.longitude).toBeCloseTo(a.longitude, 4);
+  });
+
+  it('keeps a bend in the finger path and does not replace it with a chord', () => {
+    const origin: OutdoorPoint = { latitude: 51.45, longitude: -2.59 };
+    const east = (metres: number, from: OutdoorPoint = origin): OutdoorPoint => {
+      const cos = Math.cos((from.latitude * Math.PI) / 180);
+      return { latitude: from.latitude, longitude: from.longitude + metres / (111_320 * cos) };
+    };
+    const north = (metres: number, from: OutdoorPoint): OutdoorPoint => ({
+      latitude: from.latitude + metres / 111_320,
+      longitude: from.longitude,
+    });
+    const straight = Array.from({ length: 401 }, (_, index) => east(index * 3));
+    const base = straight[200] ?? origin;
+    const tip = north(120, base);
+    const spiked = straight.map((point, index) => (index === 200 ? tip : point));
+    const thin = thinFingerLine(spiked, 6);
+    expect(thin.length).toBeLessThanOrEqual(6);
+    expect(thin.some((point) => metresBetween(point, tip) < 2)).toBe(true);
+    expect(metresBetween(thin[0] ?? origin, straight[0] ?? origin)).toBeLessThan(1);
+    expect(metresBetween(thin[thin.length - 1] ?? origin, straight[straight.length - 1] ?? origin)).toBeLessThan(1);
+
+    expect(appendFingerPoint([origin], east(1), FINGER_GAP_M)).toEqual([origin]);
+    expect(appendFingerPoint([origin], east(3), FINGER_GAP_M)).toHaveLength(2);
+    let finger: OutdoorPoint[] = [];
+    for (let metres = 0; metres <= 1600; metres += 2) {
+      const along = east(metres);
+      finger = appendFingerPoint(finger, metres === 800 ? tip : along);
+    }
+    expect(finger.some((point) => metresBetween(point, tip) < 3)).toBe(true);
+
+    const stroke = readFileSync('src/domain/drawStroke.ts', 'utf8');
+    const apply = stroke.slice(stroke.indexOf('export function applyDrawPointers'), stroke.indexOf('export function finishDrawSession'));
+    expect(apply).toContain('appendFingerPoint');
+    expect(apply).not.toContain('simplifyLine');
+    expect(apply).not.toContain('simplifySketch');
+    expect(apply).not.toContain('sketchWaypoints');
+    expect(apply).not.toContain('planOutdoorRoute');
+    expect(stroke).not.toContain('appendSketchPoint');
+  });
+
+  it('does not snap or request a route while the finger is down', () => {
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const change = maker.slice(maker.indexOf('onChange: (points)'), maker.indexOf('onEnd:'));
+    expect(change).not.toMatch(/planOutdoorRoute|matchDrawnSketch|sketchWaypoints|simplifySketch|simplifyLine|noteRouteRequest/);
+    const hold = maker.slice(maker.indexOf('function holdStroke'), maker.indexOf('async function snapDrawn'));
+    expect(hold).not.toMatch(/planOutdoorRoute|matchDrawnSketch|sketchWaypoints|noteRouteRequest/);
+    const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
+    expect(snap).toContain('matchDrawnSketch');
+    expect(snap).toContain('planOutdoorRoute');
+
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
+    expect(native).toContain('id="guide" tolerance={0}');
+    expect(web).toContain('tolerance: 0');
+    expect(native.indexOf('<DrawCapture')).toBeLessThan(native.indexOf('<DrawViewControls'));
+    expect(web.indexOf('<DrawCapture')).toBeLessThan(web.indexOf('<DrawViewControls'));
+  });
+
+  it('zooms from a slider and pans by about a third of the view', () => {
+    expect(PAN_VIEW_FRACTION).toBeCloseTo(1 / 3);
+    expect(zoomFromSlider(0)).toBe(DRAW_ZOOM_MIN);
+    expect(zoomFromSlider(1)).toBe(DRAW_ZOOM_MAX);
+    expect(zoomFromSlider(0.5)).toBe((DRAW_ZOOM_MIN + DRAW_ZOOM_MAX) / 2);
+    expect(sliderFraction(DRAW_ZOOM_MIN)).toBe(0);
+    expect(sliderFraction(DRAW_ZOOM_MAX)).toBe(1);
+    expect(zoomFromSlider(sliderFraction(16))).toBeCloseTo(16, 5);
+
+    const centre = a;
+    const width = 300;
+    const height = 240;
+    const zoom = 15;
+    const frame = { centre, zoom, width, height };
+    const east = panViewport({ ...frame, direction: 'east' });
+    const expected = viewToPoint({ centre, zoom, width, height, x: width / 2 + width / 3, y: height / 2 });
+    expect(east?.latitude).toBeCloseTo(expected?.latitude ?? 0, 6);
+    expect(east?.longitude).toBeCloseTo(expected?.longitude ?? 0, 6);
+    expect(panViewport({ ...frame, direction: 'north' })?.latitude).toBeGreaterThan(centre.latitude);
+    expect(panViewport({ ...frame, direction: 'south' })?.latitude).toBeLessThan(centre.latitude);
+    expect(panViewport({ ...frame, direction: 'west' })?.longitude).toBeLessThan(centre.longitude);
+    expect(panViewport({ centre, zoom, width: 0, height, direction: 'east' })).toBeNull();
+
+    const capture = readFileSync('src/ui/DrawCapture.tsx', 'utf8');
+    expect(capture).toContain('accessibilityLabel="Zoom in"');
+    expect(capture).toContain('accessibilityLabel="Zoom out"');
+    expect(capture).toContain('accessibilityLabel="Zoom level"');
+    expect(capture).toContain('accessibilityLabel={`Pan ${direction}`}');
+    expect(capture).toContain('onPressIn={start}');
+    expect(capture).toContain('onPressOut={stop}');
+    expect(capture).toContain('setInterval');
+    expect(capture).toContain('PAN_HOLD_REPEAT_MS');
+    expect(capture).toContain('onStartShouldSetResponder={claimTouch}');
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
+    expect(native).toContain('drawing && expanded ? <DrawViewControls');
+    expect(web).toContain('draw?.enabled && expanded ? <DrawViewControls');
   });
 });
