@@ -575,6 +575,138 @@ export function panViewport(input: {
   });
 }
 
+export type DrawTouch = {
+  locationX?: number;
+  locationY?: number;
+  pageX?: number;
+  pageY?: number;
+};
+
+/**
+ * The drawing overlay, measured in the window.
+ * `ready` is false until two measureInWindow readings agree with onLayout.
+ * A sample taken before that is dropped. The camera centre is not used instead.
+ */
+export type DrawOverlay = {
+  ready: boolean;
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+  centre: OutdoorPoint;
+  zoom: number;
+};
+
+function finiteNumber(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function insideOverlay(x: number, y: number, width: number, height: number): boolean {
+  return x >= -2 && y >= -2 && x <= width + 2 && y <= height + 2;
+}
+
+export type OverlayReading = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type OverlayMeasureState = {
+  pending: OverlayReading | null;
+  attempts: number;
+  ready: OverlayReading | null;
+};
+
+export function freshOverlayMeasure(): OverlayMeasureState {
+  return { pending: null, attempts: 0, ready: null };
+}
+
+function readingClose(left: OverlayReading, right: OverlayReading): boolean {
+  return Math.abs(left.x - right.x) <= 1
+    && Math.abs(left.y - right.y) <= 1
+    && Math.abs(left.width - right.width) <= 2
+    && Math.abs(left.height - right.height) <= 2;
+}
+
+/**
+ * A window measurement becomes the drawing frame only after two readings agree.
+ * The first onLayout call can report origin 0,0 before the view sits in the window.
+ * Subtracting that origin from pageY leaves the point too far down the screen.
+ * A later lone reading does not clear a frame that has already been confirmed.
+ * `again` is true only while the frame is still unconfirmed, so one more reading is taken.
+ */
+export function nextOverlayMeasure(
+  state: OverlayMeasureState,
+  reading: OverlayReading,
+  layout: { width: number; height: number },
+): { state: OverlayMeasureState; again: boolean } {
+  const sane = reading.width > 0 && reading.height > 0 && Number.isFinite(reading.x) && Number.isFinite(reading.y);
+  if (!sane) return { state, again: false };
+  const sized = layout.width > 0 && layout.height > 0
+    && Math.abs(reading.width - layout.width) <= 2
+    && Math.abs(reading.height - layout.height) <= 2;
+  if (!sized) return { state: freshOverlayMeasure(), again: false };
+  if (state.pending && readingClose(state.pending, reading)) {
+    return { state: { pending: reading, attempts: 0, ready: reading }, again: false };
+  }
+  if (state.ready) return { state: { pending: reading, attempts: 0, ready: state.ready }, again: false };
+  const attempts = state.attempts + 1;
+  if (attempts >= 4) return { state: { pending: reading, attempts: 0, ready: reading }, again: false };
+  return { state: { pending: reading, attempts, ready: null }, again: true };
+}
+
+/**
+ * The finger, in the overlay's own coordinates.
+ * Page position minus the measured window origin is the touch.
+ * The first responder event can report locationY still in page space, which sits
+ * too far down the screen by the overlay's distance from the top and draws a
+ * short line south of the finger. That sample is corrected, not kept.
+ * Nothing is returned until the overlay has been measured, and a point outside
+ * the overlay is dropped. The camera centre is never filled in.
+ */
+export function fingerInOverlay(
+  touch: DrawTouch,
+  frame: Pick<DrawOverlay, 'ready' | 'originX' | 'originY' | 'width' | 'height'>,
+): { x: number; y: number } | null {
+  if (!frame.ready) return null;
+  if (!(frame.width > 0) || !(frame.height > 0)) return null;
+  if (!Number.isFinite(frame.originX) || !Number.isFinite(frame.originY)) return null;
+  const pageX = touch.pageX;
+  const pageY = touch.pageY;
+  const locationX = touch.locationX;
+  const locationY = touch.locationY;
+  const page = finiteNumber(pageX) && finiteNumber(pageY)
+    ? { x: pageX - frame.originX, y: pageY - frame.originY }
+    : null;
+  const local = finiteNumber(locationX) && finiteNumber(locationY)
+    ? { x: locationX, y: locationY }
+    : null;
+  // Page minus the measured origin wins. locationY on the first touch can still
+  // be the page position, which is originY pixels too far down the screen.
+  if (page && insideOverlay(page.x, page.y, frame.width, frame.height)) return page;
+  if (local && insideOverlay(local.x, local.y, frame.width, frame.height)) return local;
+  return null;
+}
+
+/**
+ * One touch, as a map coordinate.
+ * The point is the finger. A touch with no valid conversion is omitted.
+ * The camera centre and the blue location dot are not inserted.
+ */
+export function strokePointFromTouch(touch: DrawTouch, frame: DrawOverlay): OutdoorPoint | null {
+  const finger = fingerInOverlay(touch, frame);
+  if (!finger) return null;
+  return viewToPoint({
+    centre: frame.centre,
+    zoom: frame.zoom,
+    width: frame.width,
+    height: frame.height,
+    x: finger.x,
+    y: finger.y,
+  });
+}
+
 /**
  * One finger adds a point. Two or more fingers cancel the stroke and add nothing.
  * After a cancel, a later one-finger move in the same gesture still adds nothing.

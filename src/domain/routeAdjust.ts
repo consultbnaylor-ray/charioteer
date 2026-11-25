@@ -80,6 +80,18 @@ export function snapLimitMessage(message: string | null): string | null {
 
 export const DRAW_SNAP_TRY_AGAIN = 'Try again';
 
+/** Dev log for a failed snap. Coordinates and tokens are left out. */
+export function logDrawSnapFailure(error: unknown): void {
+  const name = error instanceof Error ? error.name : 'Error';
+  const message = error instanceof Error ? error.message : '';
+  const safe = `${name}: ${message}`.replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!safe || /eyJ|bearer|sb_publishable|sb_secret|latitude|longitude|\d+\.\d{4,}/i.test(safe)) {
+    console.error('draw snap failed');
+    return;
+  }
+  console.error('draw snap failed', safe);
+}
+
 /** Wait after the last keystroke before a place lookup. */
 export const PLACE_SEARCH_PAUSE_MS = 800;
 

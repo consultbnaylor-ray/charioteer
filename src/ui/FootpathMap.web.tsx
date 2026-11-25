@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { viaPointCollection } from '@/domain/routeAdjust';
-import { clampDrawZoom, panViewport, type PanDirection } from '@/domain/drawStroke';
+import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure, panViewport, type PanDirection } from '@/domain/drawStroke';
 import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
   DRAW_GAP_DASH,
@@ -191,7 +191,7 @@ export function FootpathMap({
       centre: { latitude: current.latitude, longitude: current.longitude },
       zoom: current.zoom,
       width: frame.current.width,
-      height: frame.current.height || height,
+      height: frame.current.height,
       direction,
     });
     if (!centre) return;
@@ -205,7 +205,30 @@ export function FootpathMap({
     });
   }
   const [problem, setProblem] = useState<string | null>(null);
-  const frame = useRef({ width: 0, height: 0 });
+  const host = useRef<View>(null);
+  const laidOut = useRef({ width: 0, height: 0 });
+  const measureState = useRef(freshOverlayMeasure());
+  const confirmFrame = useRef(0);
+  const frame = useRef({ ready: false, originX: 0, originY: 0, width: 0, height: 0 });
+  function publishFrame(ready: { x: number; y: number; width: number; height: number } | null) {
+    frame.current = ready
+      ? { ready: true, originX: ready.x, originY: ready.y, width: ready.width, height: ready.height }
+      : { ready: false, originX: 0, originY: 0, width: 0, height: 0 };
+  }
+  function measureFrame() {
+    host.current?.measureInWindow((x, y, width, measuredHeight) => {
+      const outcome = nextOverlayMeasure(
+        measureState.current,
+        { x, y, width, height: measuredHeight },
+        laidOut.current,
+      );
+      measureState.current = outcome.state;
+      publishFrame(outcome.state.ready);
+      if (!outcome.again) return;
+      cancelAnimationFrame(confirmFrame.current);
+      confirmFrame.current = requestAnimationFrame(() => measureFrame());
+    });
+  }
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
   const guideJson = JSON.stringify(pencilLines ? sketchLinesCollection(pencilLines) : sketchLineCollection(pencil));
@@ -243,9 +266,20 @@ export function FootpathMap({
       statusNote={statusNote}
       renderMap={({ height: viewHeight, expanded }) => (
         <View
+          ref={host}
           style={{ height: viewHeight }}
           onLayout={(event) => {
-            frame.current = { width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height };
+            const next = {
+              width: event.nativeEvent.layout.width,
+              height: event.nativeEvent.layout.height,
+            };
+            const previous = laidOut.current;
+            laidOut.current = next;
+            if (Math.abs(next.width - previous.width) > 2 || Math.abs(next.height - previous.height) > 2) {
+              measureState.current = freshOverlayMeasure();
+              publishFrame(null);
+            }
+            measureFrame();
           }}
         >
           <WebCanvas
@@ -274,11 +308,15 @@ export function FootpathMap({
           />
           {draw?.enabled ? (
             <DrawCapture
+              prepare={measureFrame}
               readView={() => ({
+                ready: frame.current.ready,
+                originX: frame.current.originX,
+                originY: frame.current.originY,
                 centre: { latitude: camera.held.current.latitude, longitude: camera.held.current.longitude },
                 zoom: camera.held.current.zoom,
                 width: frame.current.width,
-                height: frame.current.height || viewHeight,
+                height: frame.current.height,
               })}
               onChange={draw.onChange}
               onEnd={draw.onEnd}

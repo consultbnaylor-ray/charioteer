@@ -64,6 +64,7 @@ import {
   DRAW_SNAP_PARTIAL,
   DRAW_SNAP_TRY_AGAIN,
   DRAW_SNAPPED,
+  logDrawSnapFailure,
   PLACE_SEARCH_MIN_CHARS,
   PREFER_PATHS_LABEL,
   PREFER_PATHS_NOTE,
@@ -762,6 +763,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       return true;
     } catch (err) {
       if (drawGen.current !== generation) return false;
+      logDrawSnapFailure(err);
       const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
       const shown = snapLimitMessage(message) ?? message;
       const line = previous ? `${shown} ${ROUTE_UNCHANGED}` : shown;
@@ -868,9 +870,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   function snapFigures() {
     if (snapMiss) {
       return (
-        <View accessibilityLabel={DRAW_SNAP_FAILED} style={{ gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.danger }}>
-          <T style={{ color: theme.colors.danger, fontFamily: theme.font.bodyStrong }}>{DRAW_SNAP_FAILED}</T>
-          <T>{snapMiss}</T>
+        <View accessibilityLabel={`${DRAW_SNAP_FAILED}. ${snapMiss}`} style={{ gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.danger }}>
+          <T style={{ color: theme.colors.danger, fontFamily: theme.font.bodyStrong }}>{snapMiss}</T>
           <Button label={DRAW_SNAP_TRY_AGAIN} disabled={pending} pending={pending} onPress={() => { void confirmDraw(); }} />
         </View>
       );
@@ -1117,6 +1118,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           lookFocus={lookFocus}
           homeTick={homeTick}
           locating={locating}
+          follow={drawing ? false : undefined}
           height={Math.max(180, narrow ? 220 : 280)}
           draw={drawing ? {
             enabled: true,

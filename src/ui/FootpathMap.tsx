@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ComponentType, type ReactNode, type R
 import { View } from 'react-native';
 
 import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
-import { clampDrawZoom } from '@/domain/drawStroke';
+import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure } from '@/domain/drawStroke';
 import { panViewport, type PanDirection } from '@/domain/drawStroke';
 import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
@@ -271,7 +271,11 @@ function NativeCanvas({
   mapStyle: string | object;
 }) {
   const camera = useRef<CameraHandle>(null);
-  const size = useRef({ width: 0, height });
+  const host = useRef<View>(null);
+  const laidOut = useRef({ width: 0, height: 0 });
+  const measureState = useRef(freshOverlayMeasure());
+  const confirmFrame = useRef(0);
+  const box = useRef({ ready: false, originX: 0, originY: 0, width: 0, height: 0 });
   const drawRef = useRef(draw);
   drawRef.current = draw;
   const moved = useRef(onUserMove);
@@ -343,13 +347,34 @@ function NativeCanvas({
     });
   }
 
+  function publishBox(ready: { x: number; y: number; width: number; height: number } | null) {
+    box.current = ready
+      ? { ready: true, originX: ready.x, originY: ready.y, width: ready.width, height: ready.height }
+      : { ready: false, originX: 0, originY: 0, width: 0, height: 0 };
+  }
+
+  function measureBox() {
+    host.current?.measureInWindow((x, y, width, measuredHeight) => {
+      const outcome = nextOverlayMeasure(
+        measureState.current,
+        { x, y, width, height: measuredHeight },
+        laidOut.current,
+      );
+      measureState.current = outcome.state;
+      publishBox(outcome.state.ready);
+      if (!outcome.again) return;
+      cancelAnimationFrame(confirmFrame.current);
+      confirmFrame.current = requestAnimationFrame(() => measureBox());
+    });
+  }
+
   function pan(direction: PanDirection) {
     const current = held.current;
     const centre = panViewport({
       centre: { latitude: current.latitude, longitude: current.longitude },
       zoom: current.zoom,
-      width: size.current.width,
-      height: size.current.height || height,
+      width: box.current.width,
+      height: box.current.height,
       direction,
     });
     if (!centre) return;
@@ -366,14 +391,26 @@ function NativeCanvas({
 
   return (
     <View
+      ref={host}
       style={{ height }}
       onLayout={(event) => {
-        size.current = { width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height };
+        const next = {
+          width: event.nativeEvent.layout.width,
+          height: event.nativeEvent.layout.height,
+        };
+        const previous = laidOut.current;
+        laidOut.current = next;
+        if (Math.abs(next.width - previous.width) > 2 || Math.abs(next.height - previous.height) > 2) {
+          measureState.current = freshOverlayMeasure();
+          publishBox(null);
+        }
+        measureBox();
       }}
     >
     <maps.Map
       mapStyle={mapStyle}
       attribution={false}
+      pointerEvents={drawing ? 'none' : 'auto'}
       dragPan={!drawing}
       touchZoom={!drawing}
       rotateEnabled={!drawing}
@@ -383,6 +420,7 @@ function NativeCanvas({
       onTouchEnd={expanded ? undefined : () => holdPage(false)}
       onTouchCancel={expanded ? undefined : () => holdPage(false)}
       onRegionDidChange={(event: RegionEvent) => {
+        if (drawRef.current?.enabled) return;
         if (event.nativeEvent?.userInteraction !== true) return;
         const center = event.nativeEvent?.center;
         const zoom = event.nativeEvent?.zoom;
@@ -467,11 +505,15 @@ function NativeCanvas({
     </maps.Map>
     {drawing ? (
       <DrawCapture
+        prepare={measureBox}
         readView={() => ({
+          ready: box.current.ready,
+          originX: box.current.originX,
+          originY: box.current.originY,
+          width: box.current.width,
+          height: box.current.height,
           centre: { latitude: held.current.latitude, longitude: held.current.longitude },
           zoom: held.current.zoom,
-          width: size.current.width,
-          height: size.current.height || height,
         })}
         onChange={(points) => drawRef.current?.onChange(points)}
         onEnd={(points) => drawRef.current?.onEnd(points)}

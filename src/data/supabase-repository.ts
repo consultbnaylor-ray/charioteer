@@ -3311,9 +3311,16 @@ export class SupabaseRepository implements Repository {
     }
     try {
       const requestId = input.requestId ?? randomId();
+      // The functions client omits Authorization when getSession() has no token and the
+      // project key is a publishable key. The phone then refuses the call before fetch,
+      // so the edge function never sees it. The signed-in access token is sent explicitly.
+      const token = await this.accessToken();
       const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
         body: routePlanBody({ ...input, start, end, requestId }),
-        headers: routeInvokeHeaders(attempt),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(routeInvokeHeaders(attempt) ?? {}),
+        },
       })), ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW);
       const plan = parseRoutePlan(invoked.data);
       if (plan) return plan;
@@ -3328,9 +3335,13 @@ export class SupabaseRepository implements Repository {
     await assertRouteFindingAllowed();
     try {
       const requestId = randomId();
+      const token = await this.accessToken();
       const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
         body: { action: 'search', query, requestId },
-        headers: routeInvokeHeaders(attempt),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(routeInvokeHeaders(attempt) ?? {}),
+        },
       })), ROUTE_CLIENT_TIMEOUT_MS, SEARCH_SLOW);
       const places = parseRoutePlaces(invoked.data);
       if (places.length > 0 || (invoked.data && typeof invoked.data === 'object' && (invoked.data as { ok?: unknown }).ok === true)) {
