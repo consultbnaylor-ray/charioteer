@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type ComponentType, t
 import { View } from 'react-native';
 
 import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
-import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure } from '@/domain/drawStroke';
+import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure, pageScrollsWhileDrawing } from '@/domain/drawStroke';
 import { panViewport, type PanDirection } from '@/domain/drawStroke';
 import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
@@ -94,6 +94,7 @@ export function FootpathMap({
   onUndoDraw,
   onClearDraw,
   onConfirmDraw,
+  onExitDraw,
   canUndoDraw = false,
   canClearDraw = false,
   canConfirmDraw = false,
@@ -143,6 +144,8 @@ export function FootpathMap({
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
   onConfirmDraw?: () => void;
+  /** Leaves draw mode and keeps the sketch, when the full-screen map closes. */
+  onExitDraw?: () => void;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
   canConfirmDraw?: boolean;
@@ -157,8 +160,10 @@ export function FootpathMap({
   const mapStyle = useFootpathStyle(scheme, styleUrl);
   const scroller = useScreenScroller();
   const drawingOn = draw?.enabled === true;
+  // This map owns the page lock while drawing. Turning draw mode off (pen, X,
+  // closing full screen, a snapped route) or leaving the screen gives the scroll back.
   useEffect(() => {
-    if (!drawingOn) return undefined;
+    if (pageScrollsWhileDrawing(drawingOn)) return undefined;
     scroller?.current?.setScrollEnabled?.(false);
     return () => {
       scroller?.current?.setScrollEnabled?.(true);
@@ -187,6 +192,7 @@ export function FootpathMap({
       onUndoDraw={onUndoDraw}
       onClearDraw={onClearDraw}
       onConfirmDraw={onConfirmDraw}
+      onExitDraw={onExitDraw}
       canUndoDraw={canUndoDraw}
       canClearDraw={canClearDraw}
       canConfirmDraw={canConfirmDraw}
@@ -336,10 +342,9 @@ function NativeCanvas({
 
   useEffect(() => {
     return () => {
-      if (drawRef.current?.enabled) {
-        scroller?.current?.setScrollEnabled?.(false);
-        return;
-      }
+      // While drawing, FootpathMap holds the lock and releases it when draw mode ends.
+      // Setting it here as well could leave the page stuck after that release.
+      if (drawRef.current?.enabled) return;
       scroller?.current?.setScrollEnabled?.(true);
     };
   }, [scroller]);

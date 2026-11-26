@@ -42,8 +42,10 @@ import {
   clearDrawStrokes,
   combineDrawStrokes,
   commitDrawStroke,
+  drawCloseEnabled,
   drawGapLines,
   drawReadyToSnap,
+  nextDrawMode,
   rawStrokeLines,
   snapDrawnStrokes,
   snappedDrawLine,
@@ -855,9 +857,22 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   function toggleDraw() {
     setDrawing((on) => {
-      if (!on) setAdjusting(false);
-      return !on;
+      const next = nextDrawMode(on, 'pen').drawing;
+      if (next) setAdjusting(false);
+      return next;
     });
+  }
+
+  /** The X. In draw mode it clears the sketch and leaves drawing, so the page scrolls again. */
+  function closeDraw() {
+    const next = nextDrawMode(drawing, 'close');
+    if (next.clearSketch) clearDraw();
+    setDrawing(next.drawing);
+  }
+
+  /** Closing the full-screen map leaves draw mode and keeps the sketch. */
+  function exitDraw() {
+    setDrawing((on) => nextDrawMode(on, 'collapse').drawing);
   }
 
   async function confirmDraw() {
@@ -1214,10 +1229,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           } : null}
           onToggleDraw={craving ? undefined : toggleDraw}
           onUndoDraw={undoDraw}
-          onClearDraw={clearDraw}
+          onClearDraw={closeDraw}
           onConfirmDraw={craving ? undefined : () => { void confirmDraw(); }}
+          onExitDraw={exitDraw}
           canUndoDraw={pencil.length > 0 || strokes.length > 0 || drawStack.length > 0}
-          canClearDraw={pencil.length > 0 || strokes.length > 0 || fromDraw}
+          canClearDraw={drawCloseEnabled({ drawing, hasSketch: pencil.length > 0 || strokes.length > 0, fromDraw })}
           canConfirmDraw={drawReadyToSnap(strokes, pencil)}
           confirmPending={pending}
           bar={drawBar}
@@ -1267,7 +1283,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               disabled={redrawing}
               onPress={() => {
                 if (adjusting) clearEdit();
-                setDrawing(false);
+                setDrawing(nextDrawMode(drawing, 'adjust').drawing);
                 setAdjusting((on) => !on);
               }}
             />

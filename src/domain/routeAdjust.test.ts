@@ -362,7 +362,7 @@ describe('route adjusting', () => {
     expect(metresBetween(start, step)).toBeLessThan(12);
     expect(appendSketchPoint([start], step, 2)).toHaveLength(2);
     expect(appendSketchPoint([start], step, 12)).toHaveLength(1);
-    expect(DRAW_FINGER_HINT).toBe('Draw your route, then tap the green tick to snap it to the nearest paths');
+    expect(DRAW_FINGER_HINT).toBe('Draw your route, then tap the green tick to snap it to the nearest paths. Tap X to stop drawing.');
     expect(DRAW_NO_PATH).toBe('No path matched that line.');
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
