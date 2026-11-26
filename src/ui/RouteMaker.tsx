@@ -62,6 +62,7 @@ import {
   DRAW_PEN_HINT,
   DRAW_SNAP_FAILED,
   DRAW_SNAP_SERVICE_GAP,
+  DRAW_SNAP_STRAYED,
   DRAW_SNAP_LIMIT,
   DRAW_SNAP_MOSTLY,
   DRAW_SNAP_PARTIAL,
@@ -745,7 +746,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       snappedCountRef.current = nextStrokes.length;
       setOriginal(next);
       const snapNote = result.matched
-        ? DRAW_SNAPPED
+        ? (result.strayed ? DRAW_SNAP_STRAYED : DRAW_SNAPPED)
         : result.partial
           ? (result.serviceMissed ? DRAW_SNAP_SERVICE_GAP : DRAW_SNAP_MOSTLY)
           : DRAW_SNAP_PARTIAL;

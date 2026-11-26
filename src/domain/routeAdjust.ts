@@ -70,6 +70,18 @@ export const DRAW_SNAP_MOSTLY = 'Snapped to paths. A short part follows your lin
 
 export const DRAW_SNAP_FAILED = 'Couldn\'t snap to paths';
 
+/**
+ * Some of the pencil sat over houses or gardens, so that part of the route takes the nearest
+ * streets and footpaths instead. Every part of the line is a real path.
+ */
+export const DRAW_SNAP_STRAYED = 'Snapped to paths. Part of your line had no path under it, so that part uses the nearest streets and footpaths.';
+
+/**
+ * Part of the pencil has no path along it, such as across a river or open fields.
+ * A straight line there would cross it, so the snap is refused and the person can redraw that part.
+ */
+export const DRAW_SNAP_NO_PATH_ALONG = 'Part of your line has no path along it, such as across a river or fields. Undo and draw that part along a street or footpath, or try again.';
+
 /** The route service did not answer for one piece. The other pieces snapped. */
 export const DRAW_SNAP_SERVICE_GAP = 'Snapped to paths. The route service missed one part, so that part follows your line.';
 

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { buildDrawSnapRequests, snapDrawnStrokes } from '@/domain/drawStroke';
+import { buildDrawSnapRequests, PENCIL_PIECE_MAX_M, snapDrawnStrokes } from '@/domain/drawStroke';
 import { UserFacingError } from '@/domain/errors';
 import { ROUTE_RATE_LIMITED, ROUTE_UNAVAILABLE, type RoutePlan } from '@/domain/findRoute';
 import type { OutdoorPoint } from '@/domain/outdoorRoute';
@@ -72,7 +72,7 @@ describe('a drawn route when one call to the route service fails', () => {
     expect(built.requests.every((request) => request.waypoints.length >= 2 && request.waypoints.length <= 25)).toBe(true);
   });
 
-  it('keeps the snapped pieces and follows the pencil where the service did not answer', async () => {
+  it('asks once more when the service misses a piece, so a brief blip still snaps every piece', async () => {
     const built = buildDrawSnapRequests([doubledBack], here, true);
     let calls = 0;
     const result = await snapDrawnStrokes({
@@ -85,17 +85,16 @@ describe('a drawn route when one call to the route service fails', () => {
         return planFor(waypoints);
       },
     });
-    expect(calls).toBe(built.requests.length);
+    expect(calls).toBe(built.requests.length + 1);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.serviceMissed).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.matched).toBe(false);
+    expect(result.serviceMissed).toBe(false);
+    expect(result.matched).toBe(true);
+    expect(result.pencilM).toBe(0);
     expect(result.points[0]).toEqual(here);
-    expect(result.plan).not.toBeNull();
   });
 
-  it('keeps the other pieces when a middle piece fails', async () => {
+  it('refuses the snap, rather than drawing a long straight line, when a long piece keeps failing', async () => {
     let calls = 0;
     const result = await snapDrawnStrokes({
       strokes: [doubledBack],
@@ -103,14 +102,41 @@ describe('a drawn route when one call to the route service fails', () => {
       closeLoop: true,
       send: async (waypoints) => {
         calls += 1;
-        if (calls === 2) throw unavailable();
+        if (calls === 2 || calls === 3) throw unavailable();
+        return planFor(waypoints);
+      },
+    });
+    expect(calls).toBe(3);
+    expect(result.ok).toBe(false);
+    if (result.ok || result.limit) return;
+    expect((result.error as Error).message).toBe(ROUTE_UNAVAILABLE);
+  });
+
+  it('lets a short piece that keeps failing follow the pencil, and says so', async () => {
+    // Two strokes 60 m apart. The 60 m join is its own call, and that call keeps failing.
+    const west = finger([start, { latitude: start.latitude, longitude: start.longitude + 0.009 }]);
+    const eastStart = { latitude: start.latitude, longitude: start.longitude + 0.0099 };
+    const east = finger([eastStart, { latitude: start.latitude, longitude: start.longitude + 0.019 }]);
+    const built = buildDrawSnapRequests([west, east], null);
+    const gapIndex = built.requests.findIndex((request) => request.routedGap);
+    expect(gapIndex).toBe(1);
+    let calls = 0;
+    const result = await snapDrawnStrokes({
+      strokes: [west, east],
+      anchor: null,
+      send: async (waypoints) => {
+        calls += 1;
+        if (calls === 2 || calls === 3) throw unavailable();
         return planFor(waypoints);
       },
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.serviceMissed).toBe(true);
-    expect(result.plan?.points.length).toBeGreaterThan(2);
+    expect(result.partial).toBe(true);
+    expect(result.matched).toBe(false);
+    expect(result.pencilM).toBeGreaterThan(40);
+    expect(result.pencilM).toBeLessThanOrEqual(PENCIL_PIECE_MAX_M);
   });
 
   it('stops after two failures before anything snapped, so a down service is not asked again and again', async () => {

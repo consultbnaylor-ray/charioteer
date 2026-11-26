@@ -2,6 +2,10 @@ import { UserFacingError } from './errors';
 import {
   drawnLineAfterSnap,
   formatWalkDistance,
+  removeRouteSpurs,
+  snapDetourUsable,
+  SPUR_MAX_M,
+  SPUR_WITHIN_M,
   pathMetres,
   sketchWaypoints,
   type OutdoorKind,
@@ -616,7 +620,9 @@ export function unmatchedDrawnPlan(input: {
 
 /**
  * One route call for the corner sketch.
- * A line that comes back is kept only when it still follows the pencil.
+ * A line that comes back is `matched` when it still follows the pencil closely.
+ * A line that strays but stays on nearby paths comes back as `detour`.
+ * A line that goes a long way round has no `detour`: there is no path along that part of the pencil.
  * `sawRoute` says whether that one call answered.
  */
 export async function matchDrawnSketch(input: {
@@ -624,7 +630,7 @@ export async function matchDrawnSketch(input: {
   send: (waypoints: readonly OutdoorPoint[]) => Promise<RoutePlan>;
 }): Promise<
   | { matched: true; plan: RoutePlan }
-  | { matched: false; sawRoute: true }
+  | { matched: false; sawRoute: true; detour: RoutePlan | null }
   | { matched: false; sawRoute: false; error: unknown }
 > {
   const waypoints = sketchWaypoints(input.sketch);
@@ -633,7 +639,11 @@ export async function matchDrawnSketch(input: {
     const plan = await input.send(waypoints);
     const choice = drawnLineAfterSnap({ sketch: input.sketch, routed: plan.points });
     if (choice.matched) return { matched: true, plan: adoptSnappedLine(plan, choice.points) };
-    return { matched: false, sawRoute: true };
+    // The service found real paths, just not close to the pencil. Those paths are still the route
+    // unless they go a long way round, which means there is no path along that part of the pencil.
+    const cleaned = plan.points.length >= 2 ? removeRouteSpurs(plan.points, SPUR_WITHIN_M, SPUR_MAX_M, input.sketch) : [];
+    const detour = cleaned.length >= 2 && snapDetourUsable(input.sketch, cleaned) ? adoptSnappedLine(plan, cleaned) : null;
+    return { matched: false, sawRoute: true, detour };
   } catch (error) {
     return { matched: false, sawRoute: false, error };
   }
