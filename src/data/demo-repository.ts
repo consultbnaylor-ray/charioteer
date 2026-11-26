@@ -120,6 +120,7 @@ import type {
   Repository,
   VoiceMint,
   VoiceTurnInput,
+  GarminActivityTrack,
 } from '@/data/types';
 
 const STORAGE_KEY = 'charioteer.demo.v1';
@@ -2190,6 +2191,10 @@ export class DemoRepository implements Repository {
 
   async disconnectGarmin(): Promise<void> {
     return;
+  }
+
+  async garminActivityTrack(_summaryId: string): Promise<GarminActivityTrack | null> {
+    return null;
   }
 
   async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {

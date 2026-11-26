@@ -74,6 +74,7 @@ export const GARMIN_SUMMARY_TABLES = [
   'garmin_move_iq',
   'garmin_activity_detail',
   'garmin_activity_file',
+  'garmin_activity_samples',
 ] as const;
 
 /** Tokens, the sign-in state, and the Garmin user id. Disconnect removes only these. */
@@ -265,6 +266,7 @@ export type GarminPushPlan = {
   moveIq: GarminExtras['moveIq'];
   activityDetails: GarminExtras['activityDetails'];
   activityFiles: GarminExtras['activityFiles'];
+  activityTracks: GarminExtras['activityTracks'];
   /** Women's health and unrecognised push keys. Names only. */
   droppedTypes: string[];
   deregistered: string[];
@@ -559,6 +561,7 @@ export function mapGarminPush(body: unknown): GarminPushPlan {
     moveIq: extras.moveIq,
     activityDetails: extras.activityDetails,
     activityFiles: extras.activityFiles,
+    activityTracks: extras.activityTracks,
     droppedTypes: extras.droppedTypes,
     deregistered: unique(deregisteredIds(root)),
     permissionChanges: permissionChanges(root),

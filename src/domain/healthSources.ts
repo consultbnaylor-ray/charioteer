@@ -3,7 +3,7 @@ import { garminExerciseMinutes } from '@/domain/dailyActivity';
 import { classifiedWorkoutSamples, isReplacedWorkoutKind, parseWorkoutActivityType, preferredActivityType } from '@/domain/fitnessSnapshot';
 import type { GarminActivity, GarminDaily, GarminReadings, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
 import { londonDay } from '@/domain/healthInsights';
-import type { DeviceWorkout } from '@/domain/workoutRoute';
+import { routeExpected, type DeviceWorkout } from '@/domain/workoutRoute';
 
 /** Shown on the workout detail screen only. */
 export const WORKOUT_SOURCE_GARMIN = 'From Garmin';
@@ -159,11 +159,18 @@ function garminWorkout(activity: GarminActivity): Span[] {
     energyKcal: null,
     averageHeartRate: activity.averageHeartRateBpm,
     effortScore: null,
-    routeExpected: false,
+    routeExpected: garminRouteExpected(activity),
     origin: 'garmin',
     trainingEffect: activity.trainingEffect,
     anaerobicEffect: activity.anaerobicEffect,
+    garminSummaryId: activity.summaryId,
   }];
+}
+
+/** An outdoor walk, run, hike, or cycle Garmin recorded. Its track may hold a path. */
+export function garminRouteExpected(activity: Pick<GarminActivity, 'activityType' | 'activityName'>): boolean {
+  const indoor = /indoor|treadmill|virtual|trainer|pool/i.test(`${activity.activityType} ${activity.activityName}`);
+  return routeExpected(parseWorkoutActivityType(activity.activityType, activity.activityName), indoor);
 }
 
 function collapseGarmin(rows: Span[]): Span[] {
@@ -205,10 +212,11 @@ function combine(garmin: Span, apple: Span): DeviceWorkout {
     energyKcal: garmin.energyKcal ?? apple.energyKcal,
     averageHeartRate: garmin.averageHeartRate ?? apple.averageHeartRate,
     effortScore: apple.effortScore ?? garmin.effortScore,
-    routeExpected: apple.routeExpected,
+    routeExpected: apple.routeExpected || garmin.routeExpected,
     origin: 'garmin',
     trainingEffect: garmin.trainingEffect,
     anaerobicEffect: garmin.anaerobicEffect,
+    garminSummaryId: garmin.garminSummaryId,
   });
 }
 
@@ -227,6 +235,7 @@ function strip(row: Span): DeviceWorkout {
     origin: row.origin,
     trainingEffect: row.trainingEffect,
     anaerobicEffect: row.anaerobicEffect,
+    ...(row.garminSummaryId ? { garminSummaryId: row.garminSummaryId } : {}),
   };
 }
 

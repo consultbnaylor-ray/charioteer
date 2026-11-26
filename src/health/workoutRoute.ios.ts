@@ -166,6 +166,7 @@ function keepOrigin(summary: DeviceWorkout, known: DeviceWorkout | null): Device
     distanceMetres: summary.distanceMetres ?? known.distanceMetres,
     energyKcal: summary.energyKcal ?? known.energyKcal,
     routeExpected: summary.routeExpected || known.routeExpected,
+    garminSummaryId: known.garminSummaryId,
   };
 }
 
@@ -183,6 +184,10 @@ export async function readDeviceRoute(id: string): Promise<{
     return { workout: devFixtureWorkout(), points: downsampleRoute(devFixturePoints()), heartSamples: [], denied: false };
   }
   const known = rememberedWorkout(id);
+  if (id.startsWith('garmin:')) {
+    // A Garmin-only session is not in Apple Health. The screen reads its Garmin track instead.
+    return { workout: known, points: [], heartSamples: [], denied: false };
+  }
   if (known && !known.routeExpected) {
     return { workout: known, points: [], heartSamples: [], denied: false };
   }

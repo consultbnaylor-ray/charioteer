@@ -20,6 +20,7 @@ import {
   type GarminDb,
 } from '../_shared/garmin.ts';
 import { summaryRows } from '../_shared/garminSummaries.ts';
+import { logSampleCounts } from '../_shared/garminTrack.ts';
 
 const DAILY_BASE = [
   'user_id',
@@ -59,6 +60,7 @@ Deno.serve(async (req) => {
   const body: unknown = await req.json().catch(() => null);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ ok: false, code: 'body' }, 400);
   const plan = mapGarminPush(body);
+  logSampleCounts(body);
   const admin = createClient(supabaseUrl, service, { auth: { persistSession: false } }) as unknown as GarminDb;
   const garminIds = [
     ...plan.dailies.map((row) => row.garminUserId),
@@ -180,8 +182,24 @@ async function saveExtraSummaries(
     ['garmin_epoch', summaryRows(plan.epochs, userIdByGarmin, (row) => ({ active_seconds: row.activeSeconds, steps: row.steps, distance_metres: row.distanceMetres, mean_heart_rate_bpm: row.meanHeartRateBpm }))],
     ['garmin_health_snapshot', summaryRows(plan.healthSnapshot, userIdByGarmin, (row) => ({ heart_rate_bpm: row.heartRateBpm, resting_heart_rate_bpm: row.restingHeartRateBpm, spo2: row.spo2, respiration: row.respiration, stress: row.stress }))],
     ['garmin_move_iq', summaryRows(plan.moveIq, userIdByGarmin, (row) => ({ activity_type: row.activityType, duration_seconds: row.durationSeconds, distance_metres: row.distanceMetres }))],
-    ['garmin_activity_detail', summaryRows(plan.activityDetails, userIdByGarmin, (row) => ({ duration_seconds: row.durationSeconds, distance_metres: row.distanceMetres, average_heart_rate_bpm: row.averageHeartRateBpm, active_kilocalories: row.activeKilocalories }))],
+    ['garmin_activity_detail', summaryRows(plan.activityDetails, userIdByGarmin, (row) => ({
+      duration_seconds: row.durationSeconds,
+      distance_metres: row.distanceMetres,
+      average_heart_rate_bpm: row.averageHeartRateBpm,
+      active_kilocalories: row.activeKilocalories,
+      start_latitude: row.startLatitude ?? null,
+      start_longitude: row.startLongitude ?? null,
+      elevation_gain_metres: row.elevationGainMetres ?? null,
+      elevation_loss_metres: row.elevationLossMetres ?? null,
+    }))],
     ['garmin_activity_file', summaryRows(plan.activityFiles, userIdByGarmin, (row) => ({ file_type: row.fileType }))],
+    ['garmin_activity_samples', summaryRows(plan.activityTracks, userIdByGarmin, (row) => ({
+      started_at: row.startedAt,
+      interval_seconds: row.intervalSeconds,
+      point_count: row.points.length,
+      gps_point_count: row.gpsPointCount,
+      points: row.points,
+    }))],
   ];
   for (const [table, rows] of batches) {
     if (!(await saveRows(admin, table, rows, { onConflict: 'user_id,summary_id' }, true))) return false;

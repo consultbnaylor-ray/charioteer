@@ -1,8 +1,11 @@
 /**
- * Extra Garmin Health API summaries. Scalar fields only.
- * A sample map, a file callback, and any position are dropped.
+ * Extra Garmin Health API summaries. Scalar fields only, except activity details:
+ * an activity detail keeps its start point and climb, and its samples become a
+ * downsampled route track (see garminTrack.ts) stored in garmin_activity_samples.
+ * Other sample maps, file callbacks, and positions are dropped.
  * Women's health keys are named and not parsed.
  */
+import { detailStartAndClimb, trackFromDetail, type GarminTrack } from './garminTrack.ts';
 
 export type GarminBloodPressure = {
   summaryId: string;
@@ -67,6 +70,11 @@ export type GarminActivityDetail = {
   distanceMetres: number | null;
   averageHeartRateBpm: number | null;
   activeKilocalories: number | null;
+  /** Rounded to 4 decimal places, about 11 m. Used to match a saved route. */
+  startLatitude?: number | null;
+  startLongitude?: number | null;
+  elevationGainMetres?: number | null;
+  elevationLossMetres?: number | null;
 };
 
 export type GarminActivityFile = {
@@ -87,6 +95,8 @@ export type GarminExtras = {
   moveIq: Pushed<GarminMoveIq>[];
   activityDetails: Pushed<GarminActivityDetail>[];
   activityFiles: Pushed<GarminActivityFile>[];
+  /** Downsampled route tracks from activity detail samples. */
+  activityTracks: GarminTrack[];
   /** Type names only. Women's health and anything we do not recognise. */
   droppedTypes: string[];
 };
@@ -130,6 +140,7 @@ export function emptyGarminExtras(): GarminExtras {
     moveIq: [],
     activityDetails: [],
     activityFiles: [],
+    activityTracks: [],
     droppedTypes: [],
   };
 }
@@ -146,6 +157,7 @@ export function parseGarminExtras(body: unknown): GarminExtras {
   extras.moveIq = [...rows(root, 'moveIQActivities', mapMoveIq), ...rows(root, 'moveiq', mapMoveIq)];
   extras.activityDetails = rows(root, 'activityDetails', mapActivityDetail);
   extras.activityFiles = rows(root, 'activityFiles', mapActivityFile);
+  extras.activityTracks = rows(root, 'activityDetails', mapActivityTrack);
   for (const key of Object.keys(root)) {
     if (isWomensHealthKey(key)) {
       extras.droppedTypes.push(key);
@@ -267,7 +279,14 @@ function mapActivityDetail(row: Record<string, unknown>): Pushed<GarminActivityD
     distanceMetres: whole(summary.distanceInMeters, 0, 500_000),
     averageHeartRateBpm: whole(summary.averageHeartRateInBeatsPerMinute, 20, 250),
     activeKilocalories: whole(summary.activeKilocalories, 0, 20_000),
+    ...detailStartAndClimb(row),
   };
+}
+
+function mapActivityTrack(row: Record<string, unknown>): GarminTrack | null {
+  const detail = mapActivityDetail(row);
+  if (!detail) return null;
+  return trackFromDetail(row, { garminUserId: detail.garminUserId, summaryId: detail.summaryId, calendarDate: detail.calendarDate });
 }
 
 function mapActivityFile(row: Record<string, unknown>): Pushed<GarminActivityFile> | null {
@@ -437,6 +456,10 @@ export function storedActivityDetail(value: unknown): GarminActivityDetail[] {
     distanceMetres: whole(row.distance_metres, 0, 500_000),
     averageHeartRateBpm: whole(row.average_heart_rate_bpm, 20, 250),
     activeKilocalories: whole(row.active_kilocalories, 0, 20_000),
+    startLatitude: bounded(row.start_latitude, -90, 90),
+    startLongitude: bounded(row.start_longitude, -180, 180),
+    elevationGainMetres: whole(row.elevation_gain_metres, 0, 20_000),
+    elevationLossMetres: whole(row.elevation_loss_metres, 0, 20_000),
   }));
 }
 

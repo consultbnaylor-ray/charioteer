@@ -218,7 +218,9 @@ import type {
   ThumosMessage,
   VoiceMint,
   VoiceTurnInput,
+  GarminActivityTrack,
 } from '@/data/types';
+import { garminDetailIds } from '@/domain/workoutTrace';
 
 type Row = Record<string, unknown>;
 
@@ -3643,7 +3645,7 @@ export class SupabaseRepository implements Repository {
       : statusFirst;
     const dailyFull = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, min_heart_rate_bpm, max_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories, steps, distance_metres, floors_climbed, average_stress_level, body_battery_charged, body_battery_drained, body_battery_highest, body_battery_lowest, step_goal, duration_seconds';
     const dailyWithKcal = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories';
-    const [dailiesFirst, activities, sleep, metrics, respiration, pulseOx, hrv, bloodPressure, bodyComp, skinTemp, stress, epochs, healthSnapshot, moveIq, activityDetails] = await Promise.all([
+    const [dailiesFirst, activities, sleep, metrics, respiration, pulseOx, hrv, bloodPressure, bodyComp, skinTemp, stress, epochs, healthSnapshot, moveIq, detailsFirst] = await Promise.all([
       this.client.from('garmin_dailies').select(dailyFull).order('calendar_date'),
       this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
       this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
@@ -3658,8 +3660,11 @@ export class SupabaseRepository implements Repository {
       this.client.from('garmin_epoch').select('summary_id, calendar_date, active_seconds, steps, distance_metres, mean_heart_rate_bpm').order('calendar_date'),
       this.client.from('garmin_health_snapshot').select('summary_id, calendar_date, heart_rate_bpm, resting_heart_rate_bpm, spo2, respiration, stress').order('calendar_date'),
       this.client.from('garmin_move_iq').select('summary_id, calendar_date, activity_type, duration_seconds, distance_metres').order('calendar_date'),
-      this.client.from('garmin_activity_detail').select('summary_id, calendar_date, duration_seconds, distance_metres, average_heart_rate_bpm, active_kilocalories').order('calendar_date'),
+      this.client.from('garmin_activity_detail').select('summary_id, calendar_date, duration_seconds, distance_metres, average_heart_rate_bpm, active_kilocalories, start_latitude, start_longitude, elevation_gain_metres, elevation_loss_metres').order('calendar_date'),
     ]);
+    const activityDetails = detailsFirst.error && missingColumn(detailsFirst.error.message, 'start_latitude')
+      ? await this.client.from('garmin_activity_detail').select('summary_id, calendar_date, duration_seconds, distance_metres, average_heart_rate_bpm, active_kilocalories').order('calendar_date')
+      : detailsFirst;
     const dailyNewMissing = dailiesFirst.error && ['steps', 'distance_metres', 'floors_climbed', 'min_heart_rate_bpm', 'max_heart_rate_bpm', 'average_stress_level', 'body_battery_charged', 'body_battery_drained', 'body_battery_highest', 'body_battery_lowest', 'step_goal', 'duration_seconds'].some((column) => missingColumn(dailiesFirst.error?.message ?? '', column));
     const dailiesWithKnown = dailyNewMissing
       ? await this.client.from('garmin_dailies').select(dailyWithKcal).order('calendar_date')
@@ -3707,6 +3712,24 @@ export class SupabaseRepository implements Repository {
       storedMissing: typeof statusRow?.missing_permissions === 'string' ? statusRow.missing_permissions : null,
     });
     return { ...readings, needsPermissions: permission.needs, missingPermissions: permission.missing };
+  }
+
+  async garminActivityTrack(summaryId: string): Promise<GarminActivityTrack | null> {
+    const ids = garminDetailIds(summaryId);
+    if (!ids.length) return null;
+    const [track, detail] = await Promise.all([
+      this.client.from('garmin_activity_samples').select('summary_id, started_at, points').in('summary_id', ids).limit(1).maybeSingle(),
+      this.client.from('garmin_activity_detail').select('summary_id, elevation_gain_metres, elevation_loss_metres').in('summary_id', ids).limit(1).maybeSingle(),
+    ]);
+    if (track.error && !missingRelation(track.error.message)) throw new Error('Garmin route could not be read.');
+    const row = track.data as { started_at?: unknown; points?: unknown } | null;
+    const climb = detail.error ? null : detail.data as { elevation_gain_metres?: unknown; elevation_loss_metres?: unknown } | null;
+    const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+    return {
+      track: row && typeof row.started_at === 'string' && Array.isArray(row.points) ? { startedAt: row.started_at, points: row.points } : null,
+      elevationGainMetres: number(climb?.elevation_gain_metres),
+      elevationLossMetres: number(climb?.elevation_loss_metres),
+    };
   }
 
   async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {

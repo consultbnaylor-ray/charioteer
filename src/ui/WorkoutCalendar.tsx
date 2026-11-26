@@ -41,7 +41,7 @@ import {
   rescheduleWorkoutReminders,
   saveWorkoutReminders,
 } from '@/notifications/sessionReminder';
-import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
+import { routeSummaryLine, VIEW_ROUTE_MAP, type DeviceWorkout } from '@/domain/workoutRoute';
 import { presentSessionEvent } from '@/ui/addToCalendar';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
@@ -575,8 +575,8 @@ export function WorkoutCalendar({
                 </Pressable>
               )}
               {matched?.routeExpected ? (
-                <Pressable accessibilityRole="button" accessibilityLabel={`View route, ${matched.label}`} onPress={() => router.push(`/workout/${encodeURIComponent(matched.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
-                  <T>View route</T>
+                <Pressable accessibilityRole="button" accessibilityLabel={`${VIEW_ROUTE_MAP}, ${matched.label}`} onPress={() => router.push(`/workout/${encodeURIComponent(matched.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <T>{VIEW_ROUTE_MAP}</T>
                 </Pressable>
               ) : null}
               <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => begin(session)} style={{ minHeight: 44, justifyContent: 'center' }}>
