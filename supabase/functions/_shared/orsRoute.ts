@@ -398,6 +398,10 @@ export const BAD_REQUEST_MESSAGE = 'That route request could not be used.';
 export const UNAVAILABLE_MESSAGE =
   'The route service is not available right now. Nothing was saved.';
 
+/** The app's shared route allowance at the service is used up. It is not this person's limit. */
+export const SERVICE_QUOTA_MESSAGE =
+  'The route service has used up today\'s allowance for Charioteer. Try again later. Nothing was saved.';
+
 export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request' | 'limit';
 
 export type RouteFailure = {
@@ -416,11 +420,21 @@ export function classifyOrsFailure(status: number, payload: unknown): RouteFailu
     }
     return { status: 400, body: { ok: false, code: 'bad_request', message: BAD_REQUEST_MESSAGE } };
   }
+  if ((status === 403 || status === 401) && gatewaySaysQuota(payload)) {
+    return { status: 503, body: { ok: false, code: 'unavailable', message: SERVICE_QUOTA_MESSAGE } };
+  }
   const code = orsErrorCode(payload);
   if (status === 404 && (code === 2009 || code === 2010)) {
     return { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } };
   }
   return { status: 503, body: { ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE } };
+}
+
+/** HeiGIT's gateway answers 403 {"error":"Quota exceeded"} when the app's daily allowance is used up. */
+function gatewaySaysQuota(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const error = (payload as { error?: unknown }).error;
+  return typeof error === 'string' && /quota/i.test(error);
 }
 
 function orsErrorCode(payload: unknown): number | null {

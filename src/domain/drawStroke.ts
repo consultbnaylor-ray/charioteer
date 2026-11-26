@@ -1,4 +1,11 @@
-import { adoptSnappedLine, matchDrawnSketch, type RoutePlan } from '@/domain/findRoute';
+import {
+  adoptSnappedLine,
+  matchDrawnSketch,
+  ROUTE_BAD_REQUEST,
+  ROUTE_NO_PATH,
+  ROUTE_UNAVAILABLE,
+  type RoutePlan,
+} from '@/domain/findRoute';
 import {
   centreKeepingPoint,
   viewToPoint,
@@ -415,6 +422,10 @@ function combinedPlan(plans: readonly RoutePlan[], partial: boolean): RoutePlan 
  * A limit is refused before any call. A later failure does not pretend the earlier part snapped.
  * The joined line loses any there-and-back the pencil did not draw, including one where two pieces meet.
  * `matched` is true when every piece snapped. `partial` is true when some snapped and some are the pencil.
+ * A piece the route service could not answer keeps the pencil, and the other pieces are still snapped.
+ * `serviceMissed` is true when that happened. Two misses before anything snapped stop the calls,
+ * because the service is then most likely down and every other call would fail too.
+ * A rate limit, a sign-in problem or a lost connection stops the calls at once.
  */
 export async function snapDrawnStrokes(input: {
   strokes: readonly (readonly OutdoorPoint[])[];
@@ -422,7 +433,7 @@ export async function snapDrawnStrokes(input: {
   closeLoop?: boolean;
   send: (waypoints: readonly OutdoorPoint[]) => Promise<RoutePlan>;
 }): Promise<
-  | { ok: true; matched: boolean; partial: boolean; points: OutdoorPoint[]; plan: RoutePlan | null }
+  | { ok: true; matched: boolean; partial: boolean; serviceMissed: boolean; points: OutdoorPoint[]; plan: RoutePlan | null }
   | { ok: false; limit: true }
   | { ok: false; limit: false; error: unknown }
 > {
@@ -430,6 +441,9 @@ export async function snapDrawnStrokes(input: {
   if (built.limit) return { ok: false, limit: true };
   if (built.requests.length === 0) return { ok: false, limit: false, error: new Error('short') };
   let missed = false;
+  let failures = 0;
+  let answered = 0;
+  let lastError: unknown = null;
   let line: OutdoorPoint[] = [];
   let reference: OutdoorPoint[] = [];
   const plans: RoutePlan[] = [];
@@ -438,15 +452,32 @@ export async function snapDrawnStrokes(input: {
     if (request.routedGap) {
       try {
         const next = await input.send(request.waypoints);
+        answered += 1;
         plans.push(next);
         line = appendRouted(line, next.points);
       } catch (error) {
-        return { ok: false, limit: false, error };
+        if (!pieceCanFollowPencil(error) || (answered === 0 && failures >= 1)) {
+          return { ok: false, limit: false, error };
+        }
+        failures += 1;
+        lastError = error;
+        missed = true;
+        line = appendRouted(line, request.waypoints);
       }
       continue;
     }
     const result = await matchDrawnSketch({ sketch: request.waypoints, send: input.send });
-    if (!result.matched && !result.sawRoute) return { ok: false, limit: false, error: result.error };
+    if (!result.matched && !result.sawRoute) {
+      if (!pieceCanFollowPencil(result.error) || (answered === 0 && failures >= 1)) {
+        return { ok: false, limit: false, error: result.error };
+      }
+      failures += 1;
+      lastError = result.error;
+      missed = true;
+      line = appendRouted(line, request.waypoints);
+      continue;
+    }
+    answered += 1;
     if (!result.matched) missed = true;
     else plans.push(result.plan);
     line = appendRouted(line, result.matched ? result.plan.points : request.waypoints);
@@ -455,6 +486,7 @@ export async function snapDrawnStrokes(input: {
     line = removeRouteSpurs(line, SPUR_WITHIN_M, SPUR_MAX_M, reference);
   }
   if (line.length < 2) return { ok: false, limit: false, error: new Error('short') };
+  if (failures > 0 && plans.length === 0) return { ok: false, limit: false, error: lastError };
   const sawPlan = plans.length > 0;
   const partial = missed && sawPlan;
   const plan = combinedPlan(plans, partial);
@@ -462,9 +494,21 @@ export async function snapDrawnStrokes(input: {
     ok: true,
     matched: !missed && sawPlan,
     partial,
+    serviceMissed: failures > 0,
     points: line,
     plan: plan ? adoptSnappedLine(plan, line) : null,
   };
+}
+
+/**
+ * A piece can keep the pencil when the service answered but could not route it:
+ * unavailable, no path, or a request it could not use.
+ * A rate limit, sign-in, lost connection, slow answer or route limit is not one of these.
+ */
+function pieceCanFollowPencil(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const message = (error as { message?: unknown }).message;
+  return message === ROUTE_UNAVAILABLE || message === ROUTE_NO_PATH || message === ROUTE_BAD_REQUEST;
 }
 
 /** The green tick waits until a stroke has actually moved. */

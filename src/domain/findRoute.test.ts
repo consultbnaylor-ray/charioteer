@@ -25,6 +25,7 @@ import {
   ROUTE_SIGN_IN,
   ROUTE_SLOW,
   ROUTE_UNAVAILABLE,
+  messageForRouteBody,
   appleMapsUrl,
   elevationProfileSamples,
   explainRouteFailure,
@@ -75,6 +76,7 @@ import {
   readViaPoints,
   buildSnapBody,
   classifyOrsFailure,
+  SERVICE_QUOTA_MESSAGE,
   haversineM,
   parseSnap,
   snapUrl,
@@ -497,6 +499,12 @@ describe('route finding', () => {
       body: { ok: false, code: 'limit', message: ROUTE_LIMIT_MESSAGE },
     });
     expect(classifyOrsFailure(500, { error: { code: 2099 } }).status).toBe(503);
+    expect(classifyOrsFailure(403, { error: 'Quota exceeded' })).toEqual({
+      status: 503,
+      body: { ok: false, code: 'unavailable', message: SERVICE_QUOTA_MESSAGE },
+    });
+    expect(classifyOrsFailure(403, { error: 'Access to this API has been disallowed' }).body.message).toBe(ROUTE_UNAVAILABLE);
+    expect(messageForRouteBody({ ok: false, code: 'unavailable', message: SERVICE_QUOTA_MESSAGE }, 503)).toBe(SERVICE_QUOTA_MESSAGE);
 
     const http = (status: number, body: unknown, fail = false) => ({
       name: 'FunctionsHttpError',
