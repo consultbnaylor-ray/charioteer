@@ -671,7 +671,8 @@ function readingClose(left: OverlayReading, right: OverlayReading): boolean {
  * The first onLayout call can report origin 0,0 before the view sits in the window.
  * Subtracting that origin from pageY leaves the point too far down the screen.
  * A later lone reading does not clear a frame that has already been confirmed.
- * `again` is true only while the frame is still unconfirmed, so one more reading is taken.
+ * `again` is true while the frame is unconfirmed, or while a new reading
+ * disagrees with the confirmed frame, so one more reading is taken.
  */
 export function nextOverlayMeasure(
   state: OverlayMeasureState,
@@ -687,7 +688,15 @@ export function nextOverlayMeasure(
   if (state.pending && readingClose(state.pending, reading)) {
     return { state: { pending: reading, attempts: 0, ready: reading }, again: false };
   }
-  if (state.ready) return { state: { pending: reading, attempts: 0, ready: state.ready }, again: false };
+  if (state.ready) {
+    // The view moved without changing size (the page scrolled, or something
+    // above it changed). Keep the confirmed frame for now and take one more
+    // reading, so the new place is confirmed on the next frame rather than
+    // waiting for the next stroke.
+    const attempts = state.attempts + 1;
+    const again = !readingClose(state.ready, reading) && attempts < 4;
+    return { state: { pending: reading, attempts: again ? attempts : 0, ready: state.ready }, again };
+  }
   const attempts = state.attempts + 1;
   if (attempts >= 4) return { state: { pending: reading, attempts: 0, ready: reading }, again: false };
   return { state: { pending: reading, attempts, ready: null }, again: true };
@@ -695,10 +704,22 @@ export function nextOverlayMeasure(
 
 /**
  * The finger, in the overlay's own coordinates.
- * Page position minus the measured window origin is the touch.
- * The first responder event can report locationY still in page space, which sits
- * too far down the screen by the overlay's distance from the top and draws a
- * short line south of the finger. That sample is corrected, not kept.
+ *
+ * locationX/locationY is the touch measured by the phone against the drawing
+ * overlay itself, so it is the point under the finger. It needs no window
+ * measurement and is right inside the full screen modal, under a safe-area
+ * inset, after the page scrolls, or after the map moves on the screen.
+ *
+ * pageX/pageY minus a measured window origin is used only when the location is
+ * missing, or when it is plainly in page space: page and location are the same
+ * point while the overlay sits away from the top left of the page. That was the
+ * first responder sample in build 127, which drew a short line south of the finger.
+ *
+ * Build 138 preferred page minus the measured origin. That origin is an
+ * asynchronous window measurement of the map, and in the full screen map it did
+ * not match the frame of the touch's page position, so every point landed a
+ * fixed distance above the finger.
+ *
  * Nothing is returned until the overlay has been measured, and a point outside
  * the overlay is dropped. The camera centre is never filled in.
  */
@@ -708,21 +729,29 @@ export function fingerInOverlay(
 ): { x: number; y: number } | null {
   if (!frame.ready) return null;
   if (!(frame.width > 0) || !(frame.height > 0)) return null;
-  if (!Number.isFinite(frame.originX) || !Number.isFinite(frame.originY)) return null;
+  const originKnown = Number.isFinite(frame.originX) && Number.isFinite(frame.originY);
   const pageX = touch.pageX;
   const pageY = touch.pageY;
   const locationX = touch.locationX;
   const locationY = touch.locationY;
-  const page = finiteNumber(pageX) && finiteNumber(pageY)
+  const hasPage = finiteNumber(pageX) && finiteNumber(pageY);
+  const hasLocal = finiteNumber(locationX) && finiteNumber(locationY);
+  const page = hasPage && originKnown
     ? { x: pageX - frame.originX, y: pageY - frame.originY }
     : null;
-  const local = finiteNumber(locationX) && finiteNumber(locationY)
-    ? { x: locationX, y: locationY }
-    : null;
-  // Page minus the measured origin wins. locationY on the first touch can still
-  // be the page position, which is originY pixels too far down the screen.
+  if (hasLocal) {
+    const local = { x: locationX, y: locationY };
+    const pageSpace = hasPage
+      && originKnown
+      && Math.abs(pageX - locationX) <= 0.5
+      && Math.abs(pageY - locationY) <= 0.5
+      && (Math.abs(frame.originX) > 2 || Math.abs(frame.originY) > 2);
+    if (pageSpace) {
+      return page && insideOverlay(page.x, page.y, frame.width, frame.height) ? page : null;
+    }
+    return insideOverlay(local.x, local.y, frame.width, frame.height) ? local : null;
+  }
   if (page && insideOverlay(page.x, page.y, frame.width, frame.height)) return page;
-  if (local && insideOverlay(local.x, local.y, frame.width, frame.height)) return local;
   return null;
 }
 
