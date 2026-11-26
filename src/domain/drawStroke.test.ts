@@ -187,7 +187,7 @@ describe('draw strokes', () => {
     const hold = maker.slice(maker.indexOf('function holdStroke'), maker.indexOf('async function snapDrawn'));
     expect(hold).not.toMatch(/planOutdoorRoute|matchDrawnSketch|sketchWaypoints|noteRouteRequest/);
     const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
-    expect(snap).toContain('snapDrawnStrokes');
+    expect(snap).toContain('snapDrawnIntent');
     expect(snap).toContain('planOutdoorRoute');
     expect(snap).not.toContain('joinStroke');
     expect(readFileSync('src/domain/drawStroke.ts', 'utf8')).toContain('matchDrawnSketch');

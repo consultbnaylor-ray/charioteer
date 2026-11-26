@@ -113,6 +113,11 @@ export type RoutePlanInput = {
   sketch?: OutdoorPoint[] | null;
   /** One id for this tap, including a network retry of the same tap. */
   requestId?: string;
+  /**
+   * The sketch is already a few intent points chosen from a drawing.
+   * It is sent as it is, and the server lets each point join the nearest path.
+   */
+  intent?: boolean;
 };
 
 export type RoutePlan = {

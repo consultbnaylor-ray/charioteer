@@ -162,6 +162,7 @@ describe('a drawn route follows the streets the service returns, not straight pe
   it('tells the person when part of the route uses nearby streets rather than their exact line', () => {
     expect(DRAW_SNAP_STRAYED).toBe('Snapped to paths. Part of your line had no path under it, so that part uses the nearest streets and footpaths.');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
-    expect(maker).toContain('result.strayed ? DRAW_SNAP_STRAYED : DRAW_SNAPPED');
+    expect(maker).toContain("result.fit === 'near'");
+    expect(maker).toContain('? DRAW_SNAP_STRAYED');
   });
 });

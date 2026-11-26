@@ -185,9 +185,10 @@ describe('a drawn route when one call to the route service fails', () => {
     expect((result.error as Error).message).toBe(ROUTE_UNAVAILABLE);
   });
 
-  it('says plainly that one part follows the pencil', () => {
+  it('keeps the plain pencil-part wording, and the drawing screen no longer shows a pencil line as the route', () => {
     expect(DRAW_SNAP_SERVICE_GAP).toBe('Snapped to paths. The route service missed one part, so that part follows your line.');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
-    expect(maker).toContain('result.serviceMissed ? DRAW_SNAP_SERVICE_GAP : DRAW_SNAP_MOSTLY');
+    expect(maker).toContain('snapDrawnIntent');
+    expect(maker).not.toContain('unmatchedDrawnPlan');
   });
 });

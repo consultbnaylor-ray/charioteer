@@ -282,9 +282,24 @@ export function buildDirectionsBody(input: {
   via?: readonly PlacePoint[] | null;
   preferPaths?: boolean;
   sketch?: readonly PlacePoint[] | null;
+  /** The sketch is a handful of intent points from a drawing. See `INTENT_SNAP_RADIUS_M`. */
+  intent?: boolean;
 }): Record<string, unknown> | null {
   const preferPaths = input.preferPaths === true;
   const sketch = (input.sketch ?? []).slice(0, ORS_WAYPOINT_LIMIT);
+  if (sketch.length >= 2 && input.intent === true) {
+    return {
+      coordinates: sketch.map(coordinateOf),
+      // A drawn turning point can sit in a field or on a river. The widest hosted radius
+      // lets it join the nearest path, and the route then finds its own way (over a bridge).
+      radiuses: sketch.map(() => INTENT_SNAP_RADIUS_M),
+      // The points are a few hundred metres apart, so a forced straight exit only adds loops.
+      continue_straight: false,
+      elevation: true,
+      instructions: false,
+      ...routeOptions(null, preferPaths),
+    };
+  }
   if (sketch.length >= 2) {
     return {
       coordinates: sketch.map(coordinateOf),
@@ -329,6 +344,58 @@ function round6(value: number): number {
 
 /** Hosted snap search limit. A second lookup stays inside the one route request. */
 export const SNAP_RADIUS_M = 350;
+
+/** How far an intent point from a drawing may join the path network. The hosted maximum. */
+export const INTENT_SNAP_RADIUS_M = SNAP_RADIUS_M;
+
+/** True only for the drawn-route intent request. Anything else keeps the older sketch rules. */
+export function readIntent(value: unknown): boolean {
+  return value === true;
+}
+
+/** One snap call for every intent point. */
+export function buildSnapManyBody(points: readonly PlacePoint[]): Record<string, unknown> {
+  return {
+    locations: points.slice(0, ORS_WAYPOINT_LIMIT).map(coordinateOf),
+    radius: SNAP_RADIUS_M,
+  };
+}
+
+/**
+ * The snapped place for each point, in the order sent. Null where nothing was in reach.
+ * The geojson answer leaves out a point that did not snap and names the rest by `source_id`;
+ * the json answer keeps a null in its place. Both are read.
+ */
+export function parseSnapMany(payload: unknown, count: number): (PlacePoint | null)[] {
+  const out: (PlacePoint | null)[] = Array.from({ length: Math.max(0, count) }, () => null);
+  if (!payload || typeof payload !== 'object') return out;
+  const read = (pair: unknown): PlacePoint | null => {
+    if (!Array.isArray(pair) || pair.length < 2) return null;
+    const longitude = Number(pair[0]);
+    const latitude = Number(pair[1]);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || (latitude === 0 && longitude === 0)) return null;
+    return { latitude: round6(latitude), longitude: round6(longitude) };
+  };
+  const row = payload as { features?: unknown[]; locations?: unknown[] };
+  if (Array.isArray(row.features)) {
+    row.features.forEach((feature, position) => {
+      if (!feature || typeof feature !== 'object') return;
+      const item = feature as { geometry?: { coordinates?: unknown }; properties?: { source_id?: unknown } };
+      const source = Number(item.properties?.source_id);
+      const index = Number.isInteger(source) ? source : position;
+      if (index >= 0 && index < out.length) out[index] = read(item.geometry?.coordinates);
+    });
+    return out;
+  }
+  if (Array.isArray(row.locations)) {
+    row.locations.forEach((location, index) => {
+      if (index >= out.length || !location || typeof location !== 'object') return;
+      out[index] = read((location as { location?: unknown }).location);
+    });
+  }
+  return out;
+}
 
 export function snapUrl(mode: Mode): string {
   return `${ORS_HOST}/openrouteservice/v2/snap/${PROFILES[mode]}/geojson`;

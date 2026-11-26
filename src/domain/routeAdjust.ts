@@ -1,7 +1,7 @@
 import { isoDay } from '@/domain/dates';
 import type { RoutePlace } from '@/domain/findRoute';
 import { ROUTE_OFFLINE, ROUTE_SNAP_LIMIT, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
-import { simplifyLine, sketchWaypoints, type OutdoorPoint } from '@/domain/outdoorRoute';
+import { SKETCH_WAYPOINT_MAX, simplifyLine, sketchWaypoints, type OutdoorPoint } from '@/domain/outdoorRoute';
 
 export const VIA_POINT_CAP = 5;
 export const REDRAW_PAUSE_MS = 500;
@@ -337,6 +337,7 @@ export function routePlanBody(input: RoutePlanInput): {
   preferPaths: boolean;
   sketch: OutdoorPoint[];
   requestId?: string;
+  intent?: true;
 } {
   return {
     action: 'route',
@@ -348,8 +349,11 @@ export function routePlanBody(input: RoutePlanInput): {
     minutes: input.minutes ?? null,
     via: capVia(input.via ?? []),
     preferPaths: input.preferPaths === true,
-    sketch: sketchWaypoints(input.sketch ?? []),
+    sketch: input.intent === true
+      ? (input.sketch ?? []).slice(0, SKETCH_WAYPOINT_MAX).map((point) => ({ latitude: point.latitude, longitude: point.longitude }))
+      : sketchWaypoints(input.sketch ?? []),
     ...(input.requestId ? { requestId: input.requestId } : {}),
+    ...(input.intent === true ? { intent: true as const } : {}),
   };
 }
 

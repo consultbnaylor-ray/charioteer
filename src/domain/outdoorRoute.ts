@@ -741,7 +741,7 @@ export function removeRouteSpurs(
 }
 
 /** Fills long gaps so a corner-only pencil can be compared with a detailed route. */
-function densifyLine(points: readonly OutdoorPoint[], stepM = 30): OutdoorPoint[] {
+export function densifyLine(points: readonly OutdoorPoint[], stepM = 30): OutdoorPoint[] {
   const line = cleanPoints(points);
   if (line.length < 2) return line.map(copyPoint);
   const step = Math.max(stepM, pathMetres(line) / 300);
