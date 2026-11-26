@@ -17,6 +17,7 @@ import {
   UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
   buildSnapBody,
+  buildSnapManyBody,
   classifyOrsFailure,
   cleanPlaceQuery,
   directionsUrl,
@@ -26,6 +27,8 @@ import {
   parseDirections,
   parseGeocode,
   parseSnap,
+  parseSnapMany,
+  readIntent,
   readMode,
   readPlace,
   readShape,
@@ -136,6 +139,7 @@ Deno.serve(async (req) => {
     via?: unknown;
     preferPaths?: unknown;
     sketch?: unknown;
+    intent?: unknown;
     requestId?: unknown;
   } | null;
   if (!body || (body.action !== 'route' && body.action !== 'search')) {
@@ -192,11 +196,25 @@ Deno.serve(async (req) => {
     const lengthM = routeLengthM({ mode, distanceM: body.distanceM, minutes: body.minutes });
     if (!lengthM && vias.length === 0 && sketch.length < 2) return json({ ok: false, code: 'bad_request', message: 'Choose a distance or a time.' }, 400);
     const routed = routingMode(mode, preferPaths);
-    const directions = buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch });
+    const intent = readIntent(body.intent) && sketch.length >= 2;
+    const directions = buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch, intent });
     if (!directions) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
     const first = await postDirections(key, routed, shape, directions);
     if (first.kind === 'plan') return finish({ ok: true, mocked: false, mode, shape, ...first.plan });
     if (first.failure.body.code !== 'no_path') return json(first.failure.body, first.failure.status);
+    if (intent) {
+      // A drawn point is too far from any path. One snap call moves every point onto the
+      // network, points with nothing in reach are left out, and the route is asked once more.
+      const moved = await snapMany(key, routed, sketch);
+      if (moved.kind === 'failure') return json(moved.failure.body, moved.failure.status);
+      if (moved.points.length < 2) return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
+      const again = buildDirectionsBody({ mode, shape, start: moved.points[0]!, end, lengthM: 0, via: [], preferPaths, sketch: moved.points, intent });
+      if (!again) return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
+      const retried = await postDirections(key, routed, shape, again);
+      if (retried.kind === 'plan') return finish({ ok: true, mocked: false, mode, shape, ...retried.plan });
+      if (retried.failure.body.code === 'no_path') return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
+      return json(retried.failure.body, retried.failure.status);
+    }
     const snapped = await snapStart(key, routed, sketch[0] ?? start);
     if (snapped.kind === 'failure') return json(snapped.failure.body, snapped.failure.status);
     if (snapped.kind === 'none') return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
@@ -306,6 +324,36 @@ async function snapStart(
   const distanceM = snapped.distanceM ?? Math.round(haversineM(start, snapped));
   if (distanceM > SNAP_RADIUS_M) return { kind: 'none' };
   return { kind: 'point', point: { latitude: snapped.latitude, longitude: snapped.longitude }, distanceM };
+}
+
+/** Every intent point snapped in one call, in order. A point with no path in reach is dropped. */
+async function snapMany(
+  key: string,
+  mode: NonNullable<ReturnType<typeof readMode>>,
+  points: readonly { latitude: number; longitude: number }[],
+): Promise<
+  | { kind: 'points'; points: { latitude: number; longitude: number }[] }
+  | { kind: 'failure'; failure: ReturnType<typeof classifyOrsFailure> }
+> {
+  const response = await fetch(snapUrl(mode), {
+    method: 'POST',
+    headers: {
+      ...orsRequestHeaders(key, 'application/geo+json, application/json'),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildSnapManyBody(points)),
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    logOrsFailure('snap-many', response.status, payload, null);
+    const failure = classifyOrsFailure(response.status, payload);
+    if (failure.body.code === 'no_path' || failure.body.code === 'bad_request') return { kind: 'points', points: [] };
+    return { kind: 'failure', failure };
+  }
+  const payload = await response.json().catch(() => null);
+  const snapped = parseSnapMany(payload, points.length).filter((point): point is { latitude: number; longitude: number } => point != null);
+  return { kind: 'points', points: snapped };
 }
 
 /** Writes one row after a successful plan or place list. A refusal, a bad request, or a failed lookup writes nothing. */
