@@ -1,9 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
-import { gateAiUse } from '../_shared/aiAllowance.ts';
-import { json, preflight } from '../_shared/http.ts';
+import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
-import { mealProviderResult, type MealProviderFault } from '../_shared/mealProvider.ts';
+import { MEAL_NO_RETRY_HEADER, mealProviderResult, providerRetryPointless, type MealProviderFault } from '../_shared/mealProvider.ts';
 import { MEAL_ESTIMATE_PROMPT, PHOTO_READ_FAIL, estimateFromText, parseMealEstimate } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
@@ -20,6 +20,19 @@ function completionText(payload: unknown): string {
 function requestLabel(req: Request): string {
   const raw = req.headers.get('X-Request-Id') ?? '';
   return /^[0-9a-f-]{8,40}$/i.test(raw) ? raw : '';
+}
+
+/** A 503 the phone should show at once instead of retrying, because the provider is out of credit. */
+function noRetry(body: Record<string, unknown>, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+      [MEAL_NO_RETRY_HEADER]: '1',
+      'Access-Control-Expose-Headers': MEAL_NO_RETRY_HEADER,
+    },
+  });
 }
 
 /** Category only. The photo, the meal text, the key, and provider bodies are not logged. */
@@ -84,7 +97,8 @@ Deno.serve(async (req) => {
       return json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
     }
     if (decision.outcome === 'unavailable') {
-      return json({ ok: false, code: decision.code, requestId: requestId || null }, 503);
+      const body = { ok: false, code: decision.code, requestId: requestId || null };
+      return providerRetryPointless(fault) ? noRetry(body, 503) : json(body, 503);
     }
     if (decision.providerUnavailable) {
       return json({ ok: true, items: typed, source: 'local', providerUnavailable: true });
@@ -120,6 +134,8 @@ Deno.serve(async (req) => {
     kind: 'meal',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once the model returns a usable estimate.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json({ ...gate.body, usage: null }, gate.status);
 
@@ -172,6 +188,13 @@ Deno.serve(async (req) => {
       warnMeal('parse');
       return replyFor({ kind: 'unparsed' });
     }
+    await countAiUse({
+      admin,
+      userId: userData.user.id,
+      kind: 'meal',
+      tier: gate.ok ? gate.tier : null,
+      requestId,
+    }).catch(() => false);
     return json({ ok: true, items: parsed, source: 'model', requestId: requestId || null });
   } catch (error) {
     const name = error instanceof Error ? error.name : '';
