@@ -11,6 +11,7 @@ import {
   fullScreenMapHeight,
   fullScreenPanelMaxHeight,
 } from '@/domain/fullScreenMap';
+import { drawCloseLabel } from '@/domain/drawStroke';
 import { MAP_CREDIT, type MapScheme } from '@/domain/outdoorRoute';
 import {
   fullScreenModalVisible,
@@ -288,7 +289,7 @@ export function MapShell({
             <CornerButton label="Undo" top={60} right={8} disabled={!canUndoDraw} onPress={() => { if (canUndoDraw) onUndoDraw?.(); }}>
               <UndoIcon />
             </CornerButton>
-            <CornerButton label="Clear" top={60} right={60} disabled={!canClearDraw} onPress={() => { if (canClearDraw) onClearDraw?.(); }}>
+            <CornerButton label={drawCloseLabel(drawing)} top={60} right={60} disabled={!canClearDraw} onPress={() => { if (canClearDraw) onClearDraw?.(); }}>
               <ClearIcon />
             </CornerButton>
           </>
@@ -419,6 +420,7 @@ export function MapFrame({
   onUndoDraw,
   onClearDraw,
   onConfirmDraw,
+  onExitDraw,
   canUndoDraw,
   canClearDraw,
   canConfirmDraw,
@@ -444,6 +446,8 @@ export function MapFrame({
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
   onConfirmDraw?: () => void;
+  /** Leaves draw mode and keeps the sketch. Called when the full-screen map closes. */
+  onExitDraw?: () => void;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
   canConfirmDraw?: boolean;
@@ -460,6 +464,8 @@ export function MapFrame({
   const modalVisible = fullScreenModalVisible(phase);
   const showNativeMap = fullScreenShowsNativeMap(phase);
   function collapse() {
+    // The inline map's page would stay locked if draw mode carried on after closing.
+    if (drawing) onExitDraw?.();
     setPhase((current) => nextFullScreenPhase(current, 'unmount-map'));
   }
   useEffect(() => {

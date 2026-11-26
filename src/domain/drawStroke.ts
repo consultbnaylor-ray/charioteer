@@ -95,6 +95,36 @@ export function clearDrawStrokes(): OutdoorPoint[][] {
   return [];
 }
 
+/**
+ * What leaves or enters draw mode. The pen toggles. The X stops drawing and
+ * clears the sketch. Collapsing the full-screen map, opening Adjust and a snapped
+ * route stop drawing and keep the sketch. Page scrolling is locked only while
+ * draw mode is on (the map also releases it when the screen closes), so every
+ * way out of draw mode gives the page its scroll back.
+ */
+export type DrawModeEvent = 'pen' | 'close' | 'collapse' | 'adjust' | 'snapped';
+
+export function nextDrawMode(drawing: boolean, event: DrawModeEvent): { drawing: boolean; clearSketch: boolean } {
+  if (event === 'pen') return { drawing: !drawing, clearSketch: false };
+  if (event === 'close') return { drawing: false, clearSketch: true };
+  return { drawing: false, clearSketch: false };
+}
+
+/** The X is always live in draw mode, so there is always a way out, even before a line is drawn. */
+export function drawCloseEnabled(input: { drawing: boolean; hasSketch: boolean; fromDraw: boolean }): boolean {
+  return input.drawing || input.hasSketch || input.fromDraw;
+}
+
+/** Spoken name of the X. In draw mode it stops drawing as well as clearing. */
+export function drawCloseLabel(drawing: boolean): string {
+  return drawing ? 'Stop drawing and clear' : 'Clear';
+}
+
+/** The page under the map scrolls unless draw mode is on. */
+export function pageScrollsWhileDrawing(drawing: boolean): boolean {
+  return !drawing;
+}
+
 /** One line for the route service. The shared join point is not repeated. */
 export function combineDrawStrokes(strokes: readonly (readonly OutdoorPoint[])[]): OutdoorPoint[] {
   const line: OutdoorPoint[] = [];
