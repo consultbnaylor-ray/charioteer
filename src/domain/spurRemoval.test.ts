@@ -9,7 +9,7 @@ import {
   removeRouteSpurs,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
-import { DRAW_SNAP_MOSTLY } from '@/domain/routeAdjust';
+import { DRAW_SNAP_MOSTLY, DRAW_SNAP_NO_PATH_ALONG } from '@/domain/routeAdjust';
 
 const origin: OutdoorPoint = { latitude: 52.906, longitude: -1.384 };
 
@@ -155,7 +155,7 @@ describe('snapping a long drawn line in pieces', () => {
     expect(result.plan?.ascentM).toBeGreaterThanOrEqual(10 * calls - 2);
   });
 
-  it('labels a mix of snapped and pencil pieces as mostly snapped, not as only the pencil', async () => {
+  it('refuses a long piece whose route goes a long way round, instead of drawing it straight', async () => {
     expect(DRAW_SNAP_MOSTLY).toBe('Snapped to paths. A short part follows your line.');
     let calls = 0;
     const result = await snapDrawnStrokes({
@@ -165,16 +165,13 @@ describe('snapping a long drawn line in pieces', () => {
         calls += 1;
         const first = waypoints[0]!;
         const last = waypoints[waypoints.length - 1]!;
-        // The second piece wanders far off the pencil, so it falls back to the pencil.
+        // The second piece only has a path 900 m away, like a bridge far down a river.
         if (calls === 2) return planOf(dense([first, offset(900, 0, first), offset(900, 0, last), last], 20), 5);
         return planOf(dense([first, last]), 5);
       },
     });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.matched).toBe(false);
-    expect(result.partial).toBe(true);
-    expect(result.plan).not.toBeNull();
-    expect(result.plan?.ascentM).toBeNull();
+    expect(result.ok).toBe(false);
+    if (result.ok || result.limit) return;
+    expect((result.error as Error).message).toBe(DRAW_SNAP_NO_PATH_ALONG);
   });
 });

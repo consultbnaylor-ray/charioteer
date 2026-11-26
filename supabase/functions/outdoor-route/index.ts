@@ -164,7 +164,10 @@ Deno.serve(async (req) => {
         headers: orsRequestHeaders(key, 'application/json'),
         signal: AbortSignal.timeout(12000),
       });
-      if (!response.ok) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
+      if (!response.ok) {
+        logOrsFailure('search', response.status, await response.json().catch(() => null), null);
+        return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
+      }
       const payload = await response.json().catch(() => null);
       return finish({ ok: true, places: parseGeocode(payload) });
     }
@@ -215,13 +218,29 @@ Deno.serve(async (req) => {
       snappedStart: moved ? snapped.point : null,
       snapDistanceM: moved ? snapped.distanceM : null,
     });
-  } catch {
+  } catch (error) {
     console.error('outdoor-route request failed');
+    console.warn(`outdoor-route failure kind: ${error instanceof Error ? error.name : 'Error'}`);
     return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
   }
 });
 
 type DirectionPlan = NonNullable<ReturnType<typeof parseDirections>>;
+
+/**
+ * One log line per refused service call, so a 503 on the phone can be traced.
+ * The status, the service's numeric error code, a short gateway word such as "Quota exceeded",
+ * and how many points were sent. No key, coordinate or message text that could hold a place.
+ */
+function logOrsFailure(step: string, status: number, payload: unknown, body: Record<string, unknown> | null): void {
+  const row = payload && typeof payload === 'object' ? payload as { error?: unknown; code?: unknown } : null;
+  const nested = row?.error && typeof row.error === 'object' ? row.error as { code?: unknown } : null;
+  const rawCode = nested?.code ?? row?.code;
+  const code = typeof rawCode === 'number' || (typeof rawCode === 'string' && /^\d{1,5}$/.test(rawCode)) ? String(rawCode) : 'none';
+  const gateway = typeof row?.error === 'string' && /^[A-Za-z ]{3,40}$/.test(row.error) ? row.error : 'none';
+  const points = Array.isArray(body?.coordinates) ? body.coordinates.length : 0;
+  console.warn(`ors ${step} refused: status=${status} code=${code} gateway=${gateway} points=${points}`);
+}
 
 async function postDirections(
   key: string,
@@ -240,11 +259,13 @@ async function postDirections(
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
+    logOrsFailure('directions', response.status, payload, body);
     return { kind: 'failure', failure: classifyOrsFailure(response.status, payload) };
   }
   const payload = await response.json().catch(() => null);
   const plan = parseDirections(payload, mode, shape);
   if (!plan) {
+    logOrsFailure('directions-unreadable', response.status, payload, body);
     return {
       kind: 'failure',
       failure: { status: 503, body: { ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE } },
@@ -274,6 +295,7 @@ async function snapStart(
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
+    logOrsFailure('snap', response.status, payload, null);
     const failure = classifyOrsFailure(response.status, payload);
     if (failure.body.code === 'no_path' || failure.body.code === 'bad_request') return { kind: 'none' };
     return { kind: 'failure', failure };

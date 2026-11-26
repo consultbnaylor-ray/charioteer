@@ -779,6 +779,32 @@ export function snapFollowsSketch(sketch: readonly OutdoorPoint[], routed: reado
 }
 
 /**
+ * A routed piece that strays from the pencil by more than the close-match test allows is still kept
+ * when it stays within these bounds. The pencil can sit over houses (a finger a little off a street,
+ * or a touch offset), and the nearest real street is then a block away. That street is the route;
+ * a straight pencil line across the houses is not.
+ */
+export const SNAP_DETOUR_DEVIATION_M = 400;
+export const SNAP_DETOUR_RATIO = 3;
+export const SNAP_DETOUR_EXTRA_M = 600;
+
+/**
+ * True when a routed line that does not closely follow the pencil is still a fair stand-in for it:
+ * real paths near the line, not a long way round to a bridge or a gate.
+ * False means there is no path along that part of the pencil, such as across a river or open fields.
+ */
+export function snapDetourUsable(sketch: readonly OutdoorPoint[], routed: readonly OutdoorPoint[]): boolean {
+  const drawn = cleanPoints(sketch);
+  const line = cleanPoints(routed);
+  if (drawn.length < 2 || line.length < 2) return false;
+  const drawnLength = pathMetres(drawn);
+  const lineLength = pathMetres(line);
+  const allowed = Math.max(drawnLength * SNAP_DETOUR_RATIO, drawnLength + SNAP_DETOUR_EXTRA_M);
+  if (lineLength > allowed) return false;
+  return hausdorffMetres(densifyLine(drawn), densifyLine(line)) <= SNAP_DETOUR_DEVIATION_M;
+}
+
+/**
  * The line to keep after one routing answer.
  * A match is the routed geometry with spurs removed.
  * A miss is the pencil line itself.
