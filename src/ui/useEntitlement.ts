@@ -139,18 +139,22 @@ export function useEntitlement() {
   const current = useSyncExternalStore(subscribeEntitlement, entitlementSnapshot, entitlementSnapshot);
   const userId = snap.session?.userId ?? null;
 
+  // The subscription row is read even while the paywall flag is off, so the AI credits line shows the real plan.
   useEffect(() => {
-    if (!enabled || !snap.ready) return;
+    if (!snap.ready) return;
     if (!userId) {
       if (cache.userId !== null) clearEntitlement();
       return;
     }
     if (cache.userId === userId) return;
     void refreshEntitlement(userId, () => repo.loadOwnSubscription());
-  }, [enabled, repo, snap.ready, userId]);
+  }, [repo, snap.ready, userId]);
 
-  const row = enabled && current.userId === userId ? current.row : null;
-  const loading = enabled && Boolean(userId) && (current.userId !== userId || current.loading);
+  const planRow = current.userId === userId ? current.row : null;
+  const planLoading = Boolean(userId) && (current.userId !== userId || current.loading);
+  const planFailed = Boolean(userId) && current.userId === userId && current.failed;
+  const row = enabled ? planRow : null;
+  const loading = enabled && planLoading;
   return {
     enabled,
     loading,
@@ -160,6 +164,10 @@ export function useEntitlement() {
     compLoading: comp.loading,
     compFailed: comp.failed,
     row,
+    /** The store subscription whatever the paywall flag says. For the AI credits line only, not for gating. */
+    planRow,
+    planLoading,
+    planFailed,
     refresh: () => {
       if (!userId) return Promise.resolve();
       const jobs = [

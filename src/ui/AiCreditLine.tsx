@@ -6,14 +6,14 @@ import { useRepository } from '@/data';
 import {
   aiCreditStatusLine,
   creditNudge,
+  creditPlanState,
   creditUpgradeLabel,
   creditsExhausted,
   EMPTY_AI_USAGE,
   type AiUsageCounts,
 } from '@/domain/aiCredits';
 import { FETCH_TIMEOUT_MS } from '@/domain/retryFetch';
-import { entitlementActive } from '@/domain/subscription';
-import { londonDayKey, londonMonthStart, tierForProduct, type UsageKind } from '@/domain/tierLimits';
+import { londonDayKey, londonMonthStart, type UsageKind } from '@/domain/tierLimits';
 import { useEntitlement } from '@/ui/useEntitlement';
 import { Button, T } from '@/ui/ui';
 
@@ -47,10 +47,14 @@ export function AiCreditLine({ kind }: { kind?: UsageKind }) {
       clearTimeout(timer);
     };
   }, [repo, usageAttempt]);
-  const row = entitlement.row;
-  const tier = entitlement.comp?.tier ?? (row && entitlementActive(row) ? tierForProduct(row.productId) : null);
-  const checking = entitlement.loading || entitlement.compLoading;
-  const planFailed = entitlement.failed || entitlement.compFailed;
+  const { tier, checking, planFailed } = creditPlanState({
+    comp: entitlement.comp,
+    compLoading: entitlement.compLoading,
+    compFailed: entitlement.compFailed,
+    row: entitlement.planRow,
+    rowLoading: entitlement.planLoading,
+    rowFailed: entitlement.planFailed,
+  });
   const line = aiCreditStatusLine({ tier, usage, kind, checking, planFailed, usageFailed });
   const lookupProblem = (!tier && (checking || planFailed)) || usageFailed;
   const nudge = lookupProblem || entitlement.comp ? null : creditNudge(tier, usage, kind);

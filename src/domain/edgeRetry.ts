@@ -278,6 +278,14 @@ export function edgeStatusShouldRetry(status: number): boolean {
   return (EDGE_RETRY_STATUSES as readonly number[]).includes(status);
 }
 
+/** Matches MEAL_NO_RETRY_HEADER in supabase/functions/_shared/mealProvider.ts. */
+export const EDGE_NO_RETRY_HEADER = 'X-Charioteer-No-Retry';
+
+/** The server marked this failure as one a quick retry cannot fix, such as the AI provider being out of credit. */
+export function edgeServerSaysNoRetry(response: { headers?: { get(name: string): string | null } | null }): boolean {
+  return response.headers?.get?.(EDGE_NO_RETRY_HEADER) === '1';
+}
+
 /** A dropped connection, not a refusal from the server. */
 export function edgeErrorShouldRetry(error: unknown): boolean {
   const name = error instanceof Error ? error.name : '';
@@ -333,7 +341,7 @@ export async function postWithRetry(input: {
     try {
       input.onState?.('waiting');
       const response = await input.fetchImpl(retryUrl(input.url, attempt), freshConnectionInit(input.init, attempt));
-      if (edgeStatusShouldRetry(response.status) && attempt < EDGE_RETRY_BACKOFF_MS.length) {
+      if (edgeStatusShouldRetry(response.status) && !edgeServerSaysNoRetry(response) && attempt < EDGE_RETRY_BACKOFF_MS.length) {
         await sleep(EDGE_RETRY_BACKOFF_MS[attempt] ?? 1500);
         continue;
       }

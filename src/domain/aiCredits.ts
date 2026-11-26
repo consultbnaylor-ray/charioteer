@@ -1,6 +1,9 @@
+import type { EntitlementOverride } from '@/domain/entitlementOverride';
 import { formatUkCompactDay } from '@/domain/healthInsights';
+import { entitlementActive, type SubscriptionRecord } from '@/domain/subscription';
 import {
   TIER_LIMITS,
+  tierForProduct,
   londonDayKey,
   nextLondonMonth,
   tierDisplayName,
@@ -20,6 +23,27 @@ const CREDIT_KINDS: readonly UsageKind[] = ['coach', 'meal', 'plan'];
 
 function left(used: number, limit: number): number {
   return Math.max(0, limit - used);
+}
+
+/**
+ * Which plan the AI credits line shows. A comp wins. Otherwise the store subscription row,
+ * read even while the paywall flag is off, so a Standard tester sees the Standard allowance.
+ * The row is not used while the comp lookup is still running, so a comp never flickers to the store plan.
+ */
+export function creditPlanState(input: {
+  comp: EntitlementOverride | null;
+  compLoading: boolean;
+  compFailed: boolean;
+  row: SubscriptionRecord | null;
+  rowLoading: boolean;
+  rowFailed: boolean;
+  now?: number;
+}): { tier: Tier | null; checking: boolean; planFailed: boolean } {
+  if (input.comp) return { tier: input.comp.tier, checking: false, planFailed: false };
+  if (input.compLoading) return { tier: null, checking: true, planFailed: false };
+  const storeTier = input.row && entitlementActive(input.row, input.now) ? tierForProduct(input.row.productId) : null;
+  if (storeTier) return { tier: storeTier, checking: false, planFailed: false };
+  return { tier: null, checking: input.rowLoading, planFailed: input.compFailed || input.rowFailed };
 }
 
 /** One line for the plan totals and what is left this London month. */

@@ -16,6 +16,14 @@ export type MealProviderResult =
   | { outcome: 'unread'; status: 422; code: 'unread' }
   | { outcome: 'local'; providerUnavailable: boolean };
 
+/** Set on a meal 503 the phone should not retry automatically. */
+export const MEAL_NO_RETRY_HEADER = 'X-Charioteer-No-Retry';
+
+/** The provider refused for billing (402). Retrying in a second cannot help. */
+export function providerRetryPointless(fault: MealProviderFault): boolean {
+  return fault.kind === 'http' && fault.status === 402;
+}
+
 /** Provider HTTP statuses that mean the service failed, not the photo. */
 export function providerHttpOutage(status: number): boolean {
   return status === 401 || status === 402 || status === 403 || status === 429 || status >= 500;
