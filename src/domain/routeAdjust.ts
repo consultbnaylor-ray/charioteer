@@ -70,6 +70,9 @@ export const DRAW_SNAP_MOSTLY = 'Snapped to paths. A short part follows your lin
 
 export const DRAW_SNAP_FAILED = 'Couldn\'t snap to paths';
 
+/** The route service did not answer for one piece. The other pieces snapped. */
+export const DRAW_SNAP_SERVICE_GAP = 'Snapped to paths. The route service missed one part, so that part follows your line.';
+
 /** The route service's own cap: too many points, too long a leg, or too big a request. */
 export const DRAW_SNAP_LIMIT = ROUTE_SNAP_LIMIT;
 
