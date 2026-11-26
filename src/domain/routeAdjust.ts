@@ -44,7 +44,7 @@ export const UNDO_DRAW = 'Undo';
 
 export const DRAW_HINT = 'Drag on the map to sketch a line. Lift your finger to follow paths.';
 
-export const DRAW_FINGER_HINT = 'Draw your route, then tap the green tick to snap it to the nearest paths';
+export const DRAW_FINGER_HINT = 'Draw your route, then tap the green tick to snap it to the nearest paths. Tap X to stop drawing.';
 
 /** Spoken name of the green tick. It snaps the pencil and leaves drawing. */
 export const CONFIRM_DRAW = 'Snap to nearest paths';

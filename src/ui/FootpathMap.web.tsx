@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { viaPointCollection } from '@/domain/routeAdjust';
-import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure, panViewport, type PanDirection } from '@/domain/drawStroke';
+import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure, pageScrollsWhileDrawing, panViewport, type PanDirection } from '@/domain/drawStroke';
 import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
   DRAW_GAP_DASH,
@@ -93,6 +93,7 @@ export function FootpathMap({
   onUndoDraw,
   onClearDraw,
   onConfirmDraw,
+  onExitDraw,
   canUndoDraw = false,
   canClearDraw = false,
   canConfirmDraw = false,
@@ -145,6 +146,8 @@ export function FootpathMap({
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
   onConfirmDraw?: () => void;
+  /** Leaves draw mode and keeps the sketch, when the full-screen map closes. */
+  onExitDraw?: () => void;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
   canConfirmDraw?: boolean;
@@ -158,8 +161,10 @@ export function FootpathMap({
   const mapStyle = useFootpathStyle(scheme, styleUrl);
   const scroller = useScreenScroller();
   const drawingOn = draw?.enabled === true;
+  // This map owns the page lock while drawing. Turning draw mode off (pen, X,
+  // closing full screen, a snapped route) or leaving the screen gives the scroll back.
   useEffect(() => {
-    if (!drawingOn) return undefined;
+    if (pageScrollsWhileDrawing(drawingOn)) return undefined;
     scroller?.current?.setScrollEnabled?.(false);
     return () => {
       scroller?.current?.setScrollEnabled?.(true);
@@ -259,6 +264,7 @@ export function FootpathMap({
       onUndoDraw={onUndoDraw}
       onClearDraw={onClearDraw}
       onConfirmDraw={onConfirmDraw}
+      onExitDraw={onExitDraw}
       canUndoDraw={canUndoDraw}
       canClearDraw={canClearDraw}
       canConfirmDraw={canConfirmDraw}
