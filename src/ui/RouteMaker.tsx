@@ -50,6 +50,7 @@ import {
   undoDrawStroke,
 } from '@/domain/drawStroke';
 import { intentRoundNote, snapDrawnIntent } from '@/domain/drawIntent';
+import { DRAWN_ROUTE_READY, REPLACE_DRAWN_ROUTE, drawnRouteShowing } from '@/domain/drawnRouteReady';
 import {
   pathMetres,
   sketchDistanceLabel,
@@ -899,6 +900,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     return null;
   }
   const snapPanel = snapFigures();
+  const drawnReady = drawnRouteShowing({ craving, fromDraw, hasPlan: plan != null, snapFailed: snapMiss != null });
   const drawBar = sketchLabel || snapPanel ? (
     <View style={{ gap: 8 }}>
       {sketchLabel ? <T>{sketchLabel}</T> : null}
@@ -1239,12 +1241,25 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             {drawNote}
           </T>
         ) : null}
-        <Button
-          label={craving ? 'Make this walk' : 'Make the route'}
-          disabled={pending || locating}
-          pending={pending}
-          onPress={() => { void make(); }}
-        />
+        {drawnReady ? (
+          <>
+            <T>{DRAWN_ROUTE_READY}</T>
+            <Button
+              label={REPLACE_DRAWN_ROUTE}
+              tone="quiet"
+              disabled={pending || locating}
+              pending={pending}
+              onPress={() => { void make(); }}
+            />
+          </>
+        ) : (
+          <Button
+            label={craving ? 'Make this walk' : 'Make the route'}
+            disabled={pending || locating}
+            pending={pending}
+            onPress={() => { void make(); }}
+          />
+        )}
         {!craving ? (
           <Button
             label={RESET_MAP}
