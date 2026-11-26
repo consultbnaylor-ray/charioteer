@@ -38,6 +38,22 @@ export const SEARCH_SLOW = 'The place search took too long. Try again.';
 
 export const SEARCH_EMPTY = 'No place matched that search.';
 
+/**
+ * Whether to say no place matched. Only after a search that really came back
+ * empty: not once a place has been picked (the list closes, the picked place
+ * shows as the chosen row and the field holds its name).
+ */
+export function placeSearchEmptyShown(
+  searched: boolean,
+  resultCount: number,
+  query: string,
+  pickedName: string | null | undefined,
+): boolean {
+  if (!searched || resultCount > 0) return false;
+  if (pickedName && query.trim() === pickedName.trim()) return false;
+  return true;
+}
+
 /** Same phone location at both ends of an A to B line. */
 export const BOTH_HERE_HINT =
   'Start and destination are both where you are. Use Loop for a circuit from here.';
