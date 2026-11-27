@@ -14,3 +14,10 @@ export function drawnRouteShowing(input: {
 }): boolean {
   return !input.craving && input.fromDraw && input.hasPlan && !input.snapFailed;
 }
+
+/** After the rubber, until Recalculate. The Make route button still offers to replace, never silently. */
+export const DRAWN_ROUTE_CHANGED = 'You have changed your drawing. Tap Recalculate route on the map to snap it again.';
+
+export function drawnRouteLine(stale: boolean): string {
+  return stale ? DRAWN_ROUTE_CHANGED : DRAWN_ROUTE_READY;
+}

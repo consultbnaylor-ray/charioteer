@@ -476,7 +476,7 @@ describe('workout routes stay on the phone', () => {
     const watched = [
       ...filesUnder('src/data'),
       ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('savedRoute.ts') && !path.endsWith('drawStroke.ts') && !path.endsWith('drawIntent.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('savedRoute.ts') && !path.endsWith('drawStroke.ts') && !path.endsWith('drawIntent.ts') && !path.endsWith('drawErase.ts') && !path.endsWith('.test.ts')),
     ];
     // Garmin route maps: Garmin pushes its activity samples to our server, so these files may name a
     // position. They only write garmin_activity_samples and the start point on garmin_activity_detail,

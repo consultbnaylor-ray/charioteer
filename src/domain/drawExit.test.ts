@@ -48,7 +48,8 @@ describe('leaving draw mode', () => {
     expect(maker).toContain('onClearDraw={closeDraw}');
     expect(maker).toContain('onExitDraw={exitDraw}');
     expect(maker).toContain("nextDrawMode(drawing, 'close')");
-    expect(maker).toContain("nextDrawMode(on, 'pen')");
+    // The pen goes through nextDrawTool, which still toggles draw mode (and leaves the rubber).
+    expect(maker).toContain("nextDrawTool(drawing, drawTool, 'pen')");
     expect(maker).toContain('drawCloseEnabled({ drawing,');
     const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
     expect(chrome).toContain('if (drawing) onExitDraw?.();');

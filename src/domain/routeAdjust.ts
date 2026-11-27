@@ -55,7 +55,7 @@ export const DRAW_SNAPPED = 'Snapped to the nearest paths.';
 
 /** The only drawing instructions. They sit above the map, so nothing covers the map while drawing. */
 export const DRAW_PEN_HINT =
-  'Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Tap X to stop drawing.';
+  'Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Use the rubber to wipe out bits you don\'t want, then tap Recalculate route. Tap X to stop drawing.';
 
 /** Shown when a lift does not come back as a path. The pencil line stays. */
 export const DRAW_NO_PATH = 'No path matched that line.';
