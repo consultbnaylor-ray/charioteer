@@ -1,6 +1,6 @@
 # Saved routes keep their line (Ben, 27 November 2026, t1135u/t1136u)
 
-Not applied and not deployed. This note lists what has to happen, in order, and the privacy wording to change.
+Approved by Ben on 27 November 2026: "Yes, merge PR #147, apply the saved-line database change and update the privacy wording". The migration is applied with this merge. The privacy, DPIA, and store-label notes below were updated in this PR. The public page at https://quanticalabs.co.uk/charioteer/privacy/ is a separate repo (quanticalabs-site) and still needs its own update.
 
 ## What changes
 
@@ -21,7 +21,7 @@ Not applied and not deployed. This note lists what has to happen, in order, and 
 
 The live table has 2 saved routes. Both are `kind = loop` and both have no line. Nothing stored tells a drawn route from a generated loop, so those two keep the "Loop" label. Ben can rename or delete and re-save them; a re-saved drawn route is stored as `drawn`.
 
-## Privacy wording to change (not changed in this PR)
+## Privacy wording (updated in this PR, 27 November 2026)
 
 Storing the line is location data linked to the user, stored on the account (London), owner-only, deleted with the route or the account, never logged, never shared.
 
