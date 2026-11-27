@@ -49,7 +49,8 @@ describe('saved routes in build 75', () => {
     expect(ADJUST_SENDS).toBe('Adjusting sends the start, the destination, and any points you add. It does not send the whole saved line.');
     expect(DELETE_THIS_ROUTE).toBe('Delete this route?');
     expect(DELETE_REMOVES).toBe('This removes the saved route from your account.');
-    expect(LINE_NOT_KEPT).toBe('The line is not kept. The name, distance, and time stay on your account.');
+    // Ben, 27 November 2026 (t1135u): saved routes keep the line; older ones say so.
+    expect(LINE_NOT_KEPT).toBe('Line not saved for this older route.');
     expect(openLabel('Canal loop')).toBe('Open Canal loop');
     expect(SAVED_ROUTE_MAP_LABEL).toBe('Map with the saved route');
     expect(ROUTE_NAME_FIELD).toBe('Route name');

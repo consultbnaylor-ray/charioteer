@@ -28,6 +28,7 @@ import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
 import { explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW, routeCoordinate, routeInvokeHeaders, SEARCH_SLOW, withDeadline, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import { routePlanBody } from '@/domain/routeAdjust';
 import { buddyPhotoCaption, gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
+import { savedLineRejected, withSavedLine, withoutSavedLine } from '@/domain/savedRouteLine';
 import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
@@ -3276,15 +3277,26 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  /** Missing table stays an empty list. A missing climb column still opens the route. */
+  /**
+   * Missing table stays an empty list. A missing climb column still opens the route.
+   * The line (geometry) is read only once its grant is applied; until then the routes open without it.
+   */
   private async loadOutdoorRoutes(userId: string) {
+    const lined = 'id, title, kind, distance_m, duration_minutes, ascent_m, geometry, created_at';
     const full = 'id, title, kind, distance_m, duration_minutes, ascent_m, created_at';
     const short = 'id, title, kind, distance_m, duration_minutes, created_at';
-    const first = await this.client
+    const withLine = await this.client
       .from('outdoor_routes')
-      .select(full)
+      .select(lined)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
+    const first = withLine.error && /geometry|permission denied|42501/i.test(withLine.error.message ?? '')
+      ? await this.client
+        .from('outdoor_routes')
+        .select(full)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+      : withLine;
     const result = first.error && /ascent_m/i.test(first.error.message ?? '')
       ? await this.client
         .from('outdoor_routes')
@@ -3302,12 +3314,21 @@ export class SupabaseRepository implements Repository {
   async saveOutdoorRoute(input: OutdoorRouteDraft): Promise<void> {
     const userId = this.snapshot.session?.userId ?? await this.userId();
     const id = input.id?.trim() || randomId();
-    const row = outdoorRouteInsert(userId, id, input);
-    if (!row) throw new UserFacingError('A route needs a name and at least two points.', 'generic');
+    const bare = outdoorRouteInsert(userId, id, input);
+    if (!bare) throw new UserFacingError('A route needs a name and at least two points.', 'generic');
+    const lined = withSavedLine(bare, input.points);
     const before = this.snapshot.outdoorRoutes;
-    const saved = outdoorRouteFromRow({ ...row, created_at: new Date().toISOString() });
+    const saved = outdoorRouteFromRow({ ...lined, created_at: new Date().toISOString() });
     if (saved) this.emit({ ...this.snapshot, outdoorRoutes: [saved, ...before.filter((item) => item.id !== id)] });
-    const { error } = await this.client.from('outdoor_routes').insert(row);
+    let row = lined;
+    let { error } = await this.client.from('outdoor_routes').insert(row);
+    if (error && savedLineRejected(error.message ?? '', row)) {
+      // The line grant is not applied yet. Save the route without its line, as before.
+      row = withoutSavedLine(row);
+      const unlined = outdoorRouteFromRow({ ...row, created_at: new Date().toISOString() });
+      if (unlined) this.emit({ ...this.snapshot, outdoorRoutes: [unlined, ...before.filter((item) => item.id !== id)] });
+      ({ error } = await this.client.from('outdoor_routes').insert(row));
+    }
     if (!error) return;
     if (routeGeometryStillRequired(error.message ?? '')) {
       this.emit({ ...this.snapshot, outdoorRoutes: before });
@@ -3428,7 +3449,7 @@ export class SupabaseRepository implements Repository {
     const drafted = outdoorRouteFromDraft(id, { ...input, title: input.title || existing.title });
     if (!drafted) throw new UserFacingError('Could not save that route.', 'generic');
     const saved = { ...drafted, createdAt: existing.createdAt, ascentM: input.ascentM ?? null };
-    const patch = outdoorRouteReplace(saved, input.ascentM ?? null, new Date().toISOString());
+    const patch = withSavedLine(outdoorRouteReplace(saved, input.ascentM ?? null, new Date().toISOString()), saved.points);
     this.emit({
       ...this.snapshot,
       outdoorRoutes: before.map((item) => (item.id === id ? saved : item)),
@@ -3438,9 +3459,19 @@ export class SupabaseRepository implements Repository {
       .update(row)
       .eq('id', id)
       .eq('user_id', userId);
-    let { error } = await write(patch);
-    if (error && /ascent_m/i.test(error.message ?? '') && Object.prototype.hasOwnProperty.call(patch, 'ascent_m')) {
-      const { ascent_m: _ascent, ...rest } = patch;
+    let current = patch;
+    let { error } = await write(current);
+    if (error && savedLineRejected(error.message ?? '', current)) {
+      // Without the line grant the old line cannot be replaced. Clear it from the phone copy too.
+      current = withoutSavedLine(current);
+      this.emit({
+        ...this.snapshot,
+        outdoorRoutes: before.map((item) => (item.id === id ? { ...saved, points: [] } : item)),
+      });
+      ({ error } = await write(current));
+    }
+    if (error && /ascent_m/i.test(error.message ?? '') && Object.prototype.hasOwnProperty.call(current, 'ascent_m')) {
+      const { ascent_m: _ascent, ...rest } = current;
       ({ error } = await write(rest));
     }
     if (error) {

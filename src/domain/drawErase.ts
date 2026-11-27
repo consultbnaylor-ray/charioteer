@@ -266,9 +266,16 @@ export function pushUndo(stack: readonly DrawUndoEntry[], entry: DrawUndoEntry):
 }
 
 /**
- * The state straight after a wipe. Wiping only touches the drawn strokes and the shown
- * green line; the last snapped plan is kept so Undo can bring it back, and the route is
- * not re-snapped until Recalculate (or the green tick).
+ * The state straight after a wipe.
+ *
+ * Once a drawing has snapped, the green line on the map is the route and the finger strokes
+ * behind it are hidden. The rubber wipes that green line, and what is left of it becomes the
+ * drawing: its pieces replace the hidden strokes, in route order, and count as snapped, so they
+ * stay green and are never redrawn as pencil. (Showing the hidden strokes again is what turned a
+ * small wipe into long black lines across the map, and re-snapping them rebuilt the same route.)
+ * Strokes drawn since the snap are wiped as pencil. Before any snap, only the pencil is wiped.
+ * The last snapped plan is kept so Undo can bring it back; nothing is re-snapped until
+ * Recalculate (or the green tick).
  */
 export function applyErase(input: {
   strokes: readonly (readonly OutdoorPoint[])[];
@@ -280,6 +287,7 @@ export function applyErase(input: {
 }): {
   changed: boolean;
   strokes: OutdoorPoint[][];
+  snappedCount: number;
   erasedSnap: OutdoorPoint[][] | null;
   entry: DrawUndoEntry | null;
 } {
@@ -287,23 +295,59 @@ export function applyErase(input: {
   const snapBefore = input.erasedSnap
     ? input.erasedSnap.map((line) => cleanPoints(line).map((point) => ({ ...point })))
     : null;
-  const drawn = eraseLines(strokesNow, input.path, input.radiusM);
-  const snapSource = snapBefore ?? (cleanPoints(input.snappedLine).length >= 2 ? [cleanPoints(input.snappedLine)] : []);
-  const green = eraseLines(snapSource, input.path, input.radiusM);
-  if (!drawn.changed && !green.changed) {
-    return { changed: false, strokes: strokesNow, erasedSnap: snapBefore, entry: null };
+  const count = Number.isFinite(input.snappedCount)
+    ? Math.max(0, Math.min(strokesNow.length, Math.round(input.snappedCount)))
+    : 0;
+  const line = cleanPoints(input.snappedLine);
+  const green = snapBefore ?? (count > 0 && line.length >= 2 ? [line] : null);
+  const unchanged = {
+    changed: false,
+    strokes: strokesNow,
+    snappedCount: count,
+    erasedSnap: snapBefore,
+    entry: null,
+  };
+  if (green && count > 0) {
+    const route = eraseLines(green, input.path, input.radiusM);
+    const pencil = eraseLines(strokesNow.slice(count), input.path, input.radiusM);
+    if (!route.changed && !pencil.changed) return unchanged;
+    const strokes = [...route.lines, ...pencil.lines];
+    return {
+      changed: true,
+      strokes,
+      snappedCount: route.lines.length,
+      erasedSnap: route.lines,
+      entry: { kind: 'erase', strokes: strokesNow, snappedCount: count, erasedSnap: snapBefore, strokesAfter: strokes.length },
+    };
   }
-  const erasedSnap = green.changed ? green.lines : snapBefore ?? (snapSource.length > 0 ? snapSource : null);
+  // Nothing snapped (or every green piece already wiped): only the pencil.
+  const pencil = eraseLines(strokesNow.slice(count), input.path, input.radiusM);
+  if (!pencil.changed) return unchanged;
+  const strokes = [...strokesNow.slice(0, count), ...pencil.lines];
   return {
     changed: true,
-    strokes: drawn.lines,
-    erasedSnap,
-    entry: {
-      kind: 'erase',
-      strokes: strokesNow,
-      snappedCount: input.snappedCount,
-      erasedSnap: snapBefore,
-      strokesAfter: drawn.lines.length,
-    },
+    strokes,
+    snappedCount: count,
+    erasedSnap: snapBefore,
+    entry: { kind: 'erase', strokes: strokesNow, snappedCount: count, erasedSnap: snapBefore, strokesAfter: strokes.length },
   };
+}
+
+/**
+ * True when the rubber has been used since the last snap (or since drawing began).
+ * The dashed hints between strokes are left off then, so a wiped gap is a real gap on the
+ * map and nothing is drawn across it. Recalculate joins the pieces along real paths.
+ */
+export function rubbedSinceSnap(stack: readonly DrawUndoEntry[]): boolean {
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    const entry = stack[index];
+    if (entry?.kind === 'erase') return true;
+    if (entry?.kind === 'snap') return false;
+  }
+  return false;
+}
+
+/** After a wipe, a route that was a loop is recalculated as a loop, even if the wipe parted its ends. */
+export function recalculateKeepsLoop(input: { wiped: boolean; previousShape: 'loop' | 'a_to_b' | null }): boolean {
+  return input.wiped && input.previousShape === 'loop';
 }

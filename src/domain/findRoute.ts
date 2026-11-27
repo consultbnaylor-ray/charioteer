@@ -207,8 +207,13 @@ export function routeProfile(mode: RouteMode): RoutePlan['profile'] {
   return 'foot-walking';
 }
 
-export function routeKind(shape: RouteShape, craving: boolean): OutdoorKind {
+/**
+ * The saved type. A route the person drew stays 'drawn' (it was saved as 'loop' before,
+ * which labelled a hand-drawn route Loop). Only a loop from the settings is 'loop'.
+ */
+export function routeKind(shape: RouteShape, craving: boolean, drawn = false): OutdoorKind {
   if (craving) return 'craving_walk';
+  if (drawn) return 'drawn';
   return shape === 'a_to_b' ? 'point_to_point' : 'loop';
 }
 

@@ -386,6 +386,8 @@ export function MapShell({
 }) {
   const theme = useAppTheme();
   const rubberOn = drawing && drawTool === 'rubber';
+  // The pen and the rubber are one choice: only the tool in use is highlighted.
+  const penOn = drawing && drawTool !== 'rubber';
   const showRecalculate = canRecalculate && onRecalculate != null;
   const base = mapLabel?.trim() || 'Map with footpaths';
   const [panelHeight, setPanelHeight] = useState(0);
@@ -420,8 +422,8 @@ export function MapShell({
         {onRecentre ? <RecentreButton onPress={onRecentre} /> : null}
         {onRecentre || !onShowMyLocation ? null : <ShowMyLocationButton pending={locating} onPress={onShowMyLocation} />}
         {onToggleDraw ? (
-          <CornerButton label={drawing ? 'Done' : 'Draw'} top={8} right={60} onPress={onToggleDraw}>
-            <Pencil color={drawing ? '#047857' : INK} />
+          <CornerButton label={penOn ? 'Done' : 'Draw'} top={8} right={60} onPress={onToggleDraw}>
+            <Pencil color={penOn ? '#047857' : INK} />
           </CornerButton>
         ) : null}
         {onToggleDraw && (drawing || canUndoDraw || canClearDraw) ? (
