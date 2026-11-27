@@ -195,7 +195,9 @@ describe('Wim Hof screen', () => {
 
   it('shows the safety note before starting, keeps the screen on, and uses gated speech', () => {
     expect(screen).toContain('WIM_HOF_SAFETY_LINE');
-    expect(screen).toContain('expo-keep-awake');
+    // The keep-awake call moved into a shared hook that the music and the other exercises use too.
+    expect(screen).toContain("useKeepAwakeWhile(status === 'running', KEEP_AWAKE_TAG)");
+    expect(readFileSync('src/ui/MeditationMusic.tsx', 'utf8')).toContain('expo-keep-awake');
     expect(screen).toContain('speakIfGated');
     expect(screen).toContain('stopSpeaking');
     expect(screen).toContain('acceptPauseTap');

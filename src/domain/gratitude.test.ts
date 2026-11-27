@@ -248,7 +248,7 @@ describe('gratitude diary wiring', () => {
     expect(APP_SECTIONS.map((section) => section.label)).toEqual([
       'Today',
       'Check-in',
-      'Breathe',
+      'Breath Work and Meditation',
       'Thumos',
       'People',
       'Gratitude Diary',

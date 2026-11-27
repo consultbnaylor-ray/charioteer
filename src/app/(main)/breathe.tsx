@@ -22,17 +22,27 @@ import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { WalkThisOff } from '@/ui/WalkThisOff';
 import { WimHofBreathing } from '@/ui/WimHofBreathing';
 import { WIM_HOF_TITLE } from '@/domain/wimHof';
+import { useMeditationMusic } from '@/audio/meditationMusic';
+import { MUSIC_OFF, type MusicChoice } from '@/domain/meditationTracks';
+import { MeditationListen, MusicChoiceRow, useKeepAwakeWhile } from '@/ui/MeditationMusic';
+import { BREATHE_SECTION_TITLE } from '@/domain/sections';
 import { Button, Card, Choice, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 export default function Breathe() {
   const params = useLocalSearchParams<{ exercise?: string }>();
   const initial = BREATH_EXERCISES.find((item) => item.id === params.exercise)?.id ?? 'box';
-  const [selected, setSelected] = useState(params.exercise === 'surf' || params.exercise === 'wimhof' ? params.exercise : initial);
+  const [selected, setSelected] = useState(
+    params.exercise === 'surf' || params.exercise === 'wimhof' || params.exercise === 'music' ? params.exercise : initial,
+  );
   const exercise = BREATH_EXERCISES.find((item) => item.id === selected);
 
   return (
-    <Screen eyebrow="Practice" title="Settle the body." intro="Box breathing, 4-7-8, a physiological sigh, Wim Hof style rounds, or a short urge-surf. Haptics play on a phone, not in the browser.">
+    <Screen
+      eyebrow="Settle the body"
+      title={BREATHE_SECTION_TITLE}
+      intro="Box breathing, 4-7-8, a physiological sigh, Wim Hof style rounds, a short urge-surf, or meditation music. Music is optional in every breathing exercise. Haptics play on a phone, not in the browser."
+    >
       <Card>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {BREATH_EXERCISES.map((item) => (
@@ -40,9 +50,18 @@ export default function Breathe() {
           ))}
           <Choice label={WIM_HOF_TITLE} selected={selected === 'wimhof'} onPress={() => setSelected('wimhof')} />
           <Choice label="Urge surfing" selected={selected === 'surf'} onPress={() => setSelected('surf')} />
+          <Choice label="Meditation music" selected={selected === 'music'} onPress={() => setSelected('music')} />
         </View>
       </Card>
-      {selected === 'surf' ? <UrgeSurf /> : selected === 'wimhof' ? <WimHofBreathing /> : exercise ? <BreathRunner exercise={exercise} /> : null}
+      {selected === 'surf' ? (
+        <UrgeSurf />
+      ) : selected === 'wimhof' ? (
+        <WimHofBreathing />
+      ) : selected === 'music' ? (
+        <MeditationListen />
+      ) : exercise ? (
+        <BreathRunner exercise={exercise} />
+      ) : null}
       <WalkThisOff place="breathe" />
     </Screen>
   );
@@ -56,6 +75,9 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(false);
+  const [musicChoice, setMusicChoice] = useState<MusicChoice>(MUSIC_OFF);
+  const music = useMeditationMusic();
+  useKeepAwakeWhile(running, 'charioteer-breathe');
   const [left, setLeft] = useState(exercise.phases[0].seconds);
   const timingRef = useRef<BreathTiming>(idlePhase(exercise.phases[0].seconds));
   const runningRef = useRef(false);
@@ -164,6 +186,7 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
     timingRef.current = pauseTiming(timingRef.current, now);
     setLeft(remainingSeconds(timingRef.current, now));
     haltMotion();
+    music.pause();
   }
 
   function resume(now: number) {
@@ -175,6 +198,10 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
     setStarted(true);
     const fresh = timing.carriedMs === 0;
     cue(current, fresh);
+    // Optional music loops for as long as the exercise runs.
+    if (musicChoice === MUSIC_OFF) music.stop(0);
+    else if (music.status === 'paused' && music.trackId === musicChoice) music.resume();
+    else music.start(musicChoice, null);
     arm(timing, frozenScale.current, current.scale, phaseIndexRef.current);
   }
 
@@ -201,6 +228,7 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
     setRunning(false);
     setStarted(false);
     setLeft(exercise.phases[0].seconds);
+    music.stop(0);
     return () => {
       runningRef.current = false;
       haltMotion();
@@ -245,6 +273,7 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
       >
         <T style={{ color: theme.colors.bg, fontFamily: theme.font.bodyStrong }}>{control}</T>
       </Pressable>
+      {running ? null : <MusicChoiceRow value={musicChoice} onChange={setMusicChoice} />}
     </Card>
   );
 }
