@@ -1048,9 +1048,17 @@ export function garminHistoryCooling(refusedAt: string | null, nowMs: number): b
   return nowMs - at < GARMIN_HISTORY_WINDOW_MS;
 }
 
-/** Every requested summary came back 412. An empty list is not a refusal. */
-export function garminAllHistoricalRefusal(statuses: readonly number[]): boolean {
-  return statuses.length > 0 && statuses.every((status) => status === 412);
+/**
+ * Garmin refused past data with 412. True when every summary came back 412, or when
+ * activities or activity details came back 412 and nothing was accepted (other types
+ * may be 404 or 429). An empty list is not a refusal. Live refresh v18 runs the same rule.
+ */
+export function garminAllHistoricalRefusal(statuses: readonly number[], types?: readonly string[] | null): boolean {
+  if (statuses.length === 0) return false;
+  if (statuses.some((status) => status === 202 || status === 204 || status === 409)) return false;
+  if (statuses.every((status) => status === 412)) return true;
+  if (!types) return false;
+  return statuses.some((status, index) => status === 412 && (types[index] === 'activities' || types[index] === 'activityDetails'));
 }
 
 /**

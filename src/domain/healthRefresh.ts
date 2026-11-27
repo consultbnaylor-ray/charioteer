@@ -18,6 +18,10 @@ export const REFRESH_FAILED = "Couldn't refresh just now. Try again in a minute.
 export const GARMIN_ASKED =
   'Asked Garmin for your latest data — it can take a minute or two to arrive';
 
+/** Garmin answered 412 for past activities. Only new activities will reach the app. */
+export const GARMIN_PAST_REFUSED =
+  "Garmin hasn't given Charioteer permission to resend past activities, so only new activities will show routes.";
+
 export const GARMIN_RECENT =
   'Garmin was asked recently. New data can take a minute or two to arrive.';
 
