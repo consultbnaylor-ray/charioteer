@@ -44,8 +44,6 @@ export const UNDO_DRAW = 'Undo';
 
 export const DRAW_HINT = 'Drag on the map to sketch a line. Lift your finger to follow paths.';
 
-export const DRAW_FINGER_HINT = 'Draw your route, then tap the green tick to snap it to the nearest paths. Tap X to stop drawing.';
-
 /** Spoken name of the green tick. It snaps the pencil and leaves drawing. */
 export const CONFIRM_DRAW = 'Snap to nearest paths';
 
@@ -55,8 +53,9 @@ export const DRAW_TICK_GREEN = '#047857';
 /** Shown once the tick has put the pencil onto the nearest paths. */
 export const DRAW_SNAPPED = 'Snapped to the nearest paths.';
 
+/** The only drawing instructions. They sit above the map, so nothing covers the map while drawing. */
 export const DRAW_PEN_HINT =
-  'Use the optional settings above to create a route, or use the pen symbol on the map and the line will snap to the nearest paths';
+  'Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Tap X to stop drawing.';
 
 /** Shown when a lift does not come back as a path. The pencil line stays. */
 export const DRAW_NO_PATH = 'No path matched that line.';

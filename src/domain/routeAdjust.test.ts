@@ -11,7 +11,6 @@ import {
 import { appendSketchPoint, type OutdoorPoint } from '@/domain/outdoorRoute';
 import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
-  DRAW_FINGER_HINT,
   DRAW_NO_PATH,
   DRAW_PEN_HINT,
   VIA_POINT_CAP,
@@ -362,7 +361,6 @@ describe('route adjusting', () => {
     expect(metresBetween(start, step)).toBeLessThan(12);
     expect(appendSketchPoint([start], step, 2)).toHaveLength(2);
     expect(appendSketchPoint([start], step, 12)).toHaveLength(1);
-    expect(DRAW_FINGER_HINT).toBe('Draw your route, then tap the green tick to snap it to the nearest paths. Tap X to stop drawing.');
     expect(DRAW_NO_PATH).toBe('No path matched that line.');
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
@@ -412,7 +410,10 @@ describe('route adjusting', () => {
     expect(chrome).toContain('MAP_CREDIT');
     expect(chrome).toContain('OSM_CONTRIBUTORS');
     expect(chrome).not.toContain('ORS_CREDIT');
-    expect(chrome).toContain('DRAW_FINGER_HINT');
+    // No drawing banner over the map: the instructions live above the map only.
+    expect(chrome).not.toContain('DRAW_FINGER_HINT');
+    expect(chrome).not.toContain('Tap X to stop drawing');
+    expect(chrome).not.toContain('top: 112');
     expect(chrome).toContain('CONFIRM_DRAW');
     expect(chrome).toContain('DRAW_TICK_GREEN');
     expect(chrome).toContain('DRAW_SNAPPED');
@@ -421,7 +422,9 @@ describe('route adjusting', () => {
   });
 
   it('snaps when the green tick is tapped and leaves drawing on until then', () => {
-    expect(DRAW_PEN_HINT).toBe('Use the optional settings above to create a route, or use the pen symbol on the map and the line will snap to the nearest paths');
+    expect(DRAW_PEN_HINT).toBe('Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Tap X to stop drawing.');
+    expect(DRAW_PEN_HINT).toContain('green tick');
+    expect(DRAW_PEN_HINT).toContain('Tap X to stop drawing');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
     expect(maker).toContain('function holdStroke');
