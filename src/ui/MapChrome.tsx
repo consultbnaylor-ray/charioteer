@@ -12,6 +12,7 @@ import {
   fullScreenPanelMaxHeight,
 } from '@/domain/fullScreenMap';
 import { drawCloseLabel } from '@/domain/drawStroke';
+import { RUBBER_TIP, RUBBER_TIP_DISMISS, RUBBER_WORD } from '@/domain/rubberTip';
 import { RECALCULATE_HINT, RECALCULATE_ROUTE, RUBBER_LABEL, RUBBER_ON_LABEL, type DrawTool } from '@/domain/drawErase';
 import { MAP_CREDIT, type MapScheme } from '@/domain/outdoorRoute';
 import {
@@ -148,6 +149,110 @@ function RubberIcon({ active }: { active: boolean }) {
   );
 }
 
+/** Where the rubber sits: the column under the pen and X, a little wider so its word fits. */
+const RUBBER_TOP = 112;
+const RUBBER_RIGHT = 56;
+const RUBBER_WIDTH = 52;
+const RUBBER_HEIGHT = 58;
+
+/**
+ * The rubber, with its name written under the icon so it reads as a rubber at a glance.
+ * Slightly bigger than the round buttons, with extra tap room around it.
+ */
+function RubberButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint="Drag over the line to wipe it out."
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      hitSlop={8}
+      style={{
+        position: 'absolute',
+        top: RUBBER_TOP,
+        right: RUBBER_RIGHT,
+        width: RUBBER_WIDTH,
+        height: RUBBER_HEIGHT,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 2,
+        backgroundColor: active ? DRAW_TICK_GREEN : FILL,
+        borderWidth: 1,
+        borderColor: active ? '#FFFFFF' : INK,
+        zIndex: 4,
+      }}
+    >
+      <RubberIcon active={active} />
+      <T
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={1}
+        style={{ fontSize: 12, lineHeight: 14, color: active ? '#FFFFFF' : INK }}
+      >
+        {RUBBER_WORD}
+      </T>
+    </Pressable>
+  );
+}
+
+/** The one-time tip, a small pill to the left of the rubber with a point towards it. Tap to dismiss. */
+function RubberTip({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <View
+      pointerEvents={'box-none'}
+      style={{
+        position: 'absolute',
+        top: RUBBER_TOP + 8,
+        right: RUBBER_RIGHT + RUBBER_WIDTH + 10,
+        maxWidth: 210,
+        flexDirection: 'row',
+        alignItems: 'center',
+        zIndex: 5,
+      }}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${RUBBER_TIP}. ${RUBBER_TIP_DISMISS}`}
+        onPress={onDismiss}
+        hitSlop={6}
+        style={{
+          flexShrink: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          paddingVertical: 6,
+          paddingLeft: 10,
+          paddingRight: 8,
+          borderRadius: 16,
+          backgroundColor: INK,
+        }}
+      >
+        <T maxFontSizeMultiplier={1.3} style={{ flexShrink: 1, fontSize: 13, lineHeight: 17, color: '#FFFFFF' }}>
+          {RUBBER_TIP}
+        </T>
+        <T style={{ fontSize: 15, lineHeight: 17, color: '#FFFFFF' }}>
+          ×
+        </T>
+      </Pressable>
+      {/* The point, towards the rubber. */}
+      <View
+        pointerEvents={'none'}
+        style={{
+          width: 0,
+          height: 0,
+          borderTopWidth: 7,
+          borderBottomWidth: 7,
+          borderLeftWidth: 8,
+          borderTopColor: 'transparent',
+          borderBottomColor: 'transparent',
+          borderLeftColor: INK,
+        }}
+      />
+    </View>
+  );
+}
+
 function TickIcon() {
   return (
     <Svg width={28} height={28} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
@@ -236,6 +341,8 @@ export function MapShell({
   onRubber,
   onRecalculate,
   canRecalculate = false,
+  rubberTip = false,
+  onDismissRubberTip,
   children,
 }: {
   here: boolean;
@@ -272,6 +379,9 @@ export function MapShell({
   /** Re-snaps what is left after a wipe. Shown in place of the green tick. */
   onRecalculate?: () => void;
   canRecalculate?: boolean;
+  /** The one-time "Wrong bit?" tip beside the rubber. */
+  rubberTip?: boolean;
+  onDismissRubberTip?: () => void;
   children: ReactNode;
 }) {
   const theme = useAppTheme();
@@ -323,17 +433,13 @@ export function MapShell({
               <ClearIcon />
             </CornerButton>
             {onRubber ? (
-              <CornerButton
+              <RubberButton
                 label={rubberOn ? RUBBER_ON_LABEL : RUBBER_LABEL}
-                hint="Drag over the line to wipe it out."
-                top={112}
-                right={60}
                 active={rubberOn}
                 onPress={onRubber}
-              >
-                <RubberIcon active={rubberOn} />
-              </CornerButton>
+              />
             ) : null}
+            {onRubber && rubberTip && onDismissRubberTip ? <RubberTip onDismiss={onDismissRubberTip} /> : null}
           </>
         ) : null}
         {statusNote && (!drawing || statusNote === DRAW_SNAP_FAILED) ? (
@@ -482,6 +588,8 @@ export function MapFrame({
   onRubber,
   onRecalculate,
   canRecalculate,
+  rubberTip,
+  onDismissRubberTip,
 }: {
   here: boolean;
   height?: number;
@@ -513,6 +621,8 @@ export function MapFrame({
   onRubber?: () => void;
   onRecalculate?: () => void;
   canRecalculate?: boolean;
+  rubberTip?: boolean;
+  onDismissRubberTip?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
@@ -569,6 +679,8 @@ export function MapFrame({
       onRubber={onRubber}
       onRecalculate={onRecalculate}
       canRecalculate={canRecalculate}
+      rubberTip={rubberTip}
+      onDismissRubberTip={onDismissRubberTip}
     >
       {mountMap ? renderMap({ height: viewHeight, expanded }) : null}
     </MapShell>
