@@ -20,26 +20,29 @@ import { BREATH_EXERCISES, URGE_SURF_STEPS, type BreathExercise, type BreathPhas
 import { breathPhaseFigure, urgeStepFigure } from '@/domain/measureFigures';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { WalkThisOff } from '@/ui/WalkThisOff';
+import { WimHofBreathing } from '@/ui/WimHofBreathing';
+import { WIM_HOF_TITLE } from '@/domain/wimHof';
 import { Button, Card, Choice, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 export default function Breathe() {
   const params = useLocalSearchParams<{ exercise?: string }>();
   const initial = BREATH_EXERCISES.find((item) => item.id === params.exercise)?.id ?? 'box';
-  const [selected, setSelected] = useState(initial === 'box' && params.exercise === 'surf' ? 'surf' : params.exercise === 'surf' ? 'surf' : initial);
+  const [selected, setSelected] = useState(params.exercise === 'surf' || params.exercise === 'wimhof' ? params.exercise : initial);
   const exercise = BREATH_EXERCISES.find((item) => item.id === selected);
 
   return (
-    <Screen eyebrow="Practice" title="Settle the body." intro="Box breathing, 4-7-8, a physiological sigh, or a short urge-surf. Haptics play on a phone, not in the browser.">
+    <Screen eyebrow="Practice" title="Settle the body." intro="Box breathing, 4-7-8, a physiological sigh, Wim Hof style rounds, or a short urge-surf. Haptics play on a phone, not in the browser.">
       <Card>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {BREATH_EXERCISES.map((item) => (
             <Choice key={item.id} label={item.title} selected={selected === item.id} onPress={() => setSelected(item.id)} />
           ))}
+          <Choice label={WIM_HOF_TITLE} selected={selected === 'wimhof'} onPress={() => setSelected('wimhof')} />
           <Choice label="Urge surfing" selected={selected === 'surf'} onPress={() => setSelected('surf')} />
         </View>
       </Card>
-      {selected === 'surf' ? <UrgeSurf /> : exercise ? <BreathRunner exercise={exercise} /> : null}
+      {selected === 'surf' ? <UrgeSurf /> : selected === 'wimhof' ? <WimHofBreathing /> : exercise ? <BreathRunner exercise={exercise} /> : null}
       <WalkThisOff place="breathe" />
     </Screen>
   );
