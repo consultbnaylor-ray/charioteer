@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { viewCentre, type OutdoorPoint, type OutdoorRoute } from '@/domain/outdoorRoute';
+import { routeFrame, viewCentre, type OutdoorPoint, type OutdoorRoute } from '@/domain/outdoorRoute';
 
 export type HeldCamera = {
   longitude: number;
@@ -16,6 +16,9 @@ function frameOf(
   track: readonly OutdoorPoint[] = [],
 ): HeldCamera {
   const hasRoute = routes.some((route) => route.points.length > 0);
+  // A route line on its own is framed whole: centred, and zoomed to fit.
+  const fitted = !sketch.length && locationFocus <= 0 ? routeFrame(routes) : null;
+  if (fitted) return fitted;
   const walked = !sketch.length && !hasRoute && !here && track.length >= 2
     ? track[Math.floor(track.length / 2)]
     : null;

@@ -19,8 +19,11 @@ export const ADJUST_SENDS = 'Adjusting sends the start, the destination, and any
 export const DELETE_THIS_ROUTE = 'Delete this route?';
 export const DELETE_REMOVES = 'This removes the saved route from your account.';
 
-/** Shown when a saved route has no line. The account keeps the name, distance, and time. */
-export const LINE_NOT_KEPT = 'The line is not kept. The name, distance, and time stay on your account.';
+/**
+ * Shown instead of a map when a saved route has no line: routes saved before the line
+ * was kept (and any saved before the geometry grant is applied). New saves keep the line.
+ */
+export const LINE_NOT_KEPT = 'Line not saved for this older route.';
 export const SAVED_ROUTE_MAP_LABEL = 'Map with the saved route';
 export const ROUTE_NAME_FIELD = 'Route name';
 

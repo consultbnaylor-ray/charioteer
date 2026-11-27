@@ -115,10 +115,13 @@ export function isOutdoorKind(value: unknown): value is OutdoorKind {
   return value === 'drawn' || value === 'craving_walk' || value === 'loop' || value === 'point_to_point';
 }
 
+export const DRAWN_ROUTE_KIND_LABEL = 'Your drawn route';
+
 export function routeKindLabel(kind: OutdoorKind): string {
   if (kind === 'craving_walk') return 'Craving walk';
   if (kind === 'loop') return 'Loop';
   if (kind === 'point_to_point') return 'A to B';
+  if (kind === 'drawn') return DRAWN_ROUTE_KIND_LABEL;
   return 'Saved route';
 }
 
@@ -1037,6 +1040,48 @@ export function sampleCanalLoop(): OutdoorRoute {
 }
 
 /** A route line stays in frame. The GPS fix is the centre only when no line is on the map. */
+/** A nominal small map, so a saved route fits on a phone card and in full screen. */
+const FIT_WIDTH_PX = 320;
+const FIT_HEIGHT_PX = 180;
+const FIT_MIN_ZOOM = 9;
+const FIT_MAX_ZOOM = 16;
+
+/**
+ * Centre and zoom that fit every route line. Null when no route has a line,
+ * so an older saved route with no line never opens on a made-up place.
+ */
+export function routeFrame(routes: readonly OutdoorRoute[]): { latitude: number; longitude: number; zoom: number } | null {
+  let west = Infinity;
+  let east = -Infinity;
+  let north = Infinity;
+  let south = -Infinity;
+  for (const route of routes) {
+    for (const point of route.points) {
+      if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) continue;
+      const x = mercatorX(point.longitude);
+      const y = mercatorY(point.latitude);
+      west = Math.min(west, x);
+      east = Math.max(east, x);
+      north = Math.min(north, y);
+      south = Math.max(south, y);
+    }
+  }
+  if (!Number.isFinite(west) || !Number.isFinite(north)) return null;
+  const dx = east - west;
+  const dy = south - north;
+  const fits = [
+    dx > 0 ? Math.log2(FIT_WIDTH_PX / (dx * MERCATOR_TILE)) : FIT_MAX_ZOOM,
+    dy > 0 ? Math.log2(FIT_HEIGHT_PX / (dy * MERCATOR_TILE)) : FIT_MAX_ZOOM,
+  ];
+  const raw = Math.min(...fits);
+  const zoom = Math.min(FIT_MAX_ZOOM, Math.max(FIT_MIN_ZOOM, Math.floor(raw * 4) / 4));
+  return {
+    latitude: unmercatorY((north + south) / 2),
+    longitude: unmercatorX((west + east) / 2),
+    zoom,
+  };
+}
+
 export function viewCentre(routes: readonly OutdoorRoute[], sketch: readonly OutdoorPoint[], here: OutdoorPoint | null): OutdoorPoint {
   if (sketch.length) return sketch[0];
   if (routes[0]?.points.length) return routes[0].points[0];

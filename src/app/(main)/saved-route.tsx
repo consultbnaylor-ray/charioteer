@@ -16,6 +16,7 @@ import {
   LINE_NOT_KEPT,
 } from '@/domain/savedRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
+import { savedRouteHasLine } from '@/domain/savedRouteLine';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
 import { SavedRouteAdjust } from '@/ui/SavedRouteAdjust';
@@ -122,21 +123,25 @@ export default function SavedRouteScreen() {
             <T>{routeKindLabel(route.kind)}</T>
             <T>{routeSummary(route)}</T>
             <T>{formatClimb(route.ascentM ?? null)}</T>
-            {route.points.length < 2 ? <T variant="muted">{LINE_NOT_KEPT}</T> : null}
-            <FootpathMap
-              routes={[route]}
-              sketch={[]}
-              here={here}
-              locationFocus={focus}
-              locating={locating}
-              height={mapHeight}
-              mapLabel={SAVED_ROUTE_MAP_LABEL}
-              onShowMyLocation={() => { void whereIAm(); }}
-            />
-            {locating ? (
-              <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
-            ) : (
-              <Choice label="Where I am" selected={here != null} onPress={() => { void whereIAm(); }} />
+            {/* No line: say so, and do not open a map on a place that is not this route. */}
+            {!savedRouteHasLine(route.points) ? <T variant="muted">{LINE_NOT_KEPT}</T> : (
+              <>
+                <FootpathMap
+                  routes={[route]}
+                  sketch={[]}
+                  here={here}
+                  locationFocus={focus}
+                  locating={locating}
+                  height={mapHeight}
+                  mapLabel={SAVED_ROUTE_MAP_LABEL}
+                  onShowMyLocation={() => { void whereIAm(); }}
+                />
+                {locating ? (
+                  <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
+                ) : (
+                  <Choice label="Where I am" selected={here != null} onPress={() => { void whereIAm(); }} />
+                )}
+              </>
             )}
           </Card>
           {SHOW_IN_APP_OUTING ? (

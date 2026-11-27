@@ -56,6 +56,8 @@ import {
   nextDrawTool,
   nextUndoStep,
   pushUndo,
+  recalculateKeepsLoop,
+  rubbedSinceSnap,
   type DrawTool,
   type DrawUndoEntry,
 } from '@/domain/drawErase';
@@ -115,6 +117,7 @@ import {
 } from '@/domain/routeReset';
 import { loadDistanceUnit } from '@/health/distanceUnit';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
+import { ROUTE_SAVED_WHERE, routeSaveView, savedAfterRename } from '@/domain/routeSaveButton';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { markRubberTipSeen, rubberTipSeen } from '@/ui/rubberTipMemory';
 import { RouteSnapSummary } from '@/ui/RouteSnapSummary';
@@ -494,13 +497,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   async function save() {
-    if (!plan) return;
+    if (!plan || saved) return;
     setError(null);
     setPending(true);
     try {
       await repo.saveOutdoorRoute({
         title,
-        kind: routeKind(plan.shape, craving),
+        kind: routeKind(plan.shape, craving, fromDraw),
         points: plan.points,
         durationMinutes: plan.durationMinutes,
         distanceM: plan.distanceM,
@@ -569,6 +572,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     if (!result.changed || !result.entry) return;
     strokesRef.current = result.strokes;
     setStrokes(result.strokes);
+    snappedCountRef.current = result.snappedCount;
+    setSnappedCount(result.snappedCount);
     erasedSnapRef.current = result.erasedSnap;
     setErasedSnap(result.erasedSnap);
     setUndoStack(pushUndo(drawStackRef.current, result.entry));
@@ -608,7 +613,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setFromDraw(true);
     const anchor = startName === 'Where I am' ? start : null;
     const combined = combineDrawStrokes(nextStrokes);
-    const drawnShape = sketchIsClosed(combined) ? 'loop' : 'a_to_b';
+    // A wipe near the start of a loop leaves its two ends apart. Recalculate keeps it a loop.
+    const keepLoop = recalculateKeepsLoop({ wiped: erasedSnapRef.current != null, previousShape: previous?.shape ?? null });
+    const drawnShape = sketchIsClosed(combined) || keepLoop ? 'loop' : 'a_to_b';
     const preview = buildDrawSnapRequests(nextStrokes, anchor, drawnShape === 'loop');
     if (preview.limit) {
       const line = previous ? `${DRAW_SNAP_LIMIT} ${ROUTE_UNCHANGED}` : DRAW_SNAP_LIMIT;
@@ -865,11 +872,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   // After a wipe every remaining drawn piece shows in pencil, with the dashed gaps that
   // Recalculate will join, over what is left of the green line.
+  // After a wipe, what is left of the green line stays green, with real gaps where it was wiped.
+  // The finger strokes behind a snapped route are never shown again, and no dashed hint is drawn
+  // across a wiped gap. Recalculate joins the pieces along real paths.
   const wiped = erasedSnap != null;
-  const shownSnapCount = wiped ? 0 : snappedCount;
+  const rubbed = rubbedSinceSnap(drawStack);
   const snappedLine = snappedDrawLine(plan?.points ?? null, strokes, snappedCount);
-  const strokeLines = rawStrokeLines(strokes, shownSnapCount, pencil);
-  const gaps = drawGapLines(strokes, wiped ? null : plan?.points ?? null, shownSnapCount, pencil);
+  const strokeLines = rawStrokeLines(strokes, snappedCount, pencil);
+  const gaps = rubbed || wiped ? [] : drawGapLines(strokes, plan?.points ?? null, snappedCount, pencil);
   const recalculate = fromDraw && plan != null && needsRecalculate({ strokes, lastSnapped, erased: wiped });
   // While the drawing differs from the snapped route, the old figures and Save are hidden.
   const staleDrawn = recalculate || (wiped && fromDraw);
@@ -890,6 +900,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
   const snapPanel = snapFigures();
   const drawnReady = drawnRouteShowing({ craving, fromDraw, hasPlan: plan != null, snapFailed: snapMiss != null });
+  const saveView = routeSaveView({ saved, pending, title });
   const prompt = savePrompt({ hasPlan: plan != null, saved, stale: staleDrawn, snapFailed: snapMiss != null });
   const drawBar = sketchLabel || snapPanel || prompt === 'save' ? (
     <View style={{ gap: 8 }}>
@@ -1284,10 +1295,25 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           </View>
           {!craving ? <T>{routeRequestsTodayLine(requestsToday)}</T> : null}
           <View ref={saveTarget} collapsable={false} style={{ gap: 12 }}>
-            <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
-            <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
+            <Field
+              label="Route name"
+              value={title}
+              onChangeText={(next) => {
+                setSaved((was) => savedAfterRename(was, title, next));
+                setTitle(next);
+              }}
+              maxLength={80}
+            />
+            <Button
+              label={saveView.label}
+              accessibilityLabel={saveView.spoken}
+              tone={saveView.tone}
+              disabled={saveView.disabled}
+              pending={pending}
+              onPress={() => { void save(); }}
+            />
           </View>
-          {saved ? <T>Saved on your account. You can delete it from Map a Route.</T> : null}
+          {saved ? <T variant="muted">{ROUTE_SAVED_WHERE}</T> : null}
           {mapsUrl ? (
             <Button label="Open in Apple Maps" tone="quiet" onPress={() => { void Linking.openURL(mapsUrl); }} />
           ) : null}

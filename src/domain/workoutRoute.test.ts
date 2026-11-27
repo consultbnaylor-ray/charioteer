@@ -459,7 +459,20 @@ describe('workout routes stay on the phone', () => {
     // Garmin route maps (Ben, 26 November 2026): the only migration that may name a position is the
     // Garmin track one, and it may only add the start point to garmin_activity_detail and create garmin_activity_samples.
     const positioned = filesUnder('supabase/migrations').filter((path) => /latitude|longitude/.test(readFileSync(path, 'utf8')));
-    expect(positioned).toEqual(['supabase/migrations/20261126215217_garmin_activity_samples.sql']);
+    // Saved route line (Ben, 27 November 2026, t1135u): the unapplied keep-line migration may name a
+    // position only in its owner-only geometry check on outdoor_routes.
+    expect(positioned).toEqual([
+      'supabase/migrations/20261126215217_garmin_activity_samples.sql',
+      'supabase/migrations/20261127180000_outdoor_routes_keep_line.sql',
+    ]);
+    const lineSql = readFileSync(positioned[1], 'utf8');
+    expect(lineSql.startsWith('-- Not applied.')).toBe(true);
+    expect(lineSql).not.toMatch(/^create table|^grant [^\n]* to (anon|public)\b/im);
+    expect(lineSql.match(/^grant [^\n]*/gm)).toEqual([
+      'grant select (geometry) on table public.outdoor_routes to authenticated;',
+      'grant insert (geometry) on table public.outdoor_routes to authenticated;',
+      'grant update (geometry) on table public.outdoor_routes to authenticated;',
+    ]);
     const trackSql = readFileSync(positioned[0], 'utf8');
     expect(trackSql).toContain('create table if not exists public.garmin_activity_samples');
     expect(trackSql).toContain('for select to authenticated using (user_id = auth.uid())');
@@ -488,6 +501,8 @@ describe('workout routes stay on the phone', () => {
       'src/data/supabase-repository.ts',
       'src/domain/workoutTrace.ts',
       'src/domain/routeCompletions.ts',
+      // Saved route line (t1135u): the owner's own outdoor_routes.geometry, never logged.
+      'src/domain/savedRouteLine.ts',
     ]);
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');

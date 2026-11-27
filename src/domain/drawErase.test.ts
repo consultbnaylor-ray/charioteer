@@ -258,7 +258,8 @@ describe('applyErase', () => {
       strokes: first.strokes,
       snappedLine,
       erasedSnap: first.erasedSnap,
-      snappedCount: 1,
+      // The green pieces left by the first wipe are now the snapped strokes.
+      snappedCount: first.snappedCount,
       path: [north(150)],
       radiusM: 10,
     });
