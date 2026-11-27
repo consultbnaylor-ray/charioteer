@@ -40,8 +40,6 @@ export type WimHofStep = {
   kind: WimHofStepKind;
   cue: 'in' | 'out' | 'hold' | 'ready';
   label: string;
-  /** Short how-to under the label, such as "Through the nose". */
-  hint: string;
   round: number;
   /** 1 to 30 during the deep breaths, otherwise null. */
   breath: number | null;
@@ -70,15 +68,15 @@ export function buildWimHofPlan(rounds: WimHofRounds = WIM_HOF_DEFAULT_ROUNDS, e
     at += step.ms;
   };
   for (let round = 1; round <= count; round += 1) {
-    push({ kind: 'ready', cue: 'ready', label: 'Get ready', hint: `Round ${round} of ${count}`, round, breath: null, ms: WIM_HOF_READY_MS, fromScale: REST, toScale: REST });
+    push({ kind: 'ready', cue: 'ready', label: 'Get ready', round, breath: null, ms: WIM_HOF_READY_MS, fromScale: REST, toScale: REST });
     for (let breath = 1; breath <= WIM_HOF_BREATHS; breath += 1) {
-      push({ kind: 'in', cue: 'in', label: 'Breathe in', hint: 'Deep, through the nose', round, breath, ms: WIM_HOF_IN_MS, fromScale: REST, toScale: FULL });
-      push({ kind: 'out', cue: 'out', label: 'Breathe out', hint: 'Let it go through the mouth', round, breath, ms: WIM_HOF_OUT_MS, fromScale: FULL, toScale: REST });
+      push({ kind: 'in', cue: 'in', label: 'Breathe in', round, breath, ms: WIM_HOF_IN_MS, fromScale: REST, toScale: FULL });
+      push({ kind: 'out', cue: 'out', label: 'Breathe out', round, breath, ms: WIM_HOF_OUT_MS, fromScale: FULL, toScale: REST });
     }
-    push({ kind: 'emptyHold', cue: 'hold', label: 'Breathe out and hold', hint: 'Lungs empty. Tap Breathe in when you need to', round, breath: null, ms: emptyHoldMs(emptyHolds[round - 1]), fromScale: REST, toScale: REST }, true);
-    push({ kind: 'bigIn', cue: 'in', label: 'Big breath in', hint: 'Fill right up', round, breath: null, ms: WIM_HOF_BIG_IN_MS, fromScale: REST, toScale: FULL });
-    push({ kind: 'hold', cue: 'hold', label: 'Hold', hint: 'Stay relaxed', round, breath: null, ms: WIM_HOF_HOLD_SECONDS * 1000, fromScale: FULL, toScale: FULL });
-    push({ kind: 'letGo', cue: 'out', label: 'Breathe out', hint: 'Slowly, all the way', round, breath: null, ms: WIM_HOF_LET_GO_MS, fromScale: FULL, toScale: REST });
+    push({ kind: 'emptyHold', cue: 'hold', label: 'Breathe out and hold', round, breath: null, ms: emptyHoldMs(emptyHolds[round - 1]), fromScale: REST, toScale: REST }, true);
+    push({ kind: 'bigIn', cue: 'in', label: 'Big breath in', round, breath: null, ms: WIM_HOF_BIG_IN_MS, fromScale: REST, toScale: FULL });
+    push({ kind: 'hold', cue: 'hold', label: 'Hold', round, breath: null, ms: WIM_HOF_HOLD_SECONDS * 1000, fromScale: FULL, toScale: FULL });
+    push({ kind: 'letGo', cue: 'out', label: 'Breathe out', round, breath: null, ms: WIM_HOF_LET_GO_MS, fromScale: FULL, toScale: REST });
   }
   return steps;
 }

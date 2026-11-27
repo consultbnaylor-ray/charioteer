@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { speakIfGated, stopSpeaking, TESTFLIGHT_SPEECH_ON } from '@/activity/speakLine';
+import { useMeditationMusic } from '@/audio/meditationMusic';
 import { acceptPauseTap, elapsedMs, pauseTiming, resumeTiming, type BreathTiming } from '@/domain/breathPause';
 import {
   WIM_HOF_DEFAULT_ROUNDS,
@@ -27,7 +28,9 @@ import {
   type WimHofRounds,
   type WimHofStep,
 } from '@/domain/wimHof';
+import { MUSIC_DONE_FADE_MS, MUSIC_OFF, type MusicChoice } from '@/domain/meditationTracks';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
+import { MusicChoiceRow, useKeepAwakeWhile } from '@/ui/MeditationMusic';
 import { Button, Card, Choice, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -44,6 +47,8 @@ export function WimHofBreathing() {
   const theme = useAppTheme();
   const [rounds, setRounds] = useState<WimHofRounds>(WIM_HOF_DEFAULT_ROUNDS);
   const [spoken, setSpoken] = useState(TESTFLIGHT_SPEECH_ON);
+  const [musicChoice, setMusicChoice] = useState<MusicChoice>(MUSIC_OFF);
+  const music = useMeditationMusic();
   const [holds, setHolds] = useState<WimHofEmptyHolds>([]);
   const plan = useMemo(() => buildWimHofPlan(rounds, holds), [rounds, holds]);
   // The clock's ceiling is the longest the session can run, with every empty-lungs hold at the cap.
@@ -98,6 +103,8 @@ export function WimHofBreathing() {
         lastIndexRef.current = -1;
         if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         speakIfGated(wimHofDoneSpoken(), spokenRef.current);
+        // The music has looped for the whole session. Let it fade out with the last breath.
+        music.stop(MUSIC_DONE_FADE_MS);
         setNowMs(now);
         return;
       }
@@ -114,22 +121,7 @@ export function WimHofBreathing() {
   }, [status, plan]);
 
   // Keep the screen on only while the breathing is running.
-  useEffect(() => {
-    if (status !== 'running') return undefined;
-    let gone = false;
-    void import('expo-keep-awake').then(async (mod) => {
-      if (gone) return;
-      try {
-        await mod.activateKeepAwakeAsync(KEEP_AWAKE_TAG);
-      } catch {
-        // A browser can refuse the wake lock.
-      }
-    }).catch(() => undefined);
-    return () => {
-      gone = true;
-      void import('expo-keep-awake').then((mod) => mod.deactivateKeepAwake(KEEP_AWAKE_TAG)).catch(() => undefined);
-    };
-  }, [status]);
+  useKeepAwakeWhile(status === 'running', KEEP_AWAKE_TAG);
 
   useEffect(() => () => {
     statusRef.current = 'idle';
@@ -144,6 +136,7 @@ export function WimHofBreathing() {
     if (statusRef.current === 'running') {
       clockRef.current = pauseTiming(clockRef.current, now);
       stopSpeaking();
+      music.pause();
       setNowMs(now);
       setBoth('paused');
       return;
@@ -154,8 +147,11 @@ export function WimHofBreathing() {
       tappedRef.current = false;
       setHolds([]);
       setHoldTimes([]);
+      // Optional music loops for the whole session, however long the empty-lungs holds run.
+      if (musicChoice !== MUSIC_OFF) music.start(musicChoice, null);
     } else {
       clockRef.current = resumeTiming(clockRef.current, now);
+      music.resume();
     }
     setNowMs(now);
     setBoth('running');
@@ -177,6 +173,7 @@ export function WimHofBreathing() {
 
   function stop() {
     stopSpeaking();
+    music.stop();
     clockRef.current = idleClock(totalMs);
     lastIndexRef.current = -1;
     tappedRef.current = false;
@@ -212,6 +209,7 @@ export function WimHofBreathing() {
               </View>
             ))}
           </View>
+          <MusicChoiceRow value={musicChoice} onChange={setMusicChoice} />
           {TESTFLIGHT_SPEECH_ON ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}><Choice label="Spoken and on screen" selected={spoken} onPress={() => setSpoken(true)} /></View>
@@ -242,11 +240,10 @@ export function WimHofBreathing() {
           <View
             accessible
             accessibilityLiveRegion="polite"
-            accessibilityLabel={`${position.step.label}. ${position.step.hint}`}
+            accessibilityLabel={status === 'paused' ? 'Paused' : position.step.label}
             style={{ width: size, height: size, borderRadius: 999, backgroundColor: theme.colors.ink, alignItems: 'center', justifyContent: 'center', padding: 12 }}
           >
             <T variant="title" style={{ color: theme.colors.bg, textAlign: 'center' }}>{status === 'paused' ? 'Paused' : position.step.label}</T>
-            <T variant="label" style={{ color: theme.colors.bg, textAlign: 'center' }}>{position.step.hint}</T>
           </View>
         </View>
       ) : null}
