@@ -15,7 +15,6 @@ import {
   DRAW_PEN_HINT,
   VIA_POINT_CAP,
   REDRAW_PAUSE_MS,
-  adjustControlsOn,
   MIN_LIFT_METRES,
   SAME_POINT_METRES,
   TAP_TO_MOVE,
@@ -174,38 +173,27 @@ describe('route adjusting', () => {
     expect(places).not.toMatch(/latitude|longitude|via/);
   });
 
-  it('counts one phone request after the call, and shows adjust controls after the button', () => {
+  it('counts one phone request after the call; the route maker has no via-point Adjust panel', () => {
     expect(countsPhoneRouteRequest(null)).toBe(true);
     expect(countsPhoneRouteRequest('Choose a start point.')).toBe(true);
     expect(countsPhoneRouteRequest(ROUTE_OFFLINE)).toBe(false);
 
-    let adjusting = false;
-    const tapAdjust = () => { adjusting = !adjusting; };
-    const planOn = { craving: false, hasPlan: true };
-    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(false);
-    tapAdjust();
-    expect(adjusting).toBe(true);
-    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(true);
-    expect(adjustControlsOn({ craving: true, adjusting, hasPlan: true })).toBe(false);
     expect(viaCountLine(0)).toBe('0 of 5 points');
-    tapAdjust();
-    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(false);
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const make = maker.slice(maker.indexOf('async function make'), maker.indexOf('async function save'));
-    const redraw = maker.slice(maker.indexOf('sendRef.current = async'), maker.indexOf('function onMapTap'));
     expect(make.indexOf('planOutdoorRoute')).toBeGreaterThan(-1);
     expect(make.indexOf('planOutdoorRoute')).toBeLessThan(make.indexOf('noteRouteRequest'));
-    expect(redraw.indexOf('planOutdoorRoute')).toBeLessThan(redraw.indexOf('noteRouteRequest'));
     expect(make.split('noteRouteRequest').length - 1).toBe(2);
+    // Add a point did not work well and was removed (Ben, 27 Nov). Without it there are no
+    // via points to move, undo, reset or remove, so the whole Adjust panel went with it.
+    // Nothing can now redraw the route as a fresh loop once the points run out (the #140 caveat).
     const card = maker.slice(maker.indexOf('label={startLabel'), maker.indexOf('label="Route name"'));
-    expect(card.indexOf('label={ADJUST_THE_ROUTE}')).toBeLessThan(card.indexOf('{adjustActions}'));
-    expect(card.indexOf('{adjustActions}')).toBeLessThan(card.indexOf('<FootpathMap'));
-    expect(maker).toContain('label={UNDO_ADJUST}');
-    expect(maker).toContain('label={RESET_ADJUST}');
-    expect(maker).toContain('label={ADD_A_POINT}');
-    expect(maker).toContain('viaCountLine');
-    expect(maker).toContain('vias: shownVias');
+    expect(card).not.toContain('ADJUST_THE_ROUTE');
+    for (const gone of ['ADD_A_POINT', 'addPoint', 'UNDO_ADJUST', 'RESET_ADJUST', 'REMOVE_POINT', 'viaCountLine', 'shownVias', 'sendRef', 'onMapTap', 'armPlacement', 'TAP_TO_PLACE']) {
+      expect(maker, gone).not.toContain(gone);
+    }
+    expect(maker).not.toMatch(/\badjust=\{/);
     expect(maker).toContain('holdMadeRoute');
     expect(maker).toContain('startLabel');
     expect(maker).not.toMatch(/latitude|longitude/);
@@ -339,9 +327,8 @@ describe('route adjusting', () => {
     expect(web).toContain('current.onTap(point)');
     expect(web).not.toContain('mousedown');
     expect(web).not.toContain('dragPan');
-    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const saved = readFileSync('src/ui/SavedRouteAdjust.tsx', 'utf8');
-    for (const source of [maker, saved]) {
+    for (const source of [saved]) {
       expect(source).toContain('armPlacement');
       expect(source).toContain('tapPoint');
       expect(source).toContain(`<T>{TAP_TO_PLACE}</T>`);

@@ -34,15 +34,11 @@ function fresh(): PlannerActivity {
     snapped: 0,
     fromDraw: false,
     plan: false,
-    adjusting: false,
-    vias: 0,
-    history: 0,
     drawNote: false,
     snapMiss: false,
     saved: false,
     title: PLANNER_TITLE,
     error: false,
-    editing: false,
     pin: false,
     rough: false,
   };
@@ -71,9 +67,6 @@ describe('reset map', () => {
     expect(plannerNeedsReset({ ...fresh(), snapped: 1 })).toBe(true);
     expect(plannerNeedsReset({ ...fresh(), fromDraw: true })).toBe(true);
     expect(plannerNeedsReset({ ...fresh(), plan: true })).toBe(true);
-    expect(plannerNeedsReset({ ...fresh(), adjusting: true })).toBe(true);
-    expect(plannerNeedsReset({ ...fresh(), vias: 1 })).toBe(true);
-    expect(plannerNeedsReset({ ...fresh(), history: 1 })).toBe(true);
     expect(plannerNeedsReset({ ...fresh(), drawNote: true })).toBe(true);
     expect(plannerNeedsReset({ ...fresh(), title: 'Walk loop' })).toBe(true);
     expect(plannerNeedsReset({ ...fresh(), error: true })).toBe(true);
@@ -100,7 +93,6 @@ describe('reset map', () => {
     expect(kept.drawing).toBe(false);
     expect(kept.plan).toBeNull();
     expect(kept.title).toBe('My route');
-    expect(kept.adjusting).toBe(false);
     expect(kept.camera).toEqual(restingMapCamera(here));
     expect(kept.camera.zoom).toBe(15);
     expect(kept.camera.latitude).toBe(here.latitude);

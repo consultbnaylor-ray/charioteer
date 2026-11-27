@@ -260,15 +260,12 @@ describe('custom route distance and time', () => {
     expect(findRoute).toContain("label: 'No set time'");
 
     const make = maker.slice(maker.indexOf('async function make'), maker.indexOf('async function save'));
-    const redraw = maker.slice(maker.indexOf('sendRef.current = async'), maker.indexOf('function onMapTap'));
     expect(make).toContain('askedRoute()');
-    expect(redraw).toContain('askedRoute()');
     expect(make).toContain('distanceM: asked.distanceM');
     expect(make).toContain('minutes: asked.minutes');
     expect(make).toContain("shape: craving ? 'loop' : shape");
-    expect(redraw).toContain("shape: craving ? 'loop' : shape");
-    expect(redraw).toContain('distanceM: through ? null : asked.distanceM');
-    expect(redraw).toContain('minutes: through ? null : asked.minutes');
+    // The via-point redraw went with Add a point, so Make the route is the only settings route call.
+    expect(maker).not.toContain('sendRef.current = async');
     expect(maker).toContain('routeAskFromChoices');
     expect(maker).not.toMatch(/latitude|longitude/);
   });
