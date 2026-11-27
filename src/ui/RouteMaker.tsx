@@ -59,7 +59,15 @@ import {
   type DrawTool,
   type DrawUndoEntry,
 } from '@/domain/drawErase';
-import { REPLACE_DRAWN_ROUTE, drawnRouteLine, drawnRouteShowing } from '@/domain/drawnRouteReady';
+import {
+  DRAWN_ROUTE_CHANGED,
+  REPLACE_DRAWN_ROUTE,
+  ROUTE_READY_FULL_SCREEN,
+  ROUTE_READY_SAVE,
+  ROUTE_READY_SAVE_HINT,
+  drawnRouteShowing,
+  savePrompt,
+} from '@/domain/drawnRouteReady';
 import {
   freshRubberTip,
   nextRubberTip,
@@ -115,7 +123,7 @@ import { usePreferPaths } from '@/ui/preferPaths';
 import { RouteChoiceGroup } from '@/ui/RouteChoiceGroup';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, T, useScreenScroller } from '@/ui/ui';
 
 const CRAVING_MINUTES = [10, 15, 20] as const;
 
@@ -470,6 +478,21 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     }
   }
 
+  /** The name field and Save button, for the "Route ready" prompt to scroll to. */
+  const saveTarget = useRef<View>(null);
+  const screenScroller = useScreenScroller();
+  function scrollToSave() {
+    const target = saveTarget.current;
+    const inner = screenScroller?.current?.innerRef.current;
+    const scroll = screenScroller?.current?.scrollRef.current;
+    if (!target || !inner || !scroll) return;
+    target.measureLayout(
+      inner as never,
+      (_x, y) => scroll.scrollTo({ y: Math.max(0, y - 16), animated: true }),
+      () => {},
+    );
+  }
+
   async function save() {
     if (!plan) return;
     setError(null);
@@ -673,6 +696,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       lastSnappedRef.current = nextStrokes;
       setLastSnapped(nextStrokes);
       tipEvent({ kind: 'snapped' });
+      setSaved(false);
       const snapNote = result.fit === 'close'
         ? DRAW_SNAPPED
         : result.fit === 'near'
@@ -866,10 +890,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
   const snapPanel = snapFigures();
   const drawnReady = drawnRouteShowing({ craving, fromDraw, hasPlan: plan != null, snapFailed: snapMiss != null });
-  const drawBar = sketchLabel || snapPanel ? (
+  const prompt = savePrompt({ hasPlan: plan != null, saved, stale: staleDrawn, snapFailed: snapMiss != null });
+  const drawBar = sketchLabel || snapPanel || prompt === 'save' ? (
     <View style={{ gap: 8 }}>
       {sketchLabel ? <T>{sketchLabel}</T> : null}
       {snapFigures()}
+      {prompt === 'save' ? <T style={{ fontFamily: theme.font.bodyStrong }}>{ROUTE_READY_FULL_SCREEN}</T> : null}
     </View>
   ) : null;
   const howChoice = mode === 'run' ? 'Run' : mode === 'cycle' ? 'Cycle' : 'Walk';
@@ -1172,6 +1198,30 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           statusNote={snapMiss ? DRAW_SNAP_FAILED : drawing ? null : drawNote}
           onShowMyLocation={() => { void showMyLocation(); }}
         />
+        {prompt === 'save' ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={ROUTE_READY_SAVE}
+            accessibilityHint={ROUTE_READY_SAVE_HINT}
+            onPress={scrollToSave}
+            hitSlop={4}
+            style={{
+              minHeight: 48,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderRadius: 12,
+              borderWidth: 2,
+              borderColor: statsToneColors(theme.scheme).good.ink,
+            }}
+          >
+            <T style={{ fontSize: 22, lineHeight: 24, color: statsToneColors(theme.scheme).good.ink }}>↓</T>
+            <T style={{ flexShrink: 1, fontFamily: theme.font.bodyStrong }}>{ROUTE_READY_SAVE}</T>
+          </Pressable>
+        ) : null}
+        {prompt === 'changed' ? <T>{DRAWN_ROUTE_CHANGED}</T> : null}
         {snapPanel}
         {drawNote && drawNote !== DRAW_SNAP_FAILED ? (
           <T style={drawNote === DRAW_SNAPPED ? { color: statsToneColors(theme.scheme).good.ink, fontFamily: theme.font.bodyStrong } : undefined}>
@@ -1179,16 +1229,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           </T>
         ) : null}
         {drawnReady ? (
-          <>
-            <T>{drawnRouteLine(staleDrawn)}</T>
-            <Button
-              label={REPLACE_DRAWN_ROUTE}
-              tone="quiet"
-              disabled={pending || locating}
-              pending={pending}
-              onPress={() => { void make(); }}
-            />
-          </>
+          <Button
+            label={REPLACE_DRAWN_ROUTE}
+            tone="quiet"
+            disabled={pending || locating}
+            pending={pending}
+            onPress={() => { void make(); }}
+          />
         ) : (
           <Button
             label={craving ? 'Make this walk' : 'Make the route'}
@@ -1236,8 +1283,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             />
           </View>
           {!craving ? <T>{routeRequestsTodayLine(requestsToday)}</T> : null}
-          <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
-          <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
+          <View ref={saveTarget} collapsable={false} style={{ gap: 12 }}>
+            <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
+            <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
+          </View>
           {saved ? <T>Saved on your account. You can delete it from Map a Route.</T> : null}
           {mapsUrl ? (
             <Button label="Open in Apple Maps" tone="quiet" onPress={() => { void Linking.openURL(mapsUrl); }} />
