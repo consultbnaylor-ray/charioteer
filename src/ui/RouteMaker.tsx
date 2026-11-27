@@ -61,6 +61,13 @@ import {
 } from '@/domain/drawErase';
 import { REPLACE_DRAWN_ROUTE, drawnRouteLine, drawnRouteShowing } from '@/domain/drawnRouteReady';
 import {
+  freshRubberTip,
+  nextRubberTip,
+  rubberTipShouldPersist,
+  rubberTipVisible,
+  type RubberTipEvent,
+} from '@/domain/rubberTip';
+import {
   pathMetres,
   sketchDistanceLabel,
   sketchIsClosed,
@@ -119,6 +126,7 @@ import {
 import { loadDistanceUnit } from '@/health/distanceUnit';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
+import { markRubberTipSeen, rubberTipSeen } from '@/ui/rubberTipMemory';
 import { RouteSnapSummary } from '@/ui/RouteSnapSummary';
 import { dismissKeyboard } from '@/ui/keyboard';
 import { usePreferPaths } from '@/ui/preferPaths';
@@ -194,6 +202,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [erasedSnap, setErasedSnap] = useState<OutdoorPoint[][] | null>(null);
   // The strokes the last successful snap was made from. Recalculate shows when the drawing differs.
   const [lastSnapped, setLastSnapped] = useState<OutdoorPoint[][] | null>(null);
+  // The one-time "Wrong bit?" tip beside the rubber.
+  const [rubberTip, setRubberTip] = useState(freshRubberTip);
+  const rubberTipRef = useRef(rubberTip);
   const [fromDraw, setFromDraw] = useState(false);
   const [lookAt, setLookAt] = useState<OutdoorPoint | null>(null);
   const [lookFocus, setLookFocus] = useState(0);
@@ -231,6 +242,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   drawStackRef.current = drawStack;
   erasedSnapRef.current = erasedSnap;
   lastSnappedRef.current = lastSnapped;
+  rubberTipRef.current = rubberTip;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
   const routeFlight = useRef(false);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
@@ -251,6 +263,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     const endPlaces = endPlaceSearchRef.current;
     void readRouteRequests(phoneRequests).then(setRequestsToday).catch(() => undefined);
     void loadDistanceUnit().then(setUnit).catch(() => undefined);
+    void rubberTipSeen().then((seen) => tipEvent({ kind: 'loaded', seen })).catch(() => undefined);
     const chosen = takeChosenPlace();
     if (chosen?.role === 'end') {
       setEnd(chosen.place);
@@ -657,6 +670,15 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
 
+  /** Moves the rubber tip on. Dismissing it or using the rubber writes the flag once, so it never returns. */
+  function tipEvent(event: RubberTipEvent) {
+    const before = rubberTipRef.current;
+    const next = nextRubberTip(before, event);
+    rubberTipRef.current = next;
+    setRubberTip(next);
+    if (rubberTipShouldPersist(before, event)) void markRubberTipSeen();
+  }
+
   /** Forgets wipes and the last snapped drawing. Used wherever the drawing is cleared. */
   function forgetErase() {
     erasedSnapRef.current = null;
@@ -686,6 +708,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       path,
       radiusM,
     });
+    tipEvent({ kind: 'rubber' });
     if (!result.changed || !result.entry) return;
     strokesRef.current = result.strokes;
     setStrokes(result.strokes);
@@ -815,6 +838,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setErasedSnap(null);
       lastSnappedRef.current = nextStrokes;
       setLastSnapped(nextStrokes);
+      tipEvent({ kind: 'snapped' });
       setOriginal(next);
       const snapNote = result.fit === 'close'
         ? DRAW_SNAPPED
@@ -950,6 +974,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   /** The rubber. It turns draw mode on with the rubber; a second tap goes back to the pen. */
   function toggleRubber() {
     const next = nextDrawTool(drawing, drawTool, 'rubber');
+    tipEvent({ kind: 'rubber' });
     if (next.drawing) setAdjusting(false);
     if (pencilRef.current.length > 0) holdStroke(pencilRef.current);
     setDrawTool(next.tool);
@@ -1344,6 +1369,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           onRubber={craving ? undefined : toggleRubber}
           onRecalculate={craving ? undefined : () => { void recalculateDrawn(); }}
           canRecalculate={!craving && recalculate}
+          rubberTip={rubberTipVisible(rubberTip, {
+            craving,
+            fromDraw,
+            hasPlan: plan != null,
+            rubberOn: drawing && drawTool === 'rubber',
+            snapFailed: snapMiss != null,
+          })}
+          onDismissRubberTip={() => tipEvent({ kind: 'dismiss' })}
           onToggleDraw={craving ? undefined : toggleDraw}
           onUndoDraw={undoDraw}
           onClearDraw={closeDraw}

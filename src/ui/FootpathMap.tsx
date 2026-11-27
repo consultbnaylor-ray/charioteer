@@ -106,6 +106,8 @@ export function FootpathMap({
   onRubber,
   onRecalculate,
   canRecalculate = false,
+  rubberTip = false,
+  onDismissRubberTip,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -168,6 +170,9 @@ export function FootpathMap({
   onRubber?: () => void;
   onRecalculate?: () => void;
   canRecalculate?: boolean;
+  /** The one-time tip beside the rubber. Shown inline and full screen. */
+  rubberTip?: boolean;
+  onDismissRubberTip?: () => void;
 }) {
   const [scheme, choose] = useMapScheme();
   const styleUrl = openFreeMapStyle(scheme);
@@ -216,6 +221,8 @@ export function FootpathMap({
       onRubber={onRubber}
       onRecalculate={onRecalculate}
       canRecalculate={canRecalculate}
+      rubberTip={rubberTip}
+      onDismissRubberTip={onDismissRubberTip}
       renderMap={({ height: viewHeight, expanded }) => (
         <NativeCanvas
           maps={maps}
