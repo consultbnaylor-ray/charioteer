@@ -242,11 +242,10 @@ export function WimHofBreathing() {
           <View
             accessible
             accessibilityLiveRegion="polite"
-            accessibilityLabel={`${position.step.label}. ${position.step.hint}`}
+            accessibilityLabel={status === 'paused' ? 'Paused' : position.step.label}
             style={{ width: size, height: size, borderRadius: 999, backgroundColor: theme.colors.ink, alignItems: 'center', justifyContent: 'center', padding: 12 }}
           >
             <T variant="title" style={{ color: theme.colors.bg, textAlign: 'center' }}>{status === 'paused' ? 'Paused' : position.step.label}</T>
-            <T variant="label" style={{ color: theme.colors.bg, textAlign: 'center' }}>{position.step.hint}</T>
           </View>
         </View>
       ) : null}

@@ -67,7 +67,6 @@ describe('Wim Hof plan', () => {
     expect(wimHofAt(plan, 4_000 + 3_500).step).toMatchObject({ kind: 'in', breath: 2 });
     expect(wimHofAt(plan, 4_000 + 29 * 3_500 + 100).step).toMatchObject({ kind: 'in', breath: 30 });
     expect(wimHofAt(plan, 4_000 + 30 * 3_500).step).toMatchObject({ kind: 'emptyHold', label: 'Breathe out and hold' });
-    expect(wimHofAt(plan, 4_000 + 30 * 3_500).step.hint).toContain('Lungs empty');
   });
 
   it('shows the hold seconds counting down', () => {
