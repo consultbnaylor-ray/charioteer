@@ -141,8 +141,8 @@ function refusal(input: {
       window: decision.window,
       resets_at: decision.resetsAt,
       message: input.comp
-        ? `You've reached ${decision.window === 'day' ? "today's allowance" : "this month's allowance"}. It resets at ${decision.window === 'day' ? 'midnight' : 'the start of next month'}.`
-        : limitReachedMessage(decision),
+        ? limitReachedMessage({ ...decision, kind: input.kind }).replace(/\s*Upgrade to [^.]+\./g, '').trim()
+        : limitReachedMessage({ ...decision, kind: input.kind }),
     },
   };
 }

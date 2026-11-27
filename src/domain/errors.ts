@@ -177,6 +177,8 @@ export function asUserFacing(error: unknown, context: ErrorContext): UserFacingE
 }
 
 export function shownError(error: unknown, fallbackMessage: string, context: ErrorContext = 'general'): string {
+  // A used-up allowance has its own note with the Upgrade button. Saying it again here would repeat it.
+  if (error instanceof Error && error.name === 'AiGateNotice') return '';
   const faced = asUserFacing(error, context);
   if (faced.code === 'offline' && !offlineShouldShow()) return '';
   if (faced.code === 'generic' && faced.message === fallback(context)) return fallbackMessage;

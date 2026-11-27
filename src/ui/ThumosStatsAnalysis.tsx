@@ -12,6 +12,7 @@ import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
 import { useHealthSources } from '@/health/useHealthSources';
 import { useAppTheme } from '@/ui/theme';
 import { AiCreditLine } from '@/ui/AiCreditLine';
+import { isAiGateNotice } from '@/domain/aiGate';
 import { Button, Card, T } from '@/ui/ui';
 
 /**
@@ -25,6 +26,7 @@ export function ThumosStatsAnalysis() {
   const [pending, setPending] = useState(false);
   const [sections, setSections] = useState<AnalysisSection[]>([]);
   const [local, setLocal] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const profile = snap.profile;
   if (!profile) return null;
@@ -74,7 +76,10 @@ export function ThumosStatsAnalysis() {
         fuelNote: summary.fuelNote,
       }));
       setLocal(result.source === 'local');
+      setNotice(result.notice ?? null);
     } catch (err) {
+      // A used-up allowance shows its own note with the Upgrade button.
+      if (isAiGateNotice(err)) return;
       setError(err instanceof Error ? err.message : 'Analysis did not answer.');
     } finally {
       setPending(false);
@@ -108,7 +113,7 @@ export function ThumosStatsAnalysis() {
           ))}
         </View>
       ))}
-      {local ? <T variant="muted">{THUMOS_ANALYSE_LOCAL}</T> : null}
+      {notice ? <T variant="muted">{notice}</T> : local ? <T variant="muted">{THUMOS_ANALYSE_LOCAL}</T> : null}
       <T variant="muted">{THUMOS_ANALYSIS_CAVEAT}</T>
       <Button
         label={THUMOS_ANALYSE_AGAIN}

@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { visionContextFrom } from '../_shared/visionBoard.ts';
-import { gateAiUse } from '../_shared/aiAllowance.ts';
+import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { AI_BILLING_CODE, AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
 import { coachRestingNote, garminRestingDays, healthWithRestingNote } from '../_shared/currentResting.ts';
@@ -71,6 +72,8 @@ Deno.serve(async (req) => {
     kind: 'coach',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once xAI hands back a voice session.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes] = await Promise.all([
@@ -246,10 +249,17 @@ Deno.serve(async (req) => {
     body: JSON.stringify({ expires_after: { seconds: 300 } }),
   });
   if (!response.ok) {
+    if (xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response))) {
+      logAiBilling('thumos-voice-token', response.status);
+      return json({ ok: false, code: AI_BILLING_CODE, message: AI_BILLING_MESSAGES.voice }, 503);
+    }
     return json({ ok: false, code: 'upstream', message: 'Voice could not be started. Text chat is still here.' }, 502);
   }
   const payload = await response.json();
   if (!payload?.value) return json({ ok: false, code: 'upstream', message: 'Voice could not be started. Text chat is still here.' }, 502);
+  if (gate.ok) {
+    await countAiUse({ admin: createClient(url, service, { auth: { persistSession: false } }), userId, kind: 'coach', tier: gate.tier }).catch(() => false);
+  }
   return json({
     ok: true,
     token: payload.value,

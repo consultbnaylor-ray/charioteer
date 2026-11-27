@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
 import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
 import { corsHeaders, json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
 import { MEAL_NO_RETRY_HEADER, mealProviderResult, providerRetryPointless, type MealProviderFault } from '../_shared/mealProvider.ts';
@@ -91,17 +92,19 @@ Deno.serve(async (req) => {
     console.warn(`meal-estimate ${reason}`);
     note(requestId, reason);
   };
-  const replyFor = (fault: MealProviderFault) => {
+  const replyFor = (fault: MealProviderFault, billing = false) => {
     const decision = mealProviderResult(Boolean(image), fault);
+    // Our provider account refused. The phone says it is not their fault and no credit was used.
+    const billed = billing ? { billing: true, message: AI_BILLING_MESSAGES.meal } : {};
     if (decision.outcome === 'unread') {
       return json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
     }
     if (decision.outcome === 'unavailable') {
-      const body = { ok: false, code: decision.code, requestId: requestId || null };
-      return providerRetryPointless(fault) ? noRetry(body, 503) : json(body, 503);
+      const body = { ok: false, code: decision.code, requestId: requestId || null, ...billed };
+      return providerRetryPointless(fault) || billing ? noRetry(body, 503) : json(body, 503);
     }
     if (decision.providerUnavailable) {
-      return json({ ok: true, items: typed, source: 'local', providerUnavailable: true });
+      return json({ ok: true, items: typed, source: 'local', providerUnavailable: true, ...billed });
     }
     return json({ ok: true, items: typed, source: 'local' });
   };
@@ -179,9 +182,11 @@ Deno.serve(async (req) => {
       signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined);
+      const billing = response.status === 402 || xaiBillingRefusal(response.status, await xaiErrorText(response));
+      if (response.status === 402) await response.body?.cancel().catch(() => undefined);
       warnMeal(`http ${response.status}`);
-      return replyFor({ kind: 'http', status: response.status });
+      if (billing) logAiBilling('estimate-meal', response.status);
+      return replyFor({ kind: 'http', status: response.status }, billing);
     }
     const parsed = parseMealEstimate(completionText(await response.json()));
     if (!parsed) {

@@ -11,12 +11,21 @@ export type MealEstimateCategory =
   | 'provider'
   | 'unavailable'
   | 'credits'
+  | 'billing'
   | 'unreadable'
   | 'consent';
 
 /** Shown when the model cannot be called. It does not blame the photo. */
 export const PHOTO_PROVIDER_UNAVAILABLE =
   'Photo reading is unavailable right now. Please type the meal instead.';
+
+/** Our AI provider refused for billing. Matches AI_BILLING_MESSAGES.meal on the server. */
+export const MEAL_BILLING_UNAVAILABLE =
+  "Meal reading is temporarily unavailable. This isn't your fault and no credit was used. Please try again later, or type the meal in yourself.";
+
+/** Beside a typed estimate worked out on the phone because our AI provider refused for billing. */
+export const ROUGH_ESTIMATE_BILLING_NOTE =
+  "Rough estimate. Meal reading is temporarily unavailable. This isn't your fault and no credit was used.";
 
 /** Shown beside a text estimate that fell back on the device because the model was down. */
 export const ROUGH_ESTIMATE_NOTE = 'Rough estimate, AI unavailable right now.';
@@ -28,7 +37,8 @@ const MESSAGES: Record<MealEstimateCategory, string> = {
   timeout: 'The meal estimate took too long. Tap to retry.',
   provider: 'The meal estimate did not answer. Tap to retry.',
   unavailable: PHOTO_PROVIDER_UNAVAILABLE,
-  credits: 'This meal estimate needs an AI credit.',
+  credits: 'No meal-reading credits left. You can still type the meal in yourself.',
+  billing: MEAL_BILLING_UNAVAILABLE,
   unreadable: PHOTO_READ_FAIL,
   consent: 'Reading a meal needs the coach consent. You can still type the meal in yourself.',
 };

@@ -418,6 +418,8 @@ export type MealEstimate = {
   source: 'model' | 'local';
   /** The text figures are the on-device estimate because the model could not be called. */
   providerUnavailable?: boolean;
+  /** The model was not called because our AI provider refused for billing. Not the person's fault; no credit used. */
+  billing?: boolean;
 };
 
 export interface Repository {
@@ -500,7 +502,8 @@ export interface Repository {
   addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void>;
   saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void>;
   deleteGoalProgressPhoto(id: string): Promise<void>;
-  reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
+  /** notice is set when our AI provider refused for billing and a built-in reflection was returned. */
+  reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect & { notice?: string }>;
   saveVisionStatement(statement: string): Promise<void>;
   addVisionItem(bytes: Uint8Array): Promise<void>;
   updateVisionItem(id: string, patch: { caption?: string; area?: VisionArea | null; size?: VisionSize }): Promise<void>;
@@ -557,9 +560,10 @@ export interface Repository {
   /** Writes the ticked actions and the limits. It does not call the model. */
   saveHealthPlan(plan: HealthPlan): Promise<void>;
   /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
-  refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void>;
+  /** A notice is returned when our AI provider refused for billing and the plan was drafted without the model. */
+  refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<{ notice?: string } | void>;
   /** Sends a sanitised stats summary for a verdict. Metered on the plan allowance. Nothing is sent until this is called. */
-  analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }>;
+  analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local'; notice?: string }>;
   /** Saves the usual gym week, or clears it when null. */
   saveTrainingSchedule(schedule: import('@/domain/healthPlan').TrainingSchedule | null): Promise<void>;
   /** Adds a planned workout. The row stays on this account. */

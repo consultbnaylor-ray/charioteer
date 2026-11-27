@@ -36,7 +36,8 @@ import {
   type HealthTrend,
   type ThumosMode,
 } from '../_shared/thumos.ts';
-import { CRISIS_STATIC_REPLY, gateAiUse } from '../_shared/aiAllowance.ts';
+import { CRISIS_STATIC_REPLY, countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { COACH_BILLING_UNAVAILABLE, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
@@ -309,6 +310,8 @@ Deno.serve(async (req) => {
     crisis: safety.selfHarm || safety.withdrawal,
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once xAI gives a real answer. An outage or a billing refusal costs nothing.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const crisisStatic = !gate.ok && 'crisis' in gate ? gate.reply || CRISIS_STATIC_REPLY : null;
@@ -400,6 +403,7 @@ Deno.serve(async (req) => {
       let reply = OFFLINE_COACH_MESSAGE;
       let role: 'assistant' | 'offline' = 'offline';
       let fallbackKind: 'offline' | 'scripted' | null = null;
+      let modelAnswered = false;
       try {
         if (requestId) {
           const saved = await admin
@@ -429,6 +433,7 @@ Deno.serve(async (req) => {
             send({ type: 'status', state: 'waiting' });
             const primaryStep = thumosModelChain({ crisis })[0];
             let streamed = '';
+            let billingRefused = false;
             const attempt = await runThumosModelChain({
               crisis,
               backoffMs: XAI_RETRY_BACKOFF_MS,
@@ -444,6 +449,9 @@ Deno.serve(async (req) => {
                 system,
                 history,
                 user: content,
+                onBilling: () => {
+                  billingRefused = true;
+                },
                 onDelta: index > 0 && streamed
                   ? undefined
                   : (piece) => {
@@ -460,8 +468,10 @@ Deno.serve(async (req) => {
             if (attempt.from === 'scripted') {
               console.error('thumos xAI HTTP status', attempt.lastStatus);
             }
+            const billing = attempt.from === 'scripted' && billingRefused;
+            if (billing) logAiBilling('thumos-chat', attempt.lastStatus);
             if (!modelText) {
-              reply = ensureSafetyNotices(COACH_REPLY_FAILED, safety);
+              reply = ensureSafetyNotices(billing ? COACH_BILLING_UNAVAILABLE : COACH_REPLY_FAILED, safety);
               fallbackKind = 'scripted';
               if (!streamed) send({ type: 'delta', text: reply });
               else send({ type: 'replace', reply });
@@ -475,13 +485,14 @@ Deno.serve(async (req) => {
                   history,
                   user: content,
                 });
-                modelText = second.ok && second.text && thumosReplyFaults(second.text, earlierAssistant).length === 0
-                  ? second.text
-                  : freshThumosFallback(earlierAssistant);
+                const secondGood = second.ok && second.text && thumosReplyFaults(second.text, earlierAssistant).length === 0;
+                modelText = secondGood ? second.text : freshThumosFallback(earlierAssistant);
+                modelAnswered = Boolean(secondGood);
                 reply = ensureSafetyNotices(modelText, safety);
                 role = 'assistant';
                 send({ type: 'replace', reply });
               } else {
+                modelAnswered = true;
                 reply = ensureSafetyNotices(modelText, safety);
                 role = 'assistant';
                 if (reply !== modelText) send({ type: 'replace', reply });
@@ -497,6 +508,10 @@ Deno.serve(async (req) => {
         }
 
         if (fallbackKind) await noteThumosFallback(admin, fallbackKind);
+        if (modelAnswered && gate.ok) {
+          const counted = await countAiUse({ admin, userId, kind: 'coach', tier: gate.tier, requestId: requestId ?? undefined }).catch(() => false);
+          if (counted && coachUsage) send({ type: 'usage', kind: 'coach', used: coachUsage.used + 1, limit: coachUsage.limit });
+        }
         const saved = await saveThumosPair(admin, { userId, content, reply, role, mode, requestId });
         if (!saved.ok) {
           send({ type: 'error', message: 'The message could not be saved.' });
@@ -546,6 +561,7 @@ async function completeThumos(input: {
   history: ChatTurn[];
   user: string;
   onDelta?: (piece: string) => void;
+  onBilling?: () => void;
 }): Promise<{ ok: true; text: string } | { ok: false; status: number | 'timeout' | 'network' }> {
   const body = JSON.stringify(buildChatCompletionBody({
     model: input.model,
@@ -567,6 +583,9 @@ async function completeThumos(input: {
     });
     if (!response.ok || !response.body) {
       console.error('thumos xAI HTTP status', response.status);
+      if (!response.ok && xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response))) {
+        input.onBilling?.();
+      }
       if (xaiCallShouldRetry({ status: response.status, attempt: 0 })) {
         return { ok: false, status: response.status };
       }
