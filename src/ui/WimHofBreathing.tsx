@@ -12,13 +12,18 @@ import {
   WIM_HOF_SUMMARY,
   WIM_HOF_TITLE,
   buildWimHofPlan,
+  endEmptyHold,
+  stopwatchText,
   wimHofAt,
+  wimHofCapSpoken,
   wimHofDoneSpoken,
+  wimHofHoldTimes,
   wimHofFigure,
   wimHofLengthText,
   wimHofScale,
   wimHofSpokenLine,
   wimHofTotalMs,
+  type WimHofEmptyHolds,
   type WimHofRounds,
   type WimHofStep,
 } from '@/domain/wimHof';
@@ -39,12 +44,18 @@ export function WimHofBreathing() {
   const theme = useAppTheme();
   const [rounds, setRounds] = useState<WimHofRounds>(WIM_HOF_DEFAULT_ROUNDS);
   const [spoken, setSpoken] = useState(TESTFLIGHT_SPEECH_ON);
-  const plan = useMemo(() => buildWimHofPlan(rounds), [rounds]);
-  const totalMs = wimHofTotalMs(plan);
+  const [holds, setHolds] = useState<WimHofEmptyHolds>([]);
+  const plan = useMemo(() => buildWimHofPlan(rounds, holds), [rounds, holds]);
+  // The clock's ceiling is the longest the session can run, with every empty-lungs hold at the cap.
+  const totalMs = useMemo(() => wimHofTotalMs(buildWimHofPlan(rounds)), [rounds]);
+  const [holdTimes, setHoldTimes] = useState<number[]>([]);
   const [status, setStatus] = useState<Status>('idle');
   const [nowMs, setNowMs] = useState(0);
   const clockRef = useRef<BreathTiming>(idleClock(totalMs));
   const lastTapRef = useRef<number | null>(null);
+  const lastBreatheInRef = useRef<number | null>(null);
+  /** Set when the user taps Breathe in, so reaching the big breath without a tap means the safety cap was hit. */
+  const tappedRef = useRef(false);
   const lastIndexRef = useRef(-1);
   const statusRef = useRef<Status>('idle');
   const spokenRef = useRef(spoken);
@@ -55,7 +66,15 @@ export function WimHofBreathing() {
     setStatus(next);
   }
 
-  function cueStep(step: WimHofStep) {
+  function cueStep(step: WimHofStep, previous: WimHofStep | undefined) {
+    const capped = step.kind === 'bigIn' && previous?.kind === 'emptyHold' && !tappedRef.current;
+    if (step.kind === 'bigIn') tappedRef.current = false;
+    if (capped) {
+      // A gentle nudge at the safety cap: one soft tap and a calm spoken line.
+      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      speakIfGated(wimHofCapSpoken(), spokenRef.current);
+      return;
+    }
     if (Platform.OS !== 'web') {
       const style = step.cue === 'out' ? Haptics.ImpactFeedbackStyle.Soft : step.cue === 'ready' ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium;
       void Haptics.impactAsync(style);
@@ -70,9 +89,11 @@ export function WimHofBreathing() {
     const tick = setInterval(() => {
       if (statusRef.current !== 'running') return;
       const now = Date.now();
-      const position = wimHofAt(plan, elapsedMs(clockRef.current, now));
+      const at = elapsedMs(clockRef.current, now);
+      const position = wimHofAt(plan, at);
       if (position.done) {
         clockRef.current = pauseTiming(clockRef.current, now);
+        setHoldTimes(wimHofHoldTimes(plan, at));
         setBoth('done');
         lastIndexRef.current = -1;
         if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -81,8 +102,9 @@ export function WimHofBreathing() {
         return;
       }
       if (position.index !== lastIndexRef.current) {
+        const previous = lastIndexRef.current >= 0 ? plan[lastIndexRef.current] : undefined;
         lastIndexRef.current = position.index;
-        cueStep(position.step);
+        cueStep(position.step, previous);
       }
       setNowMs(now);
     }, TICK_MS);
@@ -129,6 +151,9 @@ export function WimHofBreathing() {
     if (statusRef.current === 'idle' || statusRef.current === 'done') {
       clockRef.current = { ...idleClock(totalMs), startedAt: now };
       lastIndexRef.current = -1;
+      tappedRef.current = false;
+      setHolds([]);
+      setHoldTimes([]);
     } else {
       clockRef.current = resumeTiming(clockRef.current, now);
     }
@@ -136,10 +161,27 @@ export function WimHofBreathing() {
     setBoth('running');
   }
 
+  /** Ends the empty-lungs hold now. The stopwatch reading becomes that round's hold time. */
+  function breatheIn() {
+    const now = Date.now();
+    if (statusRef.current !== 'running') return;
+    if (!acceptPauseTap(lastBreatheInRef.current, now)) return;
+    lastBreatheInRef.current = now;
+    const next = endEmptyHold(plan, holds, elapsedMs(clockRef.current, now));
+    if (!next) return;
+    tappedRef.current = true;
+    stopSpeaking();
+    setHolds(next);
+    setNowMs(now);
+  }
+
   function stop() {
     stopSpeaking();
     clockRef.current = idleClock(totalMs);
     lastIndexRef.current = -1;
+    tappedRef.current = false;
+    setHolds([]);
+    setHoldTimes([]);
     lastTapRef.current = null;
     setBoth('idle');
   }
@@ -155,7 +197,10 @@ export function WimHofBreathing() {
       <T variant="title">{WIM_HOF_TITLE}</T>
       <T variant="muted">{WIM_HOF_SUMMARY}</T>
       {started ? (
-        <MeasureRingView label={position.step.breath != null ? 'Breath' : 'This step'} ring={wimHofFigure(position, rounds)} />
+        <MeasureRingView
+          label={position.step.breath != null ? 'Breath' : position.step.kind === 'emptyHold' ? 'Empty-lungs hold' : 'This step'}
+          ring={wimHofFigure(position, rounds)}
+        />
       ) : null}
       {status === 'idle' ? (
         <>
@@ -179,7 +224,19 @@ export function WimHofBreathing() {
           </View>
         </>
       ) : null}
-      {status === 'done' ? <T>{WIM_HOF_DONE_LINE}</T> : null}
+      {status === 'done' ? (
+        <>
+          <T>{WIM_HOF_DONE_LINE}</T>
+          {holdTimes.length > 0 ? (
+            <View style={{ gap: 2 }}>
+              <T variant="label">Empty-lungs holds</T>
+              {holdTimes.map((ms, index) => (
+                <T key={index}>Round {index + 1}: {stopwatchText(ms)}</T>
+              ))}
+            </View>
+          ) : null}
+        </>
+      ) : null}
       {started ? (
         <View style={{ alignItems: 'center', paddingVertical: 18 }}>
           <View
@@ -192,6 +249,26 @@ export function WimHofBreathing() {
             <T variant="label" style={{ color: theme.colors.bg, textAlign: 'center' }}>{position.step.hint}</T>
           </View>
         </View>
+      ) : null}
+      {status === 'running' && position.step.kind === 'emptyHold' ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Breathe in"
+          accessibilityHint="Ends the hold and starts the big breath in"
+          onPressIn={breatheIn}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            minHeight: 72,
+            borderRadius: theme.radius.md,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 18,
+            backgroundColor: pressed ? theme.colors.muted : theme.colors.ink,
+            opacity: pressed ? 0.86 : 1,
+          })}
+        >
+          <T variant="title" style={{ color: theme.colors.bg }}>Breathe in</T>
+        </Pressable>
       ) : null}
       <Pressable
         accessibilityRole="button"

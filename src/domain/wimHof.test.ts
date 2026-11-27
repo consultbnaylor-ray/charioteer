@@ -4,10 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { elapsedMs, pauseTiming, resumeTiming, type BreathTiming } from '@/domain/breathPause';
 import {
   WIM_HOF_BREATHS,
+  WIM_HOF_EMPTY_HOLD_CAP_MS,
   WIM_HOF_HOLD_SECONDS,
   WIM_HOF_SAFETY_LINE,
   buildWimHofPlan,
+  endEmptyHold,
   isWimHofRounds,
+  stopwatchText,
+  wimHofCapSpoken,
+  wimHofHoldTimes,
   wimHofAt,
   wimHofFigure,
   wimHofLengthText,
@@ -18,15 +23,16 @@ import {
 } from '@/domain/wimHof';
 
 describe('Wim Hof plan', () => {
-  it('has 30 breaths, a big breath, a 15 second hold and a breath out in every round', () => {
+  it('has 30 breaths, an empty-lungs hold, a big breath, a 15 second hold and a breath out in every round', () => {
     for (const rounds of [3, 4] as const) {
       const plan = buildWimHofPlan(rounds);
       for (let round = 1; round <= rounds; round += 1) {
         const steps = plan.filter((step) => step.round === round);
         expect(steps.filter((step) => step.kind === 'in')).toHaveLength(WIM_HOF_BREATHS);
         expect(steps.filter((step) => step.kind === 'out')).toHaveLength(WIM_HOF_BREATHS);
-        const tail = steps.slice(-3).map((step) => step.kind);
-        expect(tail).toEqual(['bigIn', 'hold', 'letGo']);
+        const tail = steps.slice(-5).map((step) => step.kind);
+        expect(tail).toEqual(['out', 'emptyHold', 'bigIn', 'hold', 'letGo']);
+        expect(steps.filter((step) => step.open).map((step) => step.kind)).toEqual(['emptyHold']);
         const hold = steps.find((step) => step.kind === 'hold');
         expect(hold?.ms).toBe(WIM_HOF_HOLD_SECONDS * 1000);
         expect(steps[0].kind).toBe('ready');
@@ -48,7 +54,7 @@ describe('Wim Hof plan', () => {
     for (let i = 1; i < plan.length; i += 1) {
       expect(plan[i].startMs).toBe(plan[i - 1].startMs + plan[i - 1].ms);
     }
-    expect(wimHofTotalMs(plan)).toBe(4 * (4_000 + 30 * 3_500 + 3_000 + 15_000 + 4_000));
+    expect(wimHofTotalMs(plan)).toBe(4 * (4_000 + 30 * 3_500 + WIM_HOF_EMPTY_HOLD_CAP_MS + 3_000 + 15_000 + 4_000));
   });
 
   it('counts each deep breath in then out', () => {
@@ -60,12 +66,14 @@ describe('Wim Hof plan', () => {
     expect(wimHofAt(plan, 4_000 + 2_000).step).toMatchObject({ kind: 'out', breath: 1 });
     expect(wimHofAt(plan, 4_000 + 3_500).step).toMatchObject({ kind: 'in', breath: 2 });
     expect(wimHofAt(plan, 4_000 + 29 * 3_500 + 100).step).toMatchObject({ kind: 'in', breath: 30 });
-    expect(wimHofAt(plan, 4_000 + 30 * 3_500).step.kind).toBe('bigIn');
+    expect(wimHofAt(plan, 4_000 + 30 * 3_500).step).toMatchObject({ kind: 'emptyHold', label: 'Breathe out and hold' });
+    expect(wimHofAt(plan, 4_000 + 30 * 3_500).step.hint).toContain('Lungs empty');
   });
 
   it('shows the hold seconds counting down', () => {
     const plan = buildWimHofPlan(3);
     const holdStart = plan.find((step) => step.kind === 'hold')!.startMs;
+    expect(plan.find((step) => step.kind === 'hold')!.startMs).toBe(4_000 + 30 * 3_500 + WIM_HOF_EMPTY_HOLD_CAP_MS + 3_000);
     expect(wimHofSecondsLeft(wimHofAt(plan, holdStart))).toBe(15);
     expect(wimHofSecondsLeft(wimHofAt(plan, holdStart + 14_100))).toBe(1);
     expect(wimHofAt(plan, holdStart + 15_000).step.kind).toBe('letGo');
@@ -114,21 +122,63 @@ describe('Wim Hof plan', () => {
   it('speaks only at the turning points', () => {
     const plan = buildWimHofPlan(3);
     const spoken = plan.map((step) => wimHofSpokenLine(step, 3)).filter(Boolean);
-    expect(spoken).toHaveLength(3 * 4);
+    expect(spoken).toHaveLength(3 * 5);
+    expect(wimHofSpokenLine(plan.find((step) => step.kind === 'emptyHold')!, 3)).toContain('Breathe out and hold, lungs empty');
+    expect(wimHofCapSpoken()).toMatch(/gently/);
     expect(wimHofSpokenLine(plan[0], 3)).toContain('In through the nose, out through the mouth');
     expect(plan.filter((step) => step.kind === 'in' || step.kind === 'out').every((step) => wimHofSpokenLine(step, 3) === null)).toBe(true);
   });
 
   it('gives the length in plain words', () => {
-    expect(wimHofLengthText(3)).toBe('about 7 minutes');
-    expect(wimHofLengthText(4)).toBe('about 9 minutes');
+    // 4 s ready + 105 s breaths + a typical 90 s empty hold + 22 s = 221 s a round.
+    expect(wimHofLengthText(3)).toBe('about 11 minutes');
+    expect(wimHofLengthText(4)).toBe('about 15 minutes');
+  });
+
+  it('runs the empty-lungs stopwatch up until the user taps Breathe in', () => {
+    const plan = buildWimHofPlan(3);
+    const holdStart = 4_000 + 30 * 3_500;
+    const ring = wimHofFigure(wimHofAt(plan, holdStart + 65_400), 3);
+    expect(ring).toMatchObject({ centre: '1:05', unit: 'held', status: 'Round 1 of 3' });
+    const holds = endEmptyHold(plan, [], holdStart + 72_000);
+    expect(holds?.[0]).toBe(72_000);
+    const next = buildWimHofPlan(3, holds!);
+    expect(wimHofAt(next, holdStart + 72_000).step.kind).toBe('bigIn');
+    expect(wimHofAt(next, holdStart + 72_000).stepElapsedMs).toBe(0);
+    // Later rounds still wait at the cap until they are tapped.
+    expect(next.filter((step) => step.kind === 'emptyHold').map((step) => step.ms)).toEqual([72_000, WIM_HOF_EMPTY_HOLD_CAP_MS, WIM_HOF_EMPTY_HOLD_CAP_MS]);
+  });
+
+  it('ignores Breathe in outside the empty-lungs hold', () => {
+    const plan = buildWimHofPlan(3);
+    expect(endEmptyHold(plan, [], 10_000)).toBeNull();
+    expect(endEmptyHold(plan, [], wimHofTotalMs(plan) + 1)).toBeNull();
+  });
+
+  it('moves on by itself at the 3 minute safety cap', () => {
+    const plan = buildWimHofPlan(3);
+    const holdStart = 4_000 + 30 * 3_500;
+    expect(wimHofAt(plan, holdStart + WIM_HOF_EMPTY_HOLD_CAP_MS - 1).step.kind).toBe('emptyHold');
+    expect(wimHofAt(plan, holdStart + WIM_HOF_EMPTY_HOLD_CAP_MS).step.kind).toBe('bigIn');
+    expect(buildWimHofPlan(3, [999_999]).find((step) => step.kind === 'emptyHold')!.ms).toBe(WIM_HOF_EMPTY_HOLD_CAP_MS);
+  });
+
+  it('lists each finished round\'s empty-lungs hold for the summary', () => {
+    const plan = buildWimHofPlan(3, [61_000, 75_500, 90_000]);
+    expect(wimHofHoldTimes(plan, wimHofTotalMs(plan))).toEqual([61_000, 75_500, 90_000]);
+    const round2 = plan.find((step) => step.round === 2)!.startMs;
+    expect(wimHofHoldTimes(plan, round2)).toEqual([61_000]);
+    expect(stopwatchText(75_500)).toBe('1:15');
+    expect(stopwatchText(5_000)).toBe('0:05');
   });
 
   it('carries the safety note', () => {
     expect(WIM_HOF_SAFETY_LINE).toMatch(/water/);
     expect(WIM_HOF_SAFETY_LINE).toMatch(/driving/);
     expect(WIM_HOF_SAFETY_LINE).toMatch(/standing/);
-    expect(WIM_HOF_SAFETY_LINE).toMatch(/dizzy/);
+    expect(WIM_HOF_SAFETY_LINE).toMatch(/Do not force/);
+    expect(WIM_HOF_SAFETY_LINE).toMatch(/Tingling and light-headedness are common/);
+    expect(WIM_HOF_SAFETY_LINE).toMatch(/faint/);
     expect(WIM_HOF_SAFETY_LINE).toMatch(/pregnant/);
     expect(WIM_HOF_SAFETY_LINE).toMatch(/heart/);
     expect(WIM_HOF_SAFETY_LINE).toMatch(/epilepsy/);
@@ -150,6 +200,10 @@ describe('Wim Hof screen', () => {
     expect(screen).toContain('speakIfGated');
     expect(screen).toContain('stopSpeaking');
     expect(screen).toContain('acceptPauseTap');
+    expect(screen).toContain('endEmptyHold');
+    expect(screen).toContain('accessibilityLabel="Breathe in"');
+    expect(screen).toContain('wimHofCapSpoken');
+    expect(screen).toContain('Empty-lungs holds');
     expect(screen).toContain('minHeight: 52');
     expect(screen).not.toMatch(/Picker|ScrollView/);
   });

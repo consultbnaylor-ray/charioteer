@@ -3,6 +3,7 @@ import type { MeasureRing } from '@/domain/measureFigures';
 /**
  * Wim Hof style breathing, as pure timing.
  * Each round: a short get-ready, 30 deep breaths (in through the nose, out through the mouth),
+ * an empty-lungs hold that lasts until the user taps Breathe in (capped at 3 minutes),
  * one big breath in, a 15 second hold, then a long breath out.
  * The screen keeps one session clock and asks this module where that clock sits.
  */
@@ -18,18 +19,22 @@ export const WIM_HOF_IN_MS = 2_000;
 export const WIM_HOF_OUT_MS = 1_500;
 export const WIM_HOF_BIG_IN_MS = 3_000;
 export const WIM_HOF_LET_GO_MS = 4_000;
+/** The empty-lungs hold ends when the user taps Breathe in, or at this safety cap. */
+export const WIM_HOF_EMPTY_HOLD_CAP_MS = 180_000;
+/** Used only for the time estimate on the round buttons. */
+export const WIM_HOF_TYPICAL_EMPTY_HOLD_MS = 90_000;
 
 export const WIM_HOF_TITLE = 'Wim Hof style';
-export const WIM_HOF_SUMMARY = `${WIM_HOF_BREATHS} deep breaths, then one big breath held for ${WIM_HOF_HOLD_SECONDS} seconds. That is one round.`;
+export const WIM_HOF_SUMMARY = `${WIM_HOF_BREATHS} deep breaths, then breathe out and hold with empty lungs for as long as feels comfortable, then one big breath held for ${WIM_HOF_HOLD_SECONDS} seconds. That is one round.`;
 export const WIM_HOF_SAFETY_LINE =
-  'Sit or lie down first. Never do this in water, while driving, or standing up. Stop and breathe normally if you feel dizzy or faint. If you are pregnant, or have a heart condition or epilepsy, check with your doctor before you try it.';
+  'Sit or lie down first. Never do this in water, while driving, or standing up. Do not force the empty-lungs hold: tap Breathe in as soon as you need to. Tingling and light-headedness are common. Stop and breathe normally if you feel faint. If you are pregnant, or have a heart condition or epilepsy, check with your doctor before you try it.';
 export const WIM_HOF_DONE_LINE = 'All rounds done. Breathe normally for a minute before you stand up.';
 
 /** Circle sizes, matching the other breathing exercises: 0.68 small, 1 full. */
 const REST = 0.72;
 const FULL = 1;
 
-export type WimHofStepKind = 'ready' | 'in' | 'out' | 'bigIn' | 'hold' | 'letGo';
+export type WimHofStepKind = 'ready' | 'in' | 'out' | 'emptyHold' | 'bigIn' | 'hold' | 'letGo';
 
 export type WimHofStep = {
   kind: WimHofStepKind;
@@ -45,18 +50,23 @@ export type WimHofStep = {
   toScale: number;
   /** Where this step starts on the session clock. */
   startMs: number;
+  /** True for the empty-lungs hold, which ends early when the user taps Breathe in. */
+  open: boolean;
 };
+
+/** Empty-lungs hold length per round, in ms. Missing rounds use the safety cap until the user taps. */
+export type WimHofEmptyHolds = ReadonlyArray<number | undefined>;
 
 export function isWimHofRounds(value: unknown): value is WimHofRounds {
   return value === 3 || value === 4;
 }
 
-export function buildWimHofPlan(rounds: WimHofRounds = WIM_HOF_DEFAULT_ROUNDS): WimHofStep[] {
+export function buildWimHofPlan(rounds: WimHofRounds = WIM_HOF_DEFAULT_ROUNDS, emptyHolds: WimHofEmptyHolds = []): WimHofStep[] {
   const count = isWimHofRounds(rounds) ? rounds : WIM_HOF_DEFAULT_ROUNDS;
   const steps: WimHofStep[] = [];
   let at = 0;
-  const push = (step: Omit<WimHofStep, 'startMs'>) => {
-    steps.push({ ...step, startMs: at });
+  const push = (step: Omit<WimHofStep, 'startMs' | 'open'>, open = false) => {
+    steps.push({ ...step, startMs: at, open });
     at += step.ms;
   };
   for (let round = 1; round <= count; round += 1) {
@@ -65,11 +75,48 @@ export function buildWimHofPlan(rounds: WimHofRounds = WIM_HOF_DEFAULT_ROUNDS): 
       push({ kind: 'in', cue: 'in', label: 'Breathe in', hint: 'Deep, through the nose', round, breath, ms: WIM_HOF_IN_MS, fromScale: REST, toScale: FULL });
       push({ kind: 'out', cue: 'out', label: 'Breathe out', hint: 'Let it go through the mouth', round, breath, ms: WIM_HOF_OUT_MS, fromScale: FULL, toScale: REST });
     }
+    push({ kind: 'emptyHold', cue: 'hold', label: 'Breathe out and hold', hint: 'Lungs empty. Tap Breathe in when you need to', round, breath: null, ms: emptyHoldMs(emptyHolds[round - 1]), fromScale: REST, toScale: REST }, true);
     push({ kind: 'bigIn', cue: 'in', label: 'Big breath in', hint: 'Fill right up', round, breath: null, ms: WIM_HOF_BIG_IN_MS, fromScale: REST, toScale: FULL });
     push({ kind: 'hold', cue: 'hold', label: 'Hold', hint: 'Stay relaxed', round, breath: null, ms: WIM_HOF_HOLD_SECONDS * 1000, fromScale: FULL, toScale: FULL });
     push({ kind: 'letGo', cue: 'out', label: 'Breathe out', hint: 'Slowly, all the way', round, breath: null, ms: WIM_HOF_LET_GO_MS, fromScale: FULL, toScale: REST });
   }
   return steps;
+}
+
+function emptyHoldMs(value: number | undefined): number {
+  if (value == null || !Number.isFinite(value)) return WIM_HOF_EMPTY_HOLD_CAP_MS;
+  return Math.min(WIM_HOF_EMPTY_HOLD_CAP_MS, Math.max(0, Math.round(value)));
+}
+
+/**
+ * The user tapped Breathe in during an empty-lungs hold at this point on the session clock.
+ * Returns the holds with that round's length fixed, so the rebuilt plan puts the clock at the start of the big breath.
+ * Returns null when the clock is not in an empty-lungs hold.
+ */
+export function endEmptyHold(plan: WimHofStep[], emptyHolds: WimHofEmptyHolds, elapsedMs: number): number[] | null {
+  const position = wimHofAt(plan, elapsedMs);
+  if (position.done || position.step.kind !== 'emptyHold') return null;
+  const next: number[] = [];
+  const rounds = Math.max(...plan.map((step) => step.round));
+  for (let i = 0; i < rounds; i += 1) next[i] = emptyHolds[i] ?? Number.NaN;
+  next[position.step.round - 1] = Math.round(position.stepElapsedMs);
+  return next;
+}
+
+/** Each finished round's empty-lungs hold, in ms, in round order. Rounds not reached yet are left out. */
+export function wimHofHoldTimes(plan: WimHofStep[], elapsedMs: number): number[] {
+  const position = wimHofAt(plan, elapsedMs);
+  return plan
+    .filter((step) => step.kind === 'emptyHold' && (position.done || step.startMs + step.ms <= elapsedMs))
+    .map((step) => step.ms);
+}
+
+/** 65 000 ms as "1:05". */
+export function stopwatchText(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 export function wimHofTotalMs(plan: WimHofStep[]): number {
@@ -136,6 +183,16 @@ export function wimHofSecondsLeft(position: WimHofPosition): number {
 export function wimHofFigure(position: WimHofPosition, rounds: number): MeasureRing {
   const { step } = position;
   const roundText = `Round ${step.round} of ${rounds}`;
+  if (step.kind === 'emptyHold') {
+    return {
+      centre: stopwatchText(position.stepElapsedMs),
+      unit: 'held',
+      fill: Math.min(1, Math.max(0, position.stepElapsedMs / WIM_HOF_EMPTY_HOLD_CAP_MS)),
+      status: roundText,
+      tone: 'info',
+      neutral: true,
+    };
+  }
   if (step.breath != null) {
     return {
       centre: String(step.breath),
@@ -164,6 +221,8 @@ export function wimHofSpokenLine(step: WimHofStep, rounds: number): string | nul
       return step.round === 1
         ? `Round 1 of ${rounds}. Thirty deep breaths. In through the nose, out through the mouth.`
         : `Round ${step.round} of ${rounds}. Thirty more breaths.`;
+    case 'emptyHold':
+      return 'Breathe out and hold, lungs empty. Tap Breathe in when you need to.';
     case 'bigIn':
       return 'Big breath in. Fill right up.';
     case 'hold':
@@ -175,12 +234,18 @@ export function wimHofSpokenLine(step: WimHofStep, rounds: number): string | nul
   }
 }
 
+/** Said instead of the usual big-breath line when the empty-lungs hold reaches the safety cap. */
+export function wimHofCapSpoken(): string {
+  return 'Three minutes. Breathe in now, gently.';
+}
+
 export function wimHofDoneSpoken(): string {
   return 'All rounds done. Breathe normally.';
 }
 
-/** Total time as plain words, such as "about 6 minutes". */
+/** Total time as plain words, such as "about 11 minutes", assuming a typical 90 second empty-lungs hold. */
 export function wimHofLengthText(rounds: WimHofRounds): string {
-  const minutes = Math.round(wimHofTotalMs(buildWimHofPlan(rounds)) / 60_000);
+  const holds = Array.from({ length: rounds }, () => WIM_HOF_TYPICAL_EMPTY_HOLD_MS);
+  const minutes = Math.round(wimHofTotalMs(buildWimHofPlan(rounds, holds)) / 60_000);
   return `about ${minutes} minutes`;
 }
