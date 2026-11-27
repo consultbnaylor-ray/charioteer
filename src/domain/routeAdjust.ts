@@ -281,11 +281,6 @@ export function countsPhoneRouteRequest(message: string | null): boolean {
   return message !== ROUTE_OFFLINE;
 }
 
-/** Adjust is on after the button is tapped, and off after it is tapped again. */
-export function adjustControlsOn(input: { craving: boolean; adjusting: boolean; hasPlan: boolean }): boolean {
-  return !input.craving && input.adjusting && input.hasPlan;
-}
-
 export type DayStore = {
   getItem: (key: string) => Promise<string | null>;
   setItem: (key: string, value: string) => Promise<void>;

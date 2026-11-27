@@ -34,15 +34,11 @@ export type PlannerActivity = {
   snapped: number;
   fromDraw: boolean;
   plan: boolean;
-  adjusting: boolean;
-  vias: number;
-  history: number;
   drawNote: boolean;
   snapMiss: boolean;
   saved: boolean;
   title: string;
   error: boolean;
-  editing: boolean;
   pin: boolean;
   rough: boolean;
 };
@@ -55,8 +51,8 @@ export function plannerNeedsReset(activity: PlannerActivity): boolean {
   if (activity.start || activity.startName.trim() || activity.end || activity.endName.trim()) return true;
   if (activity.query.trim() || activity.endQuery.trim() || activity.searchOpen) return true;
   if (activity.drawing || activity.pencil > 0 || activity.strokes > 0 || activity.snapped > 0 || activity.fromDraw) return true;
-  if (activity.plan || activity.adjusting || activity.vias > 0 || activity.history > 0) return true;
-  if (activity.drawNote || activity.snapMiss || activity.saved || activity.error || activity.editing || activity.pin || activity.rough) return true;
+  if (activity.plan) return true;
+  if (activity.drawNote || activity.snapMiss || activity.saved || activity.error || activity.pin || activity.rough) return true;
   const title = activity.title.trim();
   if (title !== '' && title !== PLANNER_TITLE && title !== 'Craving walk') return true;
   return false;
@@ -81,7 +77,6 @@ export type ResetPlanner = {
   drawing: false;
   plan: null;
   title: string;
-  adjusting: false;
   camera: HeldCamera;
 };
 
@@ -110,7 +105,6 @@ export function resetPlanner(input: { preferPaths: boolean; here: OutdoorPoint |
     drawing: false,
     plan: null,
     title: PLANNER_TITLE,
-    adjusting: false,
     camera: restingMapCamera(input.here),
   };
 }

@@ -202,7 +202,9 @@ describe('saved routes in build 75', () => {
     expect(card.indexOf('<RouteSnapSummary plan={plan} />')).toBeLessThan(card.indexOf("startLabel('walk')"));
     expect(card.indexOf("startLabel('walk')")).toBeLessThan(card.indexOf("startLabel('run')"));
     expect(card.indexOf("startLabel('run')")).toBeLessThan(card.indexOf("startLabel('cycle')"));
-    expect(card.indexOf("startLabel('cycle')")).toBeLessThan(card.indexOf('{ADJUST_THE_ROUTE}'));
+    // The made-route card has no Adjust the route panel since Add a point was removed; the map follows the start buttons.
+    expect(card.indexOf("startLabel('cycle')")).toBeLessThan(card.indexOf('accessibilityLabel="Route line"'));
+    expect(card).not.toContain('ADJUST_THE_ROUTE');
     expect(maker).toContain('!craving && plan.points.length >= 2');
     expect(maker).toContain("holdMadeRoute({ title: title.trim() || 'My route', kind, points: line.points })");
     expect(maker).toContain('`/activity?kind=${kind}&made=${Date.now()}`');
