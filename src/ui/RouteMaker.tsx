@@ -50,7 +50,16 @@ import {
   undoDrawStroke,
 } from '@/domain/drawStroke';
 import { intentRoundNote, snapDrawnIntent } from '@/domain/drawIntent';
-import { DRAWN_ROUTE_READY, REPLACE_DRAWN_ROUTE, drawnRouteShowing } from '@/domain/drawnRouteReady';
+import {
+  applyErase,
+  needsRecalculate,
+  nextDrawTool,
+  nextUndoStep,
+  pushUndo,
+  type DrawTool,
+  type DrawUndoEntry,
+} from '@/domain/drawErase';
+import { REPLACE_DRAWN_ROUTE, drawnRouteLine, drawnRouteShowing } from '@/domain/drawnRouteReady';
 import {
   pathMetres,
   sketchDistanceLabel,
@@ -179,7 +188,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [pencil, setPencil] = useState<OutdoorPoint[]>([]);
   const [strokes, setStrokes] = useState<OutdoorPoint[][]>([]);
   const [snappedCount, setSnappedCount] = useState(0);
-  const [drawStack, setDrawStack] = useState<{ plan: RoutePlan | null; snappedCount: number; keptStrokes: number }[]>([]);
+  const [drawStack, setDrawStack] = useState<DrawUndoEntry[]>([]);
+  const [drawTool, setDrawTool] = useState<DrawTool>('pen');
+  // What is left of the snapped green line after a wipe. Null when nothing has been wiped since the last snap.
+  const [erasedSnap, setErasedSnap] = useState<OutdoorPoint[][] | null>(null);
+  // The strokes the last successful snap was made from. Recalculate shows when the drawing differs.
+  const [lastSnapped, setLastSnapped] = useState<OutdoorPoint[][] | null>(null);
   const [fromDraw, setFromDraw] = useState(false);
   const [lookAt, setLookAt] = useState<OutdoorPoint | null>(null);
   const [lookFocus, setLookFocus] = useState(0);
@@ -206,11 +220,17 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const strokesRef = useRef(strokes);
   const pencilRef = useRef(pencil);
   const snappedCountRef = useRef(snappedCount);
+  const drawStackRef = useRef(drawStack);
+  const erasedSnapRef = useRef(erasedSnap);
+  const lastSnappedRef = useRef(lastSnapped);
   const drawGen = useRef(0);
   const epoch = useRef(0);
   strokesRef.current = strokes;
   pencilRef.current = pencil;
   snappedCountRef.current = snappedCount;
+  drawStackRef.current = drawStack;
+  erasedSnapRef.current = erasedSnap;
+  lastSnappedRef.current = lastSnapped;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
   const routeFlight = useRef(false);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
@@ -570,7 +590,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setStrokes(empty);
       snappedCountRef.current = 0;
       setSnappedCount(0);
-      setDrawStack([]);
+      setUndoStack([]);
+      forgetErase();
       setPencil([]);
       setDrawing(false);
       setPlan(next);
@@ -635,6 +656,47 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
+
+  /** Forgets wipes and the last snapped drawing. Used wherever the drawing is cleared. */
+  function forgetErase() {
+    erasedSnapRef.current = null;
+    lastSnappedRef.current = null;
+    setErasedSnap(null);
+    setLastSnapped(null);
+    setDrawTool('pen');
+  }
+
+  function setUndoStack(next: DrawUndoEntry[]) {
+    drawStackRef.current = next;
+    setDrawStack(next);
+  }
+
+  /**
+   * The rubber lifted. Drawn points and the green line it touched are wiped. The route is
+   * not re-snapped until Recalculate, so a few wipes can be made first. One wipe is one undo.
+   */
+  function eraseDrawn(path: OutdoorPoint[], radiusM: number) {
+    if (path.length === 0) return;
+    const planPoints = planRef.current?.points ?? null;
+    const result = applyErase({
+      strokes: strokesRef.current,
+      snappedLine: snappedDrawLine(planPoints, strokesRef.current, snappedCountRef.current),
+      erasedSnap: erasedSnapRef.current,
+      snappedCount: snappedCountRef.current,
+      path,
+      radiusM,
+    });
+    if (!result.changed || !result.entry) return;
+    strokesRef.current = result.strokes;
+    setStrokes(result.strokes);
+    erasedSnapRef.current = result.erasedSnap;
+    setErasedSnap(result.erasedSnap);
+    setUndoStack(pushUndo(drawStackRef.current, result.entry));
+    setPencil([]);
+    setDrawNote(null);
+    setSnapMiss(null);
+    setError(null);
+  }
 
   function holdStroke(points: OutdoorPoint[]) {
     if (points.length === 0) {
@@ -737,9 +799,22 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setSnapMiss(null);
       setPlan(next);
       planRef.current = next;
-      setDrawStack((stack) => [...stack, { plan: previous, snappedCount: previousCount, keptStrokes: previousCount }].slice(-8));
+      const wiped = erasedSnapRef.current != null;
+      setUndoStack(pushUndo(drawStackRef.current, {
+        kind: 'snap',
+        plan: previous,
+        snappedCount: previousCount,
+        keptStrokes: previousCount,
+        // After a wipe, undoing the Recalculate goes back to the wiped drawing.
+        ...(wiped ? { strokes: nextStrokes.map((line) => [...line]), erasedSnap: erasedSnapRef.current } : {}),
+        lastSnapped: lastSnappedRef.current,
+      }));
       setSnappedCount(nextStrokes.length);
       snappedCountRef.current = nextStrokes.length;
+      erasedSnapRef.current = null;
+      setErasedSnap(null);
+      lastSnappedRef.current = nextStrokes;
+      setLastSnapped(nextStrokes);
       setOriginal(next);
       const snapNote = result.fit === 'close'
         ? DRAW_SNAPPED
@@ -787,14 +862,23 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   function undoDraw() {
-    if (pencilRef.current.length > 0) {
+    const stack = drawStackRef.current;
+    const top = stack[stack.length - 1] ?? null;
+    const step = nextUndoStep({
+      pencil: pencilRef.current.length,
+      strokes: strokesRef.current.length,
+      snappedCount: snappedCountRef.current,
+      top,
+    });
+    if (step === 'none') return;
+    if (step === 'pencil') {
       setPencil([]);
       setDrawNote(null);
       setSnapMiss(null);
       setError(null);
       return;
     }
-    if (strokesRef.current.length > snappedCountRef.current) {
+    if (step === 'stroke') {
       const next = undoDrawStroke(strokesRef.current);
       strokesRef.current = next;
       setStrokes(next);
@@ -803,30 +887,36 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError(null);
       return;
     }
+    if (!top) return;
     drawGen.current += 1;
     setPending(false);
-    setDrawStack((stack) => {
-      const previous = stack[stack.length - 1];
-      if (!previous) {
-        const next = undoDrawStroke(strokesRef.current);
-        strokesRef.current = next;
-        setStrokes(next);
-        return stack;
-      }
-      const next = strokesRef.current.slice(0, previous.keptStrokes);
-      strokesRef.current = next;
-      setStrokes(next);
-      setPlan(previous.plan);
-      planRef.current = previous.plan;
-      setFromDraw(previous.plan != null);
-      setSnappedCount(previous.snappedCount);
-      snappedCountRef.current = previous.snappedCount;
-      setPencil([]);
-      setDrawNote(null);
-      setSnapMiss(null);
-      setError(null);
-      return stack.slice(0, -1);
-    });
+    setPencil([]);
+    setDrawNote(null);
+    setSnapMiss(null);
+    setError(null);
+    setUndoStack(stack.slice(0, -1));
+    if (top.kind === 'erase') {
+      // The wipe comes back exactly as it was drawn. The route is not re-snapped.
+      strokesRef.current = top.strokes;
+      setStrokes(top.strokes);
+      snappedCountRef.current = top.snappedCount;
+      setSnappedCount(top.snappedCount);
+      erasedSnapRef.current = top.erasedSnap;
+      setErasedSnap(top.erasedSnap);
+      return;
+    }
+    const next = top.strokes ?? strokesRef.current.slice(0, top.keptStrokes);
+    strokesRef.current = next;
+    setStrokes(next);
+    setPlan(top.plan);
+    planRef.current = top.plan;
+    setFromDraw(top.plan != null);
+    setSnappedCount(top.snappedCount);
+    snappedCountRef.current = top.snappedCount;
+    erasedSnapRef.current = top.erasedSnap ?? null;
+    setErasedSnap(top.erasedSnap ?? null);
+    lastSnappedRef.current = top.lastSnapped ?? null;
+    setLastSnapped(top.lastSnapped ?? null);
   }
 
   function clearDraw() {
@@ -838,7 +928,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setStrokes(empty);
     snappedCountRef.current = 0;
     setSnappedCount(0);
-    setDrawStack([]);
+    setUndoStack([]);
+    forgetErase();
     setDrawNote(null);
     setSnapMiss(null);
     if (fromDraw) {
@@ -850,23 +941,39 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   function toggleDraw() {
-    setDrawing((on) => {
-      const next = nextDrawMode(on, 'pen').drawing;
-      if (next) setAdjusting(false);
-      return next;
-    });
+    const next = nextDrawTool(drawing, drawTool, 'pen');
+    if (next.drawing) setAdjusting(false);
+    setDrawTool(next.tool);
+    setDrawing(next.drawing);
+  }
+
+  /** The rubber. It turns draw mode on with the rubber; a second tap goes back to the pen. */
+  function toggleRubber() {
+    const next = nextDrawTool(drawing, drawTool, 'rubber');
+    if (next.drawing) setAdjusting(false);
+    if (pencilRef.current.length > 0) holdStroke(pencilRef.current);
+    setDrawTool(next.tool);
+    setDrawing(next.drawing);
+  }
+
+  /** Re-snaps what is left of the drawing, in order, with the same snap as the green tick. */
+  async function recalculateDrawn() {
+    setDrawTool('pen');
+    await confirmDraw();
   }
 
   /** The X. In draw mode it clears the sketch and leaves drawing, so the page scrolls again. */
   function closeDraw() {
     const next = nextDrawMode(drawing, 'close');
     if (next.clearSketch) clearDraw();
+    setDrawTool('pen');
     setDrawing(next.drawing);
   }
 
   /** Closing the full-screen map leaves draw mode and keeps the sketch. */
   function exitDraw() {
     setDrawing((on) => nextDrawMode(on, 'collapse').drawing);
+    setDrawTool('pen');
   }
 
   async function confirmDraw() {
@@ -882,9 +989,16 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   const mapHeight = Math.max(180, narrow ? 220 : 360);
+  // After a wipe every remaining drawn piece shows in pencil, with the dashed gaps that
+  // Recalculate will join, over what is left of the green line.
+  const wiped = erasedSnap != null;
+  const shownSnapCount = wiped ? 0 : snappedCount;
   const snappedLine = snappedDrawLine(plan?.points ?? null, strokes, snappedCount);
-  const strokeLines = rawStrokeLines(strokes, snappedCount, pencil);
-  const gaps = drawGapLines(strokes, plan?.points ?? null, snappedCount, pencil);
+  const strokeLines = rawStrokeLines(strokes, shownSnapCount, pencil);
+  const gaps = drawGapLines(strokes, wiped ? null : plan?.points ?? null, shownSnapCount, pencil);
+  const recalculate = fromDraw && plan != null && needsRecalculate({ strokes, lastSnapped, erased: wiped });
+  // While the drawing differs from the snapped route, the old figures and Save are hidden.
+  const staleDrawn = recalculate || (wiped && fromDraw);
   const drawnMetres = strokeLines.reduce((sum, line) => sum + pathMetres(line), 0);
   const sketchLabel = sketchDistanceLabel(drawnMetres);
   function snapFigures() {
@@ -896,6 +1010,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         </View>
       );
     }
+    if (staleDrawn) return null;
     if (fromDraw && plan) return <RouteSnapSummary plan={plan} />;
     return null;
   }
@@ -1034,7 +1149,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setPencil([]);
     setStrokes(empty);
     setSnappedCount(0);
-    setDrawStack([]);
+    setUndoStack([]);
+    forgetErase();
     setFromDraw(false);
     setDrawing(false);
     setLookAt(null);
@@ -1221,7 +1337,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               setPencil(points);
             },
             onEnd: (points) => { holdStroke(points); },
+            tool: drawTool,
+            onErase: eraseDrawn,
           } : null}
+          sketchPieces={erasedSnap}
+          onRubber={craving ? undefined : toggleRubber}
+          onRecalculate={craving ? undefined : () => { void recalculateDrawn(); }}
+          canRecalculate={!craving && recalculate}
           onToggleDraw={craving ? undefined : toggleDraw}
           onUndoDraw={undoDraw}
           onClearDraw={closeDraw}
@@ -1243,7 +1365,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         ) : null}
         {drawnReady ? (
           <>
-            <T>{DRAWN_ROUTE_READY}</T>
+            <T>{drawnRouteLine(staleDrawn)}</T>
             <Button
               label={REPLACE_DRAWN_ROUTE}
               tone="quiet"
@@ -1269,7 +1391,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           />
         ) : null}
       </Card>
-      {plan ? (
+      {plan && !staleDrawn ? (
         <Card>
           <T variant="title">{craving ? 'Craving walk' : title}</T>
           <RouteSnapSummary plan={plan} />

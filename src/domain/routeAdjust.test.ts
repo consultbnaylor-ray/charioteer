@@ -422,7 +422,8 @@ describe('route adjusting', () => {
   });
 
   it('snaps when the green tick is tapped and leaves drawing on until then', () => {
-    expect(DRAW_PEN_HINT).toBe('Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Tap X to stop drawing.');
+    expect(DRAW_PEN_HINT).toBe('Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Use the rubber to wipe out bits you don\'t want, then tap Recalculate route. Tap X to stop drawing.');
+    expect(DRAW_PEN_HINT).toContain('rubber');
     expect(DRAW_PEN_HINT).toContain('green tick');
     expect(DRAW_PEN_HINT).toContain('Tap X to stop drawing');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');

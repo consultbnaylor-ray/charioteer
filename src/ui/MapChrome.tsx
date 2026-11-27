@@ -12,6 +12,7 @@ import {
   fullScreenPanelMaxHeight,
 } from '@/domain/fullScreenMap';
 import { drawCloseLabel } from '@/domain/drawStroke';
+import { RECALCULATE_HINT, RECALCULATE_ROUTE, RUBBER_LABEL, RUBBER_ON_LABEL, type DrawTool } from '@/domain/drawErase';
 import { MAP_CREDIT, type MapScheme } from '@/domain/outdoorRoute';
 import {
   fullScreenModalVisible,
@@ -40,9 +41,14 @@ function CornerButton({
   bottom,
   right,
   disabled = false,
+  active = false,
+  hint,
   children,
 }: {
   label: string;
+  /** Filled green while this tool is on. */
+  active?: boolean;
+  hint?: string;
   onPress: () => void;
   top?: number;
   left?: number;
@@ -55,9 +61,11 @@ function CornerButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled, selected: active }}
       disabled={disabled}
       onPress={onPress}
+      hitSlop={4}
       style={{
         position: 'absolute',
         top,
@@ -69,9 +77,9 @@ function CornerButton({
         borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: FILL,
+        backgroundColor: active ? DRAW_TICK_GREEN : FILL,
         borderWidth: 1,
-        borderColor: INK,
+        borderColor: active ? '#FFFFFF' : INK,
         opacity: disabled ? 0.4 : 1,
         zIndex: 4,
       }}
@@ -126,6 +134,16 @@ function ClearIcon() {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
       <Path d="M8 8l8 8M16 8l-8 8" stroke={INK} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function RubberIcon({ active }: { active: boolean }) {
+  const ink = active ? '#FFFFFF' : INK;
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M14.6 4.2 20 9.6a1.4 1.4 0 0 1 0 2L12.4 19.2H7.6L4 15.6a1.4 1.4 0 0 1 0-2l8.6-9.4a1.4 1.4 0 0 1 2 0Z" stroke={ink} strokeWidth={1.8} strokeLinejoin="round" />
+      <Path d="M9 9.2 15 15.2M12.4 19.2H20" stroke={ink} strokeWidth={1.8} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -214,6 +232,10 @@ export function MapShell({
   confirmPending = false,
   statusNote = null,
   panel = null,
+  drawTool = 'pen',
+  onRubber,
+  onRecalculate,
+  canRecalculate = false,
   children,
 }: {
   here: boolean;
@@ -244,9 +266,17 @@ export function MapShell({
    * the whole screen; the bottom controls are lifted above this panel.
    */
   panel?: ReactNode;
+  /** The pen or the rubber, while draw mode is on. */
+  drawTool?: DrawTool;
+  onRubber?: () => void;
+  /** Re-snaps what is left after a wipe. Shown in place of the green tick. */
+  onRecalculate?: () => void;
+  canRecalculate?: boolean;
   children: ReactNode;
 }) {
   const theme = useAppTheme();
+  const rubberOn = drawing && drawTool === 'rubber';
+  const showRecalculate = canRecalculate && onRecalculate != null;
   const base = mapLabel?.trim() || 'Map with footpaths';
   const [panelHeight, setPanelHeight] = useState(0);
   const showPanel = expanded && panel != null && panel !== false;
@@ -292,6 +322,18 @@ export function MapShell({
             <CornerButton label={drawCloseLabel(drawing)} top={60} right={60} disabled={!canClearDraw} onPress={() => { if (canClearDraw) onClearDraw?.(); }}>
               <ClearIcon />
             </CornerButton>
+            {onRubber ? (
+              <CornerButton
+                label={rubberOn ? RUBBER_ON_LABEL : RUBBER_LABEL}
+                hint="Drag over the line to wipe it out."
+                top={112}
+                right={60}
+                active={rubberOn}
+                onPress={onRubber}
+              >
+                <RubberIcon active={rubberOn} />
+              </CornerButton>
+            ) : null}
           </>
         ) : null}
         {statusNote && (!drawing || statusNote === DRAW_SNAP_FAILED) ? (
@@ -318,7 +360,37 @@ export function MapShell({
             </T>
           </View>
         ) : null}
-        {drawing && canConfirmDraw && onConfirmDraw ? (
+        {showRecalculate ? (
+          <View pointerEvents={'box-none'} style={{ position: 'absolute', left: 0, right: 0, bottom: 72 + lift, alignItems: 'center', zIndex: 7 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={RECALCULATE_ROUTE}
+              accessibilityHint={RECALCULATE_HINT}
+              accessibilityState={{ disabled: confirmPending }}
+              disabled={confirmPending}
+              onPress={onRecalculate}
+              hitSlop={6}
+              style={{
+                minHeight: 56,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingHorizontal: 20,
+                borderRadius: 28,
+                backgroundColor: DRAW_TICK_GREEN,
+                borderWidth: 2,
+                borderColor: '#FFFFFF',
+                opacity: confirmPending ? 0.45 : 1,
+              }}
+            >
+              <TickIcon />
+              <T maxFontSizeMultiplier={1.6} style={{ color: '#FFFFFF', fontSize: 18, lineHeight: 22, fontFamily: theme.font.bodyStrong }}>
+                {RECALCULATE_ROUTE}
+              </T>
+            </Pressable>
+          </View>
+        ) : null}
+        {drawing && canConfirmDraw && onConfirmDraw && !showRecalculate ? (
           <View pointerEvents={'box-none'} style={{ position: 'absolute', left: 0, right: 0, bottom: 72 + lift, alignItems: 'center', zIndex: 7 }}>
             <Pressable
               accessibilityRole="button"
@@ -406,6 +478,10 @@ export function MapFrame({
   canConfirmDraw,
   confirmPending,
   statusNote,
+  drawTool,
+  onRubber,
+  onRecalculate,
+  canRecalculate,
 }: {
   here: boolean;
   height?: number;
@@ -433,6 +509,10 @@ export function MapFrame({
   canConfirmDraw?: boolean;
   confirmPending?: boolean;
   statusNote?: string | null;
+  drawTool?: DrawTool;
+  onRubber?: () => void;
+  onRecalculate?: () => void;
+  canRecalculate?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
@@ -485,6 +565,10 @@ export function MapFrame({
       confirmPending={confirmPending}
       statusNote={statusNote}
       panel={panel}
+      drawTool={drawTool}
+      onRubber={onRubber}
+      onRecalculate={onRecalculate}
+      canRecalculate={canRecalculate}
     >
       {mountMap ? renderMap({ height: viewHeight, expanded }) : null}
     </MapShell>

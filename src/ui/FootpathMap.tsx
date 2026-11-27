@@ -5,6 +5,7 @@ import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
 import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure, pageScrollsWhileDrawing } from '@/domain/drawStroke';
 import { panViewport, type PanDirection } from '@/domain/drawStroke';
 import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
+import { RUBBER_RADIUS_PX, rubberRadiusMetres, type DrawTool } from '@/domain/drawErase';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -101,6 +102,10 @@ export function FootpathMap({
   confirmPending = false,
   statusNote = null,
   homeTick = 0,
+  sketchPieces = null,
+  onRubber,
+  onRecalculate,
+  canRecalculate = false,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -137,6 +142,10 @@ export function FootpathMap({
     enabled: boolean;
     onChange: (points: OutdoorPoint[]) => void;
     onEnd: (points: OutdoorPoint[]) => void;
+    /** 'rubber' turns a drag into a wipe. The pen is the default. */
+    tool?: DrawTool;
+    /** The rubber's drag path, and how far it reaches on the ground at the current zoom. */
+    onErase?: (path: OutdoorPoint[], radiusM: number) => void;
   } | null;
   /** A searched place. The map draws a pin. The camera moves only when `lookFocus` changes. */
   pin?: OutdoorPoint | null;
@@ -154,6 +163,11 @@ export function FootpathMap({
   statusNote?: string | null;
   /** Increments to frame the map on the current location, or the default view. */
   homeTick?: number;
+  /** What is left of the snapped line after a wipe. Drawn in place of `sketch` when set. */
+  sketchPieces?: readonly (readonly OutdoorPoint[])[] | null;
+  onRubber?: () => void;
+  onRecalculate?: () => void;
+  canRecalculate?: boolean;
 }) {
   const [scheme, choose] = useMapScheme();
   const styleUrl = openFreeMapStyle(scheme);
@@ -198,6 +212,10 @@ export function FootpathMap({
       canConfirmDraw={canConfirmDraw}
       confirmPending={confirmPending}
       statusNote={statusNote}
+      drawTool={draw?.tool ?? 'pen'}
+      onRubber={onRubber}
+      onRecalculate={onRecalculate}
+      canRecalculate={canRecalculate}
       renderMap={({ height: viewHeight, expanded }) => (
         <NativeCanvas
           maps={maps}
@@ -209,6 +227,7 @@ export function FootpathMap({
           remember={camera.remember}
           routes={routes}
           sketch={sketch}
+          sketchPieces={sketchPieces}
           here={here}
           startPoint={startPoint}
           track={track}
@@ -236,7 +255,22 @@ type LiveStrokeHandle = { show: (points: OutdoorPoint[]) => void };
  * A render of the whole screen per sample held the JS thread, the coalesced
  * touchMove events in between were dropped, and the first stroke became a chord.
  */
-function LiveStroke({ maps, colour, ref }: { maps: Maps; colour: string; ref?: Ref<LiveStrokeHandle> }) {
+/** The rubber's trail while the finger is down: a wide, faint grey band the width of the rubber. */
+const RUBBER_TRAIL = '#6B7280';
+
+function LiveStroke({
+  maps,
+  colour,
+  width = 7,
+  opacity = 1,
+  ref,
+}: {
+  maps: Maps;
+  colour: string;
+  width?: number;
+  opacity?: number;
+  ref?: Ref<LiveStrokeHandle>;
+}) {
   const [points, setPoints] = useState<OutdoorPoint[]>([]);
   useImperativeHandle(ref, () => ({ show: (next: OutdoorPoint[]) => setPoints(next) }), []);
   return (
@@ -246,7 +280,7 @@ function LiveStroke({ maps, colour, ref }: { maps: Maps; colour: string; ref?: R
         id="guide-live-line"
         type="line"
         source="guide-live"
-        paint={{ 'line-color': colour, 'line-width': 7 }}
+        paint={{ 'line-color': colour, 'line-width': width, 'line-opacity': opacity }}
       />
     </>
   );
@@ -262,6 +296,7 @@ function NativeCanvas({
   remember,
   routes,
   sketch,
+  sketchPieces,
   here,
   startPoint,
   track,
@@ -284,6 +319,7 @@ function NativeCanvas({
   remember: (camera: HeldCamera) => void;
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
+  sketchPieces: readonly (readonly OutdoorPoint[])[] | null;
   here: OutdoorPoint | null;
   startPoint: OutdoorPoint | null;
   track: readonly OutdoorPoint[];
@@ -298,6 +334,10 @@ function NativeCanvas({
     enabled: boolean;
     onChange: (points: OutdoorPoint[]) => void;
     onEnd: (points: OutdoorPoint[]) => void;
+    /** 'rubber' turns a drag into a wipe. The pen is the default. */
+    tool?: DrawTool;
+    /** The rubber's drag path, and how far it reaches on the ground at the current zoom. */
+    onErase?: (path: OutdoorPoint[], radiusM: number) => void;
   } | null;
   mapStyle: string | object;
 }) {
@@ -358,6 +398,7 @@ function NativeCanvas({
   }
   const selected = adjust?.selectedIndex != null ? adjust.vias[adjust.selectedIndex] ?? null : null;
   const drawing = draw?.enabled === true;
+  const rubbing = drawing && draw?.tool === 'rubber';
 
   function showDrawnView(next: { centre: OutdoorPoint; zoom: number }) {
     const place = {
@@ -470,7 +511,7 @@ function NativeCanvas({
       <maps.Camera ref={camera} initialViewState={{ center: [place.longitude, place.latitude], zoom: place.zoom }} />
       <maps.GeoJSONSource id="saved" data={savedLineCollection(routes)} />
       <maps.Layer id="saved-line" type="line" source="saved" paint={{ 'line-color': green, 'line-width': 4 }} />
-      <maps.GeoJSONSource id="sketch" data={sketchLineCollection(sketch)} />
+      <maps.GeoJSONSource id="sketch" data={sketchPieces ? sketchLinesCollection(sketchPieces) : sketchLineCollection(sketch)} />
       <maps.Layer
         id="sketch-line"
         type="line"
@@ -494,7 +535,11 @@ function NativeCanvas({
         source="guide"
         paint={{ 'line-color': pencilColour(scheme), 'line-width': 7 }}
       />
-      <LiveStroke ref={live} maps={maps} colour={pencilColour(scheme)} />
+      <LiveStroke ref={live} maps={maps}
+        colour={rubbing ? RUBBER_TRAIL : pencilColour(scheme)}
+        width={rubbing ? RUBBER_RADIUS_PX * 2 : 7}
+        opacity={rubbing ? 0.35 : 1}
+      />
       <maps.GeoJSONSource id="gap" tolerance={0} data={sketchLinesCollection(gaps)} />
       <maps.Layer
         id="gap-line"
@@ -552,7 +597,14 @@ function NativeCanvas({
         onChange={(points) => live.current?.show(points)}
         onEnd={(points) => {
           live.current?.show([]);
-          drawRef.current?.onEnd(points);
+          const current = drawRef.current;
+          if (current?.tool === 'rubber') {
+            // The rubber reaches about a fingertip on screen, whatever the zoom.
+            const radiusM = rubberRadiusMetres(held.current.latitude, held.current.zoom);
+            current.onErase?.(points, radiusM);
+            return;
+          }
+          current?.onEnd(points);
         }}
         onView={showDrawnView}
       />
