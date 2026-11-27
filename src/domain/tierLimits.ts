@@ -13,6 +13,7 @@ export {
   entitlementEnforced,
   entitlementEnforcedForUser,
   isSubscriptionProduct,
+  creditResetPhrase,
   limitReachedMessage,
   londonDayKey,
   londonMonthStart,

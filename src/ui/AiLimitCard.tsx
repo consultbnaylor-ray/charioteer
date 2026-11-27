@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 
-import { creditUpgradeLabel } from '@/domain/aiCredits';
+import { aiLimitButtonLabel } from '@/domain/aiCredits';
 import type { AiGateNotice } from '@/domain/aiGate';
 import { useEntitlement } from '@/ui/useEntitlement';
 import { Button, Card, T } from '@/ui/ui';
@@ -17,9 +17,7 @@ function shownMessage(message: string, comp: boolean): string {
 export function AiLimitCard({ notice, onClose }: { notice: AiGateNotice; onClose?: () => void }) {
   const router = useRouter();
   const entitlement = useEntitlement();
-  const label = entitlement.comp || entitlement.compLoading
-    ? null
-    : notice.code === 'subscription_required' ? 'See plans' : creditUpgradeLabel(notice.tier);
+  const label = aiLimitButtonLabel(notice, { comp: entitlement.comp != null, compLoading: entitlement.compLoading });
   return (
     <Card>
       <T>{shownMessage(notice.message, entitlement.comp != null)}</T>
@@ -32,6 +30,7 @@ export function AiLimitCard({ notice, onClose }: { notice: AiGateNotice; onClose
           }}
         />
       ) : null}
+      {onClose ? <Button label="Close" tone="quiet" onPress={onClose} /> : null}
     </Card>
   );
 }

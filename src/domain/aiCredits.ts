@@ -78,6 +78,19 @@ export function creditUpgradeLabel(tier: Tier | null): string | null {
   return `Upgrade to ${tierDisplayName(next)}`;
 }
 
+/**
+ * The button under a limit or subscription note. A comp, or a comp still loading, gets none.
+ * The top plan gets none either, because there is nothing to upgrade to; its note gives the reset day.
+ */
+export function aiLimitButtonLabel(
+  notice: { code: 'limit_reached' | 'subscription_required'; tier: Tier | null },
+  entitlement: { comp: boolean; compLoading: boolean },
+): string | null {
+  if (entitlement.comp || entitlement.compLoading) return null;
+  if (notice.code === 'subscription_required') return 'See plans';
+  return notice.tier ? creditUpgradeLabel(notice.tier) : 'Upgrade';
+}
+
 /** True when this feature's monthly allowance is used up. A missing plan is not a used-up allowance. */
 export function creditsExhausted(tier: Tier | null, usage: AiUsageCounts, kind?: UsageKind): boolean {
   if (!tier) return false;

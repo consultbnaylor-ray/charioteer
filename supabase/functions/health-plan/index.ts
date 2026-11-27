@@ -10,7 +10,8 @@ import {
   trainingScheduleFromRow,
   type PlanInput,
 } from '../_shared/healthPlan.ts';
-import { gateAiUse } from '../_shared/aiAllowance.ts';
+import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { AI_BILLING_CODE, AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
 import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
 import { londonDay, shiftDay } from '../_shared/healthInsights.ts';
@@ -74,12 +75,15 @@ async function analyseStats(input: {
   summary.nutrition = await nutritionForAnalysis(input.userClient, input.userId, summary);
   const apiKey = Deno.env.get('XAI_API_KEY');
   if (!apiKey) return analysisJson(summary, '');
+  const gateAdmin = createClient(input.url, input.service, { auth: { persistSession: false } });
   const gate = await gateAiUse({
-    admin: createClient(input.url, input.service, { auth: { persistSession: false } }),
+    admin: gateAdmin,
     userId: input.userId,
     kind: 'plan',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once the model gives a usable answer.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   try {
@@ -94,7 +98,15 @@ async function analyseStats(input: {
         stream: false,
       })),
     });
+    if (!response.ok && xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response))) {
+      logAiBilling('health-plan analyse', response.status);
+      return analysisJson(summary, '', AI_BILLING_MESSAGES.analysis);
+    }
     const text = response.ok ? completionText(await response.json()) : '';
+    const shown = analysisResult(summary, text);
+    if (shown.source === 'model' && gate.ok) {
+      await countAiUse({ admin: gateAdmin, userId: input.userId, kind: 'plan', tier: gate.tier }).catch(() => false);
+    }
     return analysisJson(summary, text);
   } catch {
     return analysisJson(summary, '');
@@ -186,13 +198,19 @@ function mealFromRow(row: unknown): { eatenOn: string; meal?: string; note?: str
   }];
 }
 
-function analysisJson(summary: StatsAnalysisPayload, modelText: string): Response {
-  const resolved = resolvedAnalysisSections(modelText, summary);
+function analysisResult(summary: StatsAnalysisPayload, modelText: string) {
+  return resolvedAnalysisSections(modelText, summary);
+}
+
+/** A billing notice means our provider refused. The built-in summary is still returned. */
+function analysisJson(summary: StatsAnalysisPayload, modelText: string, billingNotice?: string): Response {
+  const resolved = analysisResult(summary, modelText);
   return json({
     ok: true,
     analysis: sectionsToText(resolved.sections),
     sections: resolved.sections,
     source: resolved.source,
+    ...(billingNotice ? { code: AI_BILLING_CODE, notice: billingNotice } : {}),
   });
 }
 
@@ -390,12 +408,15 @@ Deno.serve(async (req) => {
     return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
   }
 
+  const planAdmin = createClient(url, service, { auth: { persistSession: false } });
   const gate = await gateAiUse({
-    admin: createClient(url, service, { auth: { persistSession: false } }),
+    admin: planAdmin,
     userId,
     kind: 'plan',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once the model gives a usable answer.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
 
@@ -411,10 +432,23 @@ Deno.serve(async (req) => {
         stream: false,
       })),
     });
-    if (!response.ok) return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
+    if (!response.ok) {
+      if (xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response))) {
+        logAiBilling('health-plan', response.status);
+        return json({
+          ok: true,
+          plan: { ...local, limits: input.limits },
+          source: 'local',
+          code: AI_BILLING_CODE,
+          notice: AI_BILLING_MESSAGES.plan,
+        });
+      }
+      return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
+    }
     const parsed = parseHealthPlanJson(completionText(await response.json()));
     if (!parsed) return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
     const plan = guardHealthPlan({ ...parsed, limits: input.limits, updatedAt: new Date().toISOString() }, input);
+    if (gate.ok) await countAiUse({ admin: planAdmin, userId, kind: 'plan', tier: gate.tier }).catch(() => false);
     return json({ ok: true, plan, source: 'model' });
   } catch {
     return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });

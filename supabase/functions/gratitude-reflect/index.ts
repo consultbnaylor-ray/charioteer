@@ -5,7 +5,8 @@ import {
   localGratitudeReflect,
   parseGratitudeReflect,
 } from '../_shared/gratitude.ts';
-import { gateAiUse } from '../_shared/aiAllowance.ts';
+import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { AI_BILLING_CODE, AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
@@ -74,6 +75,8 @@ Deno.serve(async (req) => {
     kind: 'coach',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once the model gives a usable reflection.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
 
@@ -93,9 +96,26 @@ Deno.serve(async (req) => {
         stream: false,
       })),
     });
-    if (!response.ok) return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
+    if (!response.ok) {
+      const billing = xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response));
+      if (billing) {
+        logAiBilling('gratitude-reflect', response.status);
+        return json({
+          ok: true,
+          comment: local.comment,
+          suggestions: local.suggestions,
+          source: 'local',
+          code: AI_BILLING_CODE,
+          notice: AI_BILLING_MESSAGES.reflect,
+        });
+      }
+      return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
+    }
     const parsed = parseGratitudeReflect(completionText(await response.json()));
     if (!parsed) return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
+    if (gate.ok) {
+      await countAiUse({ admin, userId: userData.user.id, kind: 'coach', tier: gate.tier }).catch(() => false);
+    }
     return json({ ok: true, comment: parsed.comment, suggestions: parsed.suggestions, source: 'model' });
   } catch {
     return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });

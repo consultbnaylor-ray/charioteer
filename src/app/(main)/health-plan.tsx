@@ -55,6 +55,7 @@ export default function HealthPlanScreen() {
   const plan = snap.healthPlan;
   const [limits, setLimits] = useState(plan?.limits ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const { samples: mergedHealth, workouts } = useHealthSources();
   const limitsRef = useRef(limits);
   const planRef = useRef(plan);
@@ -116,12 +117,14 @@ export default function HealthPlanScreen() {
     run('refresh', async () => {
       try {
         await queue.current;
-        await repo.refreshHealthPlan(limitsRef.current);
+        const result = await repo.refreshHealthPlan(limitsRef.current);
+        setNotice(result && result.notice ? result.notice : null);
       } catch (err) {
+        setNotice(null);
         if (err instanceof UserFacingError && err.message === PLAN_NOT_SAVED) {
           setError(PLAN_NOT_SAVED);
         } else {
-          setError(shownError(err, 'Could not write a plan.'));
+          setError(shownError(err, 'Could not write a plan.') || null);
         }
       }
     });
@@ -142,6 +145,7 @@ export default function HealthPlanScreen() {
       <AiCreditLine kind="plan" />
       <ErrorNote>{error}</ErrorNote>
       {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
+      {notice && !error ? <T variant="muted">{notice}</T> : null}
       {plan ? (
         <>
           <Card>

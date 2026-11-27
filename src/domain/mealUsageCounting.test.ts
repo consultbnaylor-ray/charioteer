@@ -55,7 +55,7 @@ describe('meal usage counted only after a usable estimate', () => {
     expect(fake.rpcCalls).toHaveLength(0);
   });
 
-  it('still counts up front by default for the other AI features', async () => {
+  it('still counts up front by default when countWhen is not given', async () => {
     const fake = fakeAdmin([]);
     const gate = await gateAiUse({ admin: fake.admin, userId: USER, kind: 'coach', now: NOW, enforcedFlag: 'true' });
     expect(gate.ok && gate.counted).toBe(true);

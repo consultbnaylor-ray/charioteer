@@ -9,6 +9,7 @@ import {
   decideAllowance,
   entitlementEnforced,
   entitlementEnforcedForUser,
+  creditResetPhrase,
   limitReachedMessage,
   londonDayKey,
   nextLondonMidnight,
@@ -59,7 +60,7 @@ describe('tier limits', () => {
     if (reached.action !== 'limit_reached') return;
     expect(reached.limit).toBe(20);
     expect(reached.window).toBe('day');
-    expect(limitReachedMessage(reached)).toBe("You've reached today's limit on Standard. It resets at midnight. Upgrade to Pro for more.");
+    expect(limitReachedMessage(reached)).toBe("You've used all your AI credits for today on Standard. Upgrade to Pro for more. Your credits reset at midnight.");
     const proDay = decideAllowance({
       enforced: true,
       crisis: false,
@@ -70,7 +71,7 @@ describe('tier limits', () => {
       now: NOW,
     });
     if (proDay.action === 'limit_reached') {
-      expect(limitReachedMessage(proDay)).toBe("You've reached today's limit on Pro. It resets at midnight. Upgrade to Max for more.");
+      expect(limitReachedMessage(proDay)).toBe("You've used all your AI credits for today on Pro. Upgrade to Max for more. Your credits reset at midnight.");
     }
     const maxMonth = decideAllowance({
       enforced: true,
@@ -82,7 +83,7 @@ describe('tier limits', () => {
       now: NOW,
     });
     if (maxMonth.action === 'limit_reached') {
-      expect(limitReachedMessage(maxMonth)).toBe("You've reached this month's limit on Max. It resets at the start of next month.");
+      expect(limitReachedMessage(maxMonth)).toBe(`You've used all your AI credits for this month on Max. Max is the top plan. Your credits reset ${creditResetPhrase('month', maxMonth.resetsAt)}.`);
     }
 
     const month = decideAllowance({

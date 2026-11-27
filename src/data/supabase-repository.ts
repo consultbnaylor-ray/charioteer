@@ -178,7 +178,7 @@ import {
 import { clientAppBuild, clientErrorRecord } from '@/domain/clientError';
 import { MealEstimateError, mealEstimateCategoryFromStatus } from '@/domain/mealEstimate';
 import { resolveSignedInSession } from '@/domain/liveSession';
-import { aiGateFromBody, publishAiGate } from '@/domain/aiGate';
+import { aiGateFromBody, isAiGateNotice, publishAiGate, type AiGateNotice } from '@/domain/aiGate';
 import { rememberCoachUsage } from '@/domain/coachUsage';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
@@ -286,6 +286,15 @@ function emptySnapshot(): AppSnapshot {
 const FOOD_BUCKET = 'food-photos';
 
 type ProfileWrite = { column: Record<string, unknown>; interestIds?: string[] };
+
+/** The notice an edge function adds when our AI provider refused for billing. Short and safe to show. */
+function billingNotice(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const body = data as { code?: unknown; notice?: unknown };
+  if (body.code !== 'provider_billing' || typeof body.notice !== 'string') return null;
+  const notice = body.notice.trim();
+  return notice.length > 0 && notice.length < 300 ? notice : null;
+}
 
 export class SupabaseRepository implements Repository {
   private client: SupabaseClient;
@@ -1976,8 +1985,10 @@ export class SupabaseRepository implements Repository {
     }));
   }
 
-  private aiFailure(feature: AiFeature, screen: string, error: unknown, status?: number): UserFacingError {
+  private aiFailure(feature: AiFeature, screen: string, error: unknown, status?: number): UserFacingError | AiGateNotice {
     if (error instanceof UserFacingError) return error;
+    // The person's own allowance is used up. The limit note is already showing, so this is not an outage.
+    if (isAiGateNotice(error)) return error;
     const kind: EdgeFailureKind = error instanceof EdgeSessionError
       ? error.kind
       : status != null
@@ -2047,6 +2058,10 @@ export class SupabaseRepository implements Repository {
     try {
       const invoked = await this.callEdge('thumos-voice-token', { mode });
       data = invoked.data as VoicePayload | null;
+      if (data?.code === 'provider_billing' && typeof data.message === 'string') {
+        this.rememberEdgeFailure('voice', new Error('Voice provider billing.'), invoked.status);
+        return { ok: false, code: 'unavailable', message: data.message };
+      }
       if (invoked.status >= 500) {
         this.rememberEdgeFailure('voice', new Error('Voice did not answer.'), invoked.status);
         return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
@@ -2724,13 +2739,13 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect> {
+  async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect & { notice?: string }> {
     if (!this.snapshot.profile?.consentAi) {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
     try {
       const invoked = await this.callEdge('gratitude-reflect', { body, category }, { ai: true });
-      const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown } | null;
+      const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown; notice?: unknown } | null;
       if (data?.code === 'consent') {
         throw new Error('Agree to the coach consent before sending a message to Thumos.');
       }
@@ -2739,10 +2754,12 @@ export class SupabaseRepository implements Repository {
       }
       if (invoked.status < 400 && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
         const suggestions = data.suggestions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-        if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3) };
+        const notice = billingNotice(data);
+        if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3), ...(notice ? { notice } : {}) };
       }
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
+      if (isAiGateNotice(error)) throw error;
       if (error instanceof Error && error.message.includes('Agree to the coach consent')) throw error;
       throw this.aiFailure('reflect', 'gratitude', error);
     }
@@ -2849,8 +2866,11 @@ export class SupabaseRepository implements Repository {
         code?: string;
         message?: string;
         providerUnavailable?: boolean;
+        billing?: boolean;
       } | null;
-      const category = mealEstimateCategoryFromStatus(invoked.status, data?.code);
+      const category = data?.billing === true && (invoked.status >= 500 || data?.ok !== true)
+        ? 'billing'
+        : mealEstimateCategoryFromStatus(invoked.status, data?.code);
       if (category === 'consent') {
         throw new MealEstimateError('consent', typeof data?.message === 'string' ? data.message : undefined);
       }
@@ -2866,17 +2886,21 @@ export class SupabaseRepository implements Repository {
       const model = data?.source === 'model';
       const rough = data?.providerUnavailable === true && !model;
       if (invoked.status < 400 && data?.ok === true && items && (!photo || model)) {
-        return { items, source: model ? 'model' : 'local', providerUnavailable: rough };
+        return { items, source: model ? 'model' : 'local', providerUnavailable: rough, ...(rough && data?.billing === true ? { billing: true } : {}) };
       }
       if (!photo) {
         const typed = estimateFromText(text);
-        if (typed.length) return { items: typed, source: 'local', providerUnavailable: rough };
+        if (typed.length) return { items: typed, source: 'local', providerUnavailable: rough, ...(rough && data?.billing === true ? { billing: true } : {}) };
       }
       this.noteMeal(photo ? 'unreadable' : 'provider');
       throw new MealEstimateError(photo ? 'unreadable' : 'provider');
     } catch (error) {
       if (error instanceof MealEstimateError) throw error;
       if (error instanceof UserFacingError) throw error;
+      if (isAiGateNotice(error)) {
+        this.noteMeal('credits');
+        throw new MealEstimateError('credits');
+      }
       if (error instanceof EdgeSessionError) {
         const kind = error.kind === 'signed-out' ? 'auth' : 'network';
         this.noteMeal(kind);
@@ -3464,7 +3488,7 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }> {
+  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local'; notice?: string }> {
     if (!this.snapshot.profile?.consentAi || !this.snapshot.profile?.consentHealth) {
       throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
     }
@@ -3484,10 +3508,16 @@ export class SupabaseRepository implements Repository {
     if (invoked.status === 401 || invoked.status >= 500 || data?.ok !== true || sections.length === 0) {
       throw this.aiFailure('plan', 'health-plan', new Error('Analysis did not answer.'), invoked.status);
     }
-    return { text: text || sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'), sections, source: data.source === 'model' ? 'model' : 'local' };
+    const notice = billingNotice(data);
+    return {
+      text: text || sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'),
+      sections,
+      source: data.source === 'model' ? 'model' : 'local',
+      ...(notice ? { notice } : {}),
+    };
   }
 
-  async refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void> {
+  async refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<{ notice?: string } | void> {
     const localOnly = options?.localOnly === true;
     if (!localOnly && !this.snapshot.profile?.consentAi) {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
@@ -3537,6 +3567,8 @@ export class SupabaseRepository implements Repository {
       }));
       throw new UserFacingError(PLAN_NOT_SAVED, 'generic');
     }
+    const notice = billingNotice(data);
+    return notice ? { notice } : undefined;
   }
 
   async sharedNutrition(userId: string) {

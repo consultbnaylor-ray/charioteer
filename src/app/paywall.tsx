@@ -23,6 +23,7 @@ import {
   isSubscriptionProduct,
   orderedPlanIds,
   paywallEnabled,
+  paywallOpeningNote,
   planOfferLine,
   purchaseOutcome,
   renewalDisclosure,
@@ -50,7 +51,6 @@ const CANCELLED = 'Purchase cancelled.';
 const PENDING = 'The purchase is waiting for approval. You can use Restore Purchases after it is approved.';
 const FAILED = 'The purchase did not finish. Try again, or use Restore Purchases if you already subscribed.';
 const UNAVAILABLE = 'The subscription is not available from the App Store right now.';
-const IOS_ONLY = 'Subscriptions are available in the iOS app.';
 const RESTORE_EMPTY = 'No subscription was found for this Apple ID.';
 const ALREADY_OWNED = 'This Apple ID already has the subscription. Use Restore Purchases.';
 const NOT_ACTIVE = 'This subscription is not active.';
@@ -94,7 +94,7 @@ export default function PaywallScreen() {
   const [phase, setPhase] = useState<Phase>(Platform.OS === 'ios' && paywallEnabled() ? 'loading' : 'unavailable');
   const [plans, setPlans] = useState<StorePlan[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(YEARLY_PRODUCT_ID);
-  const [note, setNote] = useState<string | null>(Platform.OS === 'ios' ? null : IOS_ONLY);
+  const [note, setNote] = useState<string | null>(paywallOpeningNote(Platform.OS, paywallEnabled()));
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
