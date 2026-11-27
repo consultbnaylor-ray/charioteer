@@ -48,3 +48,16 @@ A copy of the line stays on this phone only after Save this route. It is not sen
 Do not declare a new data type for the account. The walked line is not an `outdoor_routes` row. The stored summary stays the activity, the date, the distance, the time, and the pace, with no path.
 
 The other option, storing that line on the account, is not recommended and is not built. It would be a send, and the purpose sentence would have to change before any label said the path was stored off the phone. No SQL is applied from this note.
+
+
+## Garmin activity route tracks (26 November 2026)
+
+Garmin activity route tracks are now stored on the account (garmin_activity_samples: time, GPS position to about 1 m, elevation, heart rate, speed, distance; garmin_activity_detail: start point to about 11 m, climb and descent). Approved by Ben on 26 November 2026. Apple Health routes and in-app outing paths still stay on the phone.
+
+In App Store Connect > App Privacy, the Location answers must be:
+
+- Precise Location: collected, **linked to the user**, used for **App Functionality** only, **not** used for tracking.
+- Coarse Location: the same answers, if it is listed.
+- Health & Fitness (Fitness and Health): already declared for Garmin and Apple Health summaries; keep linked to the user, App Functionality, not used for tracking. The Garmin track adds heart rate samples to this category, not a new category.
+
+No new iOS permission or purpose string is needed. `NSLocationWhenInUseUsageDescription` and the Health sentences do not change, because the Garmin track comes from Garmin's server, not from the phone. The Health sentence "A workout route is read only when you open it, and that path is not saved to your account" is about Apple Health and stays true.

@@ -235,7 +235,7 @@ describe('workout day list', () => {
     expect(list).toContain('difficultyAxis');
     expect(list).toContain('difficultyDetailLines');
     expect(list).toContain('routeSummaryLine');
-    expect(list).toContain('>View route</T>');
+    expect(list).toContain('>{VIEW_ROUTE_MAP}</T>');
     expect(calendar).toContain('routeSummaryLine');
     expect(calendar).toContain('matched?.routeExpected');
     expect(list).toContain('DIFFICULTY_DAY_LINK');
@@ -276,7 +276,7 @@ describe('workout day list', () => {
     const strip = calendar.slice(calendar.indexOf('Previous week'), calendar.indexOf('function webScrollParent'));
     expect(strip).not.toContain('scrollTo');
     expect(strip).not.toContain('scrollIntoView');
-    expect(calendar).toContain('View route');
+    expect(calendar).toContain('VIEW_ROUTE_MAP');
     expect(calendar).not.toContain('No GPS route');
     expect(reader).toContain('HKQuantityTypeIdentifierWorkoutEffortScore');
     expect(reader).toContain('filter: { date: { startDate: start, endDate: end } }');

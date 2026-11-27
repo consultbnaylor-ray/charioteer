@@ -596,7 +596,12 @@ export interface Repository {
   startGarminConnect(): Promise<string>;
   /** Asks Garmin to drop the registration and clears the connection. Saved readings stay until the account is deleted. */
   disconnectGarmin(): Promise<void>;
-  /** Asks Garmin to resend recent summaries. The phone does not receive a route. */
+  /**
+   * One Garmin activity's downsampled route track, read when its workout screen opens.
+   * Owner rows only. Null track when Garmin sent no samples for it.
+   */
+  garminActivityTrack(summaryId: string): Promise<GarminActivityTrack | null>;
+  /** Asks Garmin to resend recent summaries, including activity tracks. */
   refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }>;
   /** Reads Garmin's export list. The server skips this when it already asked today, unless force is set. */
   checkGarminPermissions(force?: boolean): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }>;
@@ -609,3 +614,10 @@ export interface Repository {
   /** Sends the StoreKit 2 signed transaction to the server and returns the stored row. */
   verifyOwnSubscription(jws: string): Promise<import('@/domain/subscription').SubscriptionRecord>;
 }
+
+/** A Garmin activity's stored track and its recorded climb. */
+export type GarminActivityTrack = {
+  track: { startedAt: string; points: readonly unknown[] } | null;
+  elevationGainMetres: number | null;
+  elevationLossMetres: number | null;
+};

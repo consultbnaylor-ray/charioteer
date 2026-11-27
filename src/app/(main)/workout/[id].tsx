@@ -31,9 +31,13 @@ import {
 } from '@/domain/workoutRoute';
 import { loadDistanceUnit, saveDistanceUnit } from '@/health/distanceUnit';
 import { workoutSourceLine } from '@/domain/healthSources';
+import type { Repository } from '@/data/types';
+import { garminTrackRoute, ROUTE_PURPOSE_GARMIN } from '@/domain/workoutTrace';
 import { readDeviceRoute } from '@/health/workoutRoute';
+import { rememberedWorkout } from '@/health/workoutRouteMemory';
 import { RouteBoundary } from '@/ui/RouteBoundary';
 import { RouteMap } from '@/ui/RouteMap';
+import { WorkoutTraceCharts } from '@/ui/WorkoutTraceCharts';
 import { IconLine, type StatIcon } from '@/ui/statIcons';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Choice, Screen, T } from '@/ui/ui';
@@ -67,6 +71,38 @@ function splitCopy(split: RouteSplit): string[] {
   ];
 }
 
+type LoadedRoute = Awaited<ReturnType<typeof readDeviceRoute>> & {
+  source: 'apple' | 'garmin';
+  climb: { gain: number | null; loss: number | null } | null;
+};
+
+/** The Garmin summary id for this screen, from the merged row or a Garmin-only id. */
+function garminIdFor(id: string, workout: DeviceWorkout | null): string | null {
+  return workout?.garminSummaryId ?? rememberedWorkout(id)?.garminSummaryId ?? (id.startsWith('garmin:') ? id.slice('garmin:'.length) : null);
+}
+
+/**
+ * Apple Health first. When it has no path and Garmin recorded the session,
+ * the downsampled Garmin track stored on the account is read instead.
+ */
+async function readRoute(id: string, repo: Pick<Repository, 'garminActivityTrack'>): Promise<LoadedRoute> {
+  const apple = await readDeviceRoute(id);
+  if (apple.points.length >= 2) return { ...apple, source: 'apple', climb: null };
+  const garminId = garminIdFor(id, apple.workout);
+  if (!garminId) return { ...apple, source: 'apple', climb: null };
+  const stored = await repo.garminActivityTrack(garminId);
+  const route = garminTrackRoute(stored?.track);
+  return {
+    ...apple,
+    workout: apple.workout ?? rememberedWorkout(id),
+    points: route.points,
+    heartSamples: apple.heartSamples.length ? apple.heartSamples : route.heartSamples,
+    denied: false,
+    source: 'garmin',
+    climb: stored ? { gain: stored.elevationGainMetres, loss: stored.elevationLossMetres } : null,
+  };
+}
+
 export default function WorkoutRouteScreen() {
   return <WorkoutRouteBody />;
 }
@@ -88,6 +124,8 @@ function WorkoutRouteBody() {
   const [selected, setSelected] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
   const [mapLine, setMapLine] = useState<string | null>(null);
+  const [source, setSource] = useState<'apple' | 'garmin'>('apple');
+  const [climb, setClimb] = useState<{ gain: number | null; loss: number | null } | null>(null);
   const reported = useRef(new Set<string>());
 
   function report(error: unknown) {
@@ -129,7 +167,7 @@ function WorkoutRouteBody() {
       setReady(true);
       report(ROUTE_READ_TIMEOUT);
     }, ROUTE_MAP_TIMEOUT_MS);
-    void readDeviceRoute(id).then((result) => {
+    void readRoute(id, repo).then((result) => {
       if (!live || settled) return;
       settled = true;
       clearTimeout(timer);
@@ -137,6 +175,8 @@ function WorkoutRouteBody() {
       setPoints(downsampleRoute(result.points));
       setSamples(result.heartSamples ?? []);
       setDenied(result.denied);
+      setSource(result.source);
+      setClimb(result.climb);
       setReady(true);
     }).catch((err: unknown) => {
       if (!live || settled) return;
@@ -186,7 +226,7 @@ function WorkoutRouteBody() {
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
       {sourceLine ? <T variant="muted">{sourceLine}</T> : null}
       <RouteBoundary onError={report}>
-      <T>{ROUTE_PURPOSE}</T>
+      <T>{source === 'garmin' ? ROUTE_PURPOSE_GARMIN : ROUTE_PURPOSE}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label="Kilometres" selected={unit === 'km'} onPress={() => { void chooseUnit('km'); }} />
         <Choice label="Miles" selected={unit === 'mile'} onPress={() => { void chooseUnit('mile'); }} />
@@ -207,6 +247,7 @@ function WorkoutRouteBody() {
             </RouteBoundary>
           )}
           <StatRows stats={stats} />
+          <WorkoutTraceCharts points={points} heartSamples={samples} climb={climb} />
           <T variant="label">Splits</T>
           {stats.splits.map((split, index) => {
             const on = selected === index;

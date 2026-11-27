@@ -41,7 +41,7 @@ import {
   type DifficultyMark,
 } from '@/domain/workoutDay';
 import { workoutSelectedHeading } from '@/domain/workoutHistoryCharts';
-import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
+import { routeSummaryLine, VIEW_ROUTE_MAP, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
 import { MoreInfo } from '@/ui/MoreInfo';
@@ -95,13 +95,13 @@ function WorkoutRow({ workout, routeDetail = false }: { workout: DeviceWorkout; 
   }
   return (
     <TapRow
-      label={`View route, ${line}`}
+      label={`${VIEW_ROUTE_MAP}, ${line}`}
       title={workout.label}
       detail={workoutHistoryDetail(workout)}
       glyph={glyph}
       glyphLabel={workout.label}
       onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
-      extra={stats ? <T>{stats}</T> : routeDetail ? <T style={{ textDecorationLine: 'underline' }}>View route</T> : null}
+      extra={stats ? <T>{stats}</T> : routeDetail ? <T style={{ textDecorationLine: 'underline' }}>{VIEW_ROUTE_MAP}</T> : null}
     />
   );
 }
@@ -298,11 +298,11 @@ function DifficultyChart({
               {pickedWorkout.routeExpected ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`View route, ${pickedWorkout.label}`}
+                  accessibilityLabel={`${VIEW_ROUTE_MAP}, ${pickedWorkout.label}`}
                   onPress={() => router.push(`/workout/${encodeURIComponent(pickedWorkout.id)}` as never)}
                   style={{ minHeight: 44, justifyContent: 'center' }}
                 >
-                  <T style={{ textDecorationLine: 'underline' }}>View route</T>
+                  <T style={{ textDecorationLine: 'underline' }}>{VIEW_ROUTE_MAP}</T>
                 </Pressable>
               ) : null}
               <Pressable
@@ -361,12 +361,13 @@ function WorkoutHistory({
         return (
           <TapRow
             key={workout.id}
-            label={`${line}. Open workout.`}
+            label={workout.routeExpected ? `${line}. ${VIEW_ROUTE_MAP}.` : `${line}. Open workout.`}
             title={workout.label}
             detail={workoutHistoryDetail(workout)}
             glyph={workoutStatIcon(workout.activityType)}
             glyphLabel={workout.label}
             onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
+            extra={workout.routeExpected ? <T style={{ textDecorationLine: 'underline' }}>{VIEW_ROUTE_MAP}</T> : null}
           />
         );
       })}

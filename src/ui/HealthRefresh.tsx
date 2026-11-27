@@ -5,6 +5,7 @@ import { useRepository, useSnapshot } from '@/data';
 import {
   GARMIN_ASKED,
   GARMIN_CHECK_AGAIN,
+  GARMIN_PAST_REFUSED,
   GARMIN_RECENT,
   garminAlreadySentLine,
   garminHintLine,
@@ -76,6 +77,7 @@ export function useManualHealthRefresh(garminConnected: boolean) {
         const garmin = await repo.refreshGarmin();
         if (garmin.code === 'history') {
           setHistory(true);
+          setGarminNote(GARMIN_PAST_REFUSED);
         } else if (!garmin.ok) {
           if (garmin.code === 'permission') {
             setPermission(true);

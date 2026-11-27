@@ -456,25 +456,49 @@ describe('workout routes stay on the phone', () => {
       }
       expect(source, path).not.toMatch(/latitude|longitude/);
     }
-    for (const path of filesUnder('supabase/migrations')) {
-      expect(readFileSync(path, 'utf8'), path).not.toMatch(/latitude|longitude/);
-    }
+    // Garmin route maps (Ben, 26 November 2026): the only migration that may name a position is the
+    // Garmin track one, and it may only add the start point to garmin_activity_detail and create garmin_activity_samples.
+    const positioned = filesUnder('supabase/migrations').filter((path) => /latitude|longitude/.test(readFileSync(path, 'utf8')));
+    expect(positioned).toEqual(['supabase/migrations/20261126215217_garmin_activity_samples.sql']);
+    const trackSql = readFileSync(positioned[0], 'utf8');
+    expect(trackSql).toContain('create table if not exists public.garmin_activity_samples');
+    expect(trackSql).toContain('for select to authenticated using (user_id = auth.uid())');
+    expect(trackSql).toContain('revoke all on table public.garmin_activity_samples from public, anon, authenticated');
+    expect(trackSql).not.toMatch(/grant (insert|update|delete|all) on table public\.garmin_activity_samples to (anon|authenticated)/i);
+    expect(trackSql).toContain('on delete cascade');
+    expect(trackSql.match(/create table[^(]*/g)).toEqual(['create table if not exists public.garmin_activity_samples ']);
     expect(readFileSync('src/app/(main)/workout/[id].tsx', 'utf8')).toContain('readDeviceRoute');
-    expect(readFileSync('src/ui/WorkoutList.tsx', 'utf8')).toContain('View route');
-    expect(readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8')).toContain('View route');
+    expect(readFileSync('src/ui/WorkoutList.tsx', 'utf8')).toContain('VIEW_ROUTE_MAP');
+    expect(readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8')).toContain('VIEW_ROUTE_MAP');
   });
 
   it('does not send a route from the repositories, sharing, or edge functions', () => {
     const watched = [
       ...filesUnder('src/data'),
       ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('savedRoute.ts') && !path.endsWith('drawStroke.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('savedRoute.ts') && !path.endsWith('drawStroke.ts') && !path.endsWith('drawIntent.ts') && !path.endsWith('.test.ts')),
     ];
+    // Garmin route maps: Garmin pushes its activity samples to our server, so these files may name a
+    // position. They only write garmin_activity_samples and the start point on garmin_activity_detail,
+    // only read them back for the owner, and never log a position. An Apple Health route is still never sent.
+    const garminTrackFiles = new Set([
+      'supabase/functions/garmin-webhook/index.ts',
+      'supabase/functions/_shared/garminTrack.ts',
+      'supabase/functions/_shared/garminSummaries.ts',
+      'src/data/supabase-repository.ts',
+      'src/domain/workoutTrace.ts',
+      'src/domain/routeCompletions.ts',
+    ]);
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');
       expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
+      if (garminTrackFiles.has(path)) {
+        expect(source, path).not.toMatch(/console\.(log|info|debug|warn|error)\([^)\n]*(latitude|longitude|points|position)/i);
+        expect(source, path).not.toMatch(/functions\.invoke\([^)]*(latitude|longitude)/);
+        continue;
+      }
       if (path === 'supabase/functions/outdoor-route/index.ts') {
-        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch })');
+        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch, intent })');
         expect(source).toContain('buildSnapBody(start)');
         expect(source).toContain('.insert({ user_id: userId, kind })');
         expect(source).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);
@@ -522,7 +546,7 @@ describe('workout routes stay on the phone', () => {
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
     const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
     expect(list).toContain('/workout/');
-    expect(calendar).toContain('View route');
+    expect(calendar).toContain('VIEW_ROUTE_MAP');
     expect(screen).toContain('<RouteMap');
     expect(screen).toContain('Kilometres');
     expect(screen).toContain('Miles');

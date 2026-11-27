@@ -1122,6 +1122,11 @@ describe('Garmin storage rules', () => {
       'supabase/functions/_shared/garmin.ts',
     ]) {
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/console\.(log|error|info|debug)\([^)\n]*(access_token|refresh_token|client_secret|heart rate|sleep)/i);
+      // The webhook writes the Garmin route track (approved 26 November 2026). It never logs a position.
+      if (path === 'supabase/functions/garmin-webhook/index.ts') {
+        expect(readFileSync(path, 'utf8')).not.toMatch(/console\.(log|error|info|debug)\([^)\n]*(latitude|longitude|points)/i);
+        continue;
+      }
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/latitude|longitude/);
     }
   });

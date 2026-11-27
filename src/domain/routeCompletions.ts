@@ -131,9 +131,18 @@ export function garminRouteWorkout(
     distanceMetres: distance != null && distance > 0 ? distance : null,
     averageHeartRate: activity.averageHeartRateBpm ?? detail?.averageHeartRateBpm ?? null,
     energyKcal: detail?.activeKilocalories != null && detail.activeKilocalories > 0 ? detail.activeKilocalories : null,
-    elevationGainM: null,
-    start: null,
+    elevationGainM: detail?.elevationGainMetres != null && detail.elevationGainMetres >= 0 ? detail.elevationGainMetres : null,
+    start: detailStart(detail),
   };
+}
+
+/** Garmin's recorded start point, about 11 m, when the activity detail carried one. */
+function detailStart(detail: GarminActivityDetail | null): OutdoorPoint | null {
+  const latitude = detail?.startLatitude;
+  const longitude = detail?.startLongitude;
+  if (latitude == null || longitude == null || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || (latitude === 0 && longitude === 0)) return null;
+  return { latitude, longitude };
 }
 
 export function appleRouteWorkout(
@@ -166,9 +175,10 @@ export function workoutsForRouteMatch(input: {
   apple: readonly DeviceWorkout[];
   extras?: Readonly<Record<string, { start?: OutdoorPoint | null; elevationGainM?: number | null }>>;
 }): RecordedRouteWorkout[] {
-  const details = new Map(input.activityDetails.map((row) => [row.summaryId, row]));
+  // Garmin names the detail summary `<activity id>-detail`, so both forms are looked up.
+  const details = new Map(input.activityDetails.map((row) => [row.summaryId.replace(/-detail$/, ''), row]));
   const garmin = input.activities.flatMap((activity) => {
-    const row = garminRouteWorkout(activity, details.get(activity.summaryId) ?? null);
+    const row = garminRouteWorkout(activity, details.get(activity.summaryId.replace(/-detail$/, '')) ?? null);
     return row ? [row] : [];
   });
   const apple = input.apple.flatMap((workout) => {

@@ -74,6 +74,7 @@ export const GARMIN_SUMMARY_TABLES = [
   'garmin_move_iq',
   'garmin_activity_detail',
   'garmin_activity_file',
+  'garmin_activity_samples',
 ] as const;
 
 /** Tokens, the sign-in state, and the Garmin user id. Disconnect removes only these. */
@@ -265,6 +266,7 @@ export type GarminPushPlan = {
   moveIq: GarminExtras['moveIq'];
   activityDetails: GarminExtras['activityDetails'];
   activityFiles: GarminExtras['activityFiles'];
+  activityTracks: GarminExtras['activityTracks'];
   /** Women's health and unrecognised push keys. Names only. */
   droppedTypes: string[];
   deregistered: string[];
@@ -559,6 +561,7 @@ export function mapGarminPush(body: unknown): GarminPushPlan {
     moveIq: extras.moveIq,
     activityDetails: extras.activityDetails,
     activityFiles: extras.activityFiles,
+    activityTracks: extras.activityTracks,
     droppedTypes: extras.droppedTypes,
     deregistered: unique(deregisteredIds(root)),
     permissionChanges: permissionChanges(root),
@@ -1045,9 +1048,17 @@ export function garminHistoryCooling(refusedAt: string | null, nowMs: number): b
   return nowMs - at < GARMIN_HISTORY_WINDOW_MS;
 }
 
-/** Every requested summary came back 412. An empty list is not a refusal. */
-export function garminAllHistoricalRefusal(statuses: readonly number[]): boolean {
-  return statuses.length > 0 && statuses.every((status) => status === 412);
+/**
+ * Garmin refused past data with 412. True when every summary came back 412, or when
+ * activities or activity details came back 412 and nothing was accepted (other types
+ * may be 404 or 429). An empty list is not a refusal. Live refresh v18 runs the same rule.
+ */
+export function garminAllHistoricalRefusal(statuses: readonly number[], types?: readonly string[] | null): boolean {
+  if (statuses.length === 0) return false;
+  if (statuses.some((status) => status === 202 || status === 204 || status === 409)) return false;
+  if (statuses.every((status) => status === 412)) return true;
+  if (!types) return false;
+  return statuses.some((status, index) => status === 412 && (types[index] === 'activities' || types[index] === 'activityDetails'));
 }
 
 /**
