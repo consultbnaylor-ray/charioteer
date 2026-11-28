@@ -288,11 +288,14 @@ const FOOD_BUCKET = 'food-photos';
 
 type ProfileWrite = { column: Record<string, unknown>; interestIds?: string[] };
 
-/** The notice an edge function adds when our AI provider refused for billing. Short and safe to show. */
+/**
+ * The notice an edge function adds when our AI provider could not answer: out of credit, busy,
+ * down, or too slow. Short and safe to show. An older server sends provider_billing for the first case.
+ */
 function billingNotice(data: unknown): string | null {
   if (!data || typeof data !== 'object') return null;
   const body = data as { code?: unknown; notice?: unknown };
-  if (body.code !== 'provider_billing' || typeof body.notice !== 'string') return null;
+  if ((body.code !== 'ai_unavailable' && body.code !== 'provider_billing') || typeof body.notice !== 'string') return null;
   const notice = body.notice.trim();
   return notice.length > 0 && notice.length < 300 ? notice : null;
 }
@@ -2059,8 +2062,8 @@ export class SupabaseRepository implements Repository {
     try {
       const invoked = await this.callEdge('thumos-voice-token', { mode });
       data = invoked.data as VoicePayload | null;
-      if (data?.code === 'provider_billing' && typeof data.message === 'string') {
-        this.rememberEdgeFailure('voice', new Error('Voice provider billing.'), invoked.status);
+      if ((data?.code === 'ai_unavailable' || data?.code === 'provider_billing') && typeof data.message === 'string') {
+        this.rememberEdgeFailure('voice', new Error('Voice provider unavailable.'), invoked.status);
         return { ok: false, code: 'unavailable', message: data.message };
       }
       if (invoked.status >= 500) {

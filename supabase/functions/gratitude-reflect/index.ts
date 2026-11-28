@@ -6,10 +6,15 @@ import {
   parseGratitudeReflect,
 } from '../_shared/gratitude.ts';
 import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
-import { AI_BILLING_CODE, AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
+import { xaiErrorText } from '../_shared/aiBilling.ts';
+import { classifyXaiFailure, logAiUnavailable, unavailableNotice, xaiFailureFromError } from '../_shared/aiUnavailable.ts';
+import { parseXaiUsage, recordAiSpend } from '../_shared/aiSpend.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
+
+/** A reflection is a few sentences. After this the built-in note is shown instead. */
+const REFLECT_TIMEOUT_MS = 30_000;
 
 type Body = { body?: string; category?: string | null };
 
@@ -81,6 +86,7 @@ Deno.serve(async (req) => {
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
 
   const messages = gratitudeReflectMessages(text, category);
+  const model = Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model;
   try {
     const response = await fetch(THUMOS_CHAT.completionsUrl, {
       method: 'POST',
@@ -89,35 +95,51 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(buildChatCompletionBody({
-        model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
+        model,
         system: messages.system,
         history: [],
         user: messages.user,
         stream: false,
       })),
+      signal: AbortSignal.timeout(REFLECT_TIMEOUT_MS),
     });
     if (!response.ok) {
-      const billing = xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response));
-      if (billing) {
-        logAiBilling('gratitude-reflect', response.status);
+      const reason = classifyXaiFailure(response.status, response.status === 402 ? null : await xaiErrorText(response));
+      if (reason) {
+        logAiUnavailable('gratitude-reflect', reason, response.status);
         return json({
           ok: true,
           comment: local.comment,
           suggestions: local.suggestions,
           source: 'local',
-          code: AI_BILLING_CODE,
-          notice: AI_BILLING_MESSAGES.reflect,
+          ...unavailableNotice('reflect', reason),
         });
       }
       return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
     }
-    const parsed = parseGratitudeReflect(completionText(await response.json()));
+    const payload = await response.json();
+    await recordAiSpend(admin, {
+      fn: 'gratitude-reflect',
+      tier: gate.ok ? gate.tier : null,
+      model: model,
+      usage: parseXaiUsage(payload),
+    });
+    const parsed = parseGratitudeReflect(completionText(payload));
     if (!parsed) return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
     if (gate.ok) {
       await countAiUse({ admin, userId: userData.user.id, kind: 'coach', tier: gate.tier }).catch(() => false);
     }
     return json({ ok: true, comment: parsed.comment, suggestions: parsed.suggestions, source: 'model' });
-  } catch {
-    return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
+  } catch (error) {
+    // A timeout or a dropped call: the built-in note, a calm line, and no credit used.
+    const reason = classifyXaiFailure(xaiFailureFromError(error)) ?? 'network';
+    logAiUnavailable('gratitude-reflect', reason, xaiFailureFromError(error));
+    return json({
+      ok: true,
+      comment: local.comment,
+      suggestions: local.suggestions,
+      source: 'local',
+      ...unavailableNotice('reflect', reason),
+    });
   }
 });

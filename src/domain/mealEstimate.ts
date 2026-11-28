@@ -15,20 +15,22 @@ export type MealEstimateCategory =
   | 'unreadable'
   | 'consent';
 
-/** Shown when the model cannot be called. It does not blame the photo. */
+/**
+ * Shown when our AI provider cannot answer: out of credit, busy, down, or too slow.
+ * It does not blame the photo, says logging by hand still works, and no credit is used.
+ * Matches AI_UNAVAILABLE_MESSAGES.meal on the server.
+ */
 export const PHOTO_PROVIDER_UNAVAILABLE =
-  'Photo reading is unavailable right now. Please type the meal instead.';
+  'Meal reading is resting right now. Logging by hand still works. Try again a bit later.';
 
-/** Our AI provider refused for billing. Matches AI_BILLING_MESSAGES.meal on the server. */
-export const MEAL_BILLING_UNAVAILABLE =
-  "Meal reading is temporarily unavailable. This isn't your fault and no credit was used. Please try again later, or type the meal in yourself.";
+/** The same line when the cause was our provider's balance. The person is not told why. */
+export const MEAL_BILLING_UNAVAILABLE = PHOTO_PROVIDER_UNAVAILABLE;
 
-/** Beside a typed estimate worked out on the phone because our AI provider refused for billing. */
-export const ROUGH_ESTIMATE_BILLING_NOTE =
-  "Rough estimate. Meal reading is temporarily unavailable. This isn't your fault and no credit was used.";
+/** Shown beside a text estimate worked out on the phone because the model could not answer. */
+export const ROUGH_ESTIMATE_NOTE = 'Rough estimate. Meal reading is resting right now.';
 
-/** Shown beside a text estimate that fell back on the device because the model was down. */
-export const ROUGH_ESTIMATE_NOTE = 'Rough estimate, AI unavailable right now.';
+/** Kept for the billing case. It reads the same as any other time the model cannot answer. */
+export const ROUGH_ESTIMATE_BILLING_NOTE = ROUGH_ESTIMATE_NOTE;
 
 const MESSAGES: Record<MealEstimateCategory, string> = {
   preparation: 'Could not prepare that photo. Try again, or type the meal.',
@@ -62,7 +64,7 @@ export class MealEstimateError extends UserFacingError {
 export function mealEstimateCategoryFromStatus(status: number, code?: string | null): MealEstimateCategory | null {
   if (code === 'unread') return 'unreadable';
   if (code === 'consent') return 'consent';
-  if (code === 'provider_unavailable' || code === 'provider_busy') return 'unavailable';
+  if (code === 'ai_unavailable' || code === 'provider_unavailable' || code === 'provider_busy') return 'unavailable';
   if (code === 'limit_reached' || code === 'subscription_required' || status === 402 || status === 429) return 'credits';
   if (status === 401) return 'auth';
   if (status === 408 || status === 504) return 'timeout';

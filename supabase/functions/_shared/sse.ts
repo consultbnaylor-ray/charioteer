@@ -4,7 +4,8 @@ export type ThumosServerEvent =
   | { type: 'delta'; text: string }
   | { type: 'replace'; reply: string }
   | { type: 'usage'; kind: 'coach' | 'meal' | 'plan'; used: number; limit: number }
-  | { type: 'done'; reply: string; role: 'assistant' | 'offline'; ok: boolean }
+  /** code is ai_unavailable when no model answered and the reply is the calm resting line. */
+  | { type: 'done'; reply: string; role: 'assistant' | 'offline'; ok: boolean; code?: string }
   | { type: 'error'; message: string };
 
 export function encodeSse(event: ThumosServerEvent): string {

@@ -1,7 +1,16 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
 import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
-import { AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
+import { xaiErrorText } from '../_shared/aiBilling.ts';
+import {
+  AI_UNAVAILABLE_CODE,
+  AI_UNAVAILABLE_MESSAGES,
+  classifyXaiFailure,
+  logAiUnavailable,
+  xaiFailureFromError,
+  type AiUnavailableReason,
+} from '../_shared/aiUnavailable.ts';
+import { parseXaiUsage, recordAiSpend } from '../_shared/aiSpend.ts';
 import { corsHeaders, json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
 import { MEAL_NO_RETRY_HEADER, mealProviderResult, providerRetryPointless, type MealProviderFault } from '../_shared/mealProvider.ts';
@@ -92,15 +101,19 @@ Deno.serve(async (req) => {
     console.warn(`meal-estimate ${reason}`);
     note(requestId, reason);
   };
-  const replyFor = (fault: MealProviderFault, billing = false) => {
+  const replyFor = (fault: MealProviderFault, reason: AiUnavailableReason | null = null) => {
     const decision = mealProviderResult(Boolean(image), fault);
-    // Our provider account refused. The phone says it is not their fault and no credit was used.
-    const billed = billing ? { billing: true, message: AI_BILLING_MESSAGES.meal } : {};
+    const billing = reason === 'billing';
+    // Our provider could not answer. The phone says so calmly, that typing the meal still works, and no credit is used.
+    // billing stays for older phones that read it.
+    const billed = reason
+      ? { code: AI_UNAVAILABLE_CODE, reason, message: AI_UNAVAILABLE_MESSAGES.meal, ...(billing ? { billing: true } : {}) }
+      : {};
     if (decision.outcome === 'unread') {
       return json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
     }
     if (decision.outcome === 'unavailable') {
-      const body = { ok: false, code: decision.code, requestId: requestId || null, ...billed };
+      const body = { ok: false, requestId: requestId || null, ...billed, code: decision.code };
       return providerRetryPointless(fault) || billing ? noRetry(body, 503) : json(body, 503);
     }
     if (decision.providerUnavailable) {
@@ -126,7 +139,7 @@ Deno.serve(async (req) => {
   if (!personalDataEnabled) {
     if (image) warnMeal('gate');
     // The model is not called. That is not a photo the model failed to read.
-    if (image) return json({ ok: false, code: 'provider_unavailable', requestId: requestId || null }, 503);
+    if (image) return json({ ok: false, code: AI_UNAVAILABLE_CODE, requestId: requestId || null, message: AI_UNAVAILABLE_MESSAGES.meal }, 503);
     return json({ ok: true, items: typed, source: 'local' });
   }
 
@@ -182,13 +195,22 @@ Deno.serve(async (req) => {
       signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) {
-      const billing = response.status === 402 || xaiBillingRefusal(response.status, await xaiErrorText(response));
+      const bodyText = response.status === 402 ? null : await xaiErrorText(response);
       if (response.status === 402) await response.body?.cancel().catch(() => undefined);
+      const reason = classifyXaiFailure(response.status, bodyText);
       warnMeal(`http ${response.status}`);
-      if (billing) logAiBilling('estimate-meal', response.status);
-      return replyFor({ kind: 'http', status: response.status }, billing);
+      if (reason) logAiUnavailable('estimate-meal', reason, response.status);
+      return replyFor({ kind: 'http', status: response.status }, reason);
     }
-    const parsed = parseMealEstimate(completionText(await response.json()));
+    const payload = await response.json();
+    // xAI charged for this call whether or not the estimate is usable, so it is logged either way.
+    await recordAiSpend(admin, {
+      fn: 'estimate-meal',
+      tier: gate.ok ? gate.tier : null,
+      model: image ? photoBody.model : textBody.model,
+      usage: parseXaiUsage(payload),
+    });
+    const parsed = parseMealEstimate(completionText(payload));
     if (!parsed) {
       warnMeal('parse');
       return replyFor({ kind: 'unparsed' });
@@ -202,8 +224,9 @@ Deno.serve(async (req) => {
     }).catch(() => false);
     return json({ ok: true, items: parsed, source: 'model', requestId: requestId || null });
   } catch (error) {
-    const name = error instanceof Error ? error.name : '';
-    warnMeal(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'http');
-    return replyFor(name === 'TimeoutError' || name === 'AbortError' ? { kind: 'timeout' } : { kind: 'network' });
+    const failure = xaiFailureFromError(error);
+    warnMeal(failure === 'timeout' ? 'timeout' : 'http');
+    logAiUnavailable('estimate-meal', failure, failure);
+    return replyFor({ kind: failure }, failure);
   }
 });

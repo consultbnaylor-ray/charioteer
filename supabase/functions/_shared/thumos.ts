@@ -617,6 +617,8 @@ export function buildChatCompletionBody(input: {
   model: string;
   reasoning_effort: 'none' | 'low';
   stream: boolean;
+  /** Asks xAI for the usage and exact cost in the last chunk of a stream, so the spend log has it. */
+  stream_options?: { include_usage: true };
   max_tokens?: number;
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
 } {
@@ -631,6 +633,7 @@ export function buildChatCompletionBody(input: {
     model,
     reasoning_effort,
     stream: input.stream,
+    ...(input.stream ? { stream_options: { include_usage: true as const } } : {}),
     max_tokens: THUMOS_CHAT.maxTokens,
     messages: [
       { role: 'system', content: input.system },

@@ -2,13 +2,12 @@ import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { countAiUse, gateAiUse, resetCountedRequests } from '../../supabase/functions/_shared/aiAllowance.ts';
+import { AI_BILLING_MARKER, xaiBillingRefusal } from '../../supabase/functions/_shared/aiBilling.ts';
 import {
-  AI_BILLING_CODE,
-  AI_BILLING_MARKER,
-  AI_BILLING_MESSAGES,
-  COACH_BILLING_UNAVAILABLE,
-  xaiBillingRefusal,
-} from '../../supabase/functions/_shared/aiBilling.ts';
+  AI_UNAVAILABLE_CODE,
+  AI_UNAVAILABLE_MESSAGES,
+  COACH_AI_UNAVAILABLE,
+} from '../../supabase/functions/_shared/aiUnavailable.ts';
 import { aiLimitButtonLabel } from '@/domain/aiCredits';
 import { aiGateFromBody, CREDITS_USED_FALLBACK, isAiGateNotice, AiGateNotice } from '@/domain/aiGate';
 import { shownError } from '@/domain/errors';
@@ -86,35 +85,38 @@ describe('our own xAI balance running out', () => {
     expect(xaiBillingRefusal('timeout')).toBe(false);
   });
 
-  it('never blames the person and says no credit was used', () => {
-    for (const message of Object.values(AI_BILLING_MESSAGES)) {
-      expect(message).toContain("This isn't your fault and no credit was used.");
-      expect(message).not.toMatch(/upgrade|xAI|key|balance/i);
+  it('never blames the person, never says why, and is short and calm', () => {
+    for (const message of Object.values(AI_UNAVAILABLE_MESSAGES)) {
+      expect(message).toContain('resting right now');
+      expect(message).toContain('a bit later');
+      expect(message).not.toMatch(/upgrade|xAI|key|balance|credit|billing|fault|error|failed/i);
+      expect(message.length).toBeLessThan(120);
     }
-    expect(AI_BILLING_MESSAGES.coach).toBe("The coach is temporarily unavailable. This isn't your fault and no credit was used. Please try again later.");
-    expect(MEAL_BILLING_UNAVAILABLE).toBe(AI_BILLING_MESSAGES.meal);
-    expect(ROUGH_ESTIMATE_BILLING_NOTE).toContain('no credit was used');
+    expect(AI_UNAVAILABLE_MESSAGES.coach).toBe('Thumos is resting right now. Try again a bit later.');
+    expect(AI_UNAVAILABLE_MESSAGES.meal).toContain('Logging by hand still works');
+    expect(MEAL_BILLING_UNAVAILABLE).toBe(AI_UNAVAILABLE_MESSAGES.meal);
+    expect(ROUGH_ESTIMATE_BILLING_NOTE).not.toContain('credit');
   });
 
-  it('keeps the Thumos safety lines in the billing reply', () => {
-    expect(COACH_BILLING_UNAVAILABLE.startsWith(AI_BILLING_MESSAGES.coach)).toBe(true);
-    expect(COACH_BILLING_UNAVAILABLE).toContain('999');
-    expect(COACH_BILLING_UNAVAILABLE).toContain('NHS 111');
-    expect(COACH_BILLING_UNAVAILABLE).toContain('116 123');
+  it('keeps the Thumos safety lines in the resting reply', () => {
+    expect(COACH_AI_UNAVAILABLE.startsWith(AI_UNAVAILABLE_MESSAGES.coach)).toBe(true);
+    expect(COACH_AI_UNAVAILABLE).toContain('999');
+    expect(COACH_AI_UNAVAILABLE).toContain('NHS 111');
+    expect(COACH_AI_UNAVAILABLE).toContain('116 123');
   });
 
-  it('logs a billing marker in each AI edge function, without the key', () => {
+  it('logs a marker in each AI edge function, without the key', () => {
     const billing = readFileSync('supabase/functions/_shared/aiBilling.ts', 'utf8');
     expect(billing).toContain(`AI_BILLING_MARKER = '${AI_BILLING_MARKER}'`);
     expect(billing).not.toMatch(/XAI_API_KEY|Bearer/);
     for (const name of AI_FUNCTIONS) {
       const source = readFileSync(`supabase/functions/${name}/index.ts`, 'utf8');
-      expect(source, name).toContain('logAiBilling(');
-      expect(source, name).toContain('xaiBillingRefusal(');
+      expect(source, name).toContain('logAiUnavailable(');
+      expect(source, name).toContain('classifyXaiFailure(');
     }
     const chat = readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8');
-    expect(chat).toContain('billing ? COACH_BILLING_UNAVAILABLE : COACH_REPLY_FAILED');
-    expect(AI_BILLING_CODE).toBe('provider_billing');
+    expect(chat).toContain('resting ? COACH_AI_UNAVAILABLE : COACH_REPLY_FAILED');
+    expect(AI_UNAVAILABLE_CODE).toBe('ai_unavailable');
   });
 
   it('shows the meal billing line instead of a retry prompt', () => {
@@ -122,7 +124,7 @@ describe('our own xAI balance running out', () => {
     expect(new MealEstimateError('billing').message).toBe(MEAL_BILLING_UNAVAILABLE);
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     expect(repo).toContain("data?.billing === true && (invoked.status >= 500 || data?.ok !== true)");
-    expect(repo).toContain("data?.code === 'provider_billing'");
+    expect(repo).toContain("data?.code === 'ai_unavailable'");
   });
 });
 
@@ -151,6 +153,7 @@ describe('a person who used their own credits', () => {
     expect(notice?.kind).toBe('coach');
     expect(aiGateFromBody({ code: 'limit_reached' })?.message).toBe(CREDITS_USED_FALLBACK);
     expect(aiGateFromBody({ code: 'provider_billing' })).toBeNull();
+    expect(aiGateFromBody({ code: 'ai_unavailable' })).toBeNull();
   });
 
   it('offers the next plan up, nothing on the top plan or a comp', () => {
