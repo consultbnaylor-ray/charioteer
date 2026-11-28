@@ -182,6 +182,15 @@ describe('Wim Hof plan', () => {
     expect(WIM_HOF_SAFETY_LINE).toMatch(/heart/);
     expect(WIM_HOF_SAFETY_LINE).toMatch(/epilepsy/);
   });
+
+  it('keeps every on-screen cue short enough for one line in the circle', () => {
+    const labels = [...new Set(buildWimHofPlan(4).map((step) => step.label))];
+    expect(labels.sort()).toEqual(
+      ['Big breath in', 'Breathe in', 'Breathe out', 'Breathe out and hold', 'Get ready', 'Hold'].sort(),
+    );
+    const longest = labels.reduce((current, label) => (label.length >= current.length ? label : current));
+    expect(longest).toBe('Breathe out and hold');
+  });
 });
 
 describe('Wim Hof screen', () => {
@@ -207,5 +216,23 @@ describe('Wim Hof screen', () => {
     expect(screen).toContain('Empty-lungs holds');
     expect(screen).toContain('minHeight: 52');
     expect(screen).not.toMatch(/Picker|ScrollView/);
+  });
+
+  it('keeps every cue on one line at a fixed size, including the longest', () => {
+    expect(screen).toContain("longest cue, 'Breathe out and hold'");
+    expect(screen).toContain('numberOfLines={1}');
+    expect(screen).toContain('adjustsFontSizeToFit');
+    expect(screen).toContain('minimumFontScale={0.5}');
+    expect(screen).toContain('maxFontSizeMultiplier={1}');
+    expect(screen).toContain('width: WIM_HOF_CUE_WIDTH');
+    expect(screen).toContain('fontSize: WIM_HOF_CUE_FONT_SIZE');
+    expect(screen).toContain('const WIM_HOF_CUE_FONT_SIZE = 15');
+    expect(screen).toContain('WIM_HOF_CUE_WIDTH = circleSize(WIM_HOF_CIRCLE_REST_SCALE) - WIM_HOF_CIRCLE_PAD * 2');
+    const cueStart = screen.indexOf('position.step.label}');
+    const buttonStart = screen.indexOf('accessibilityLabel="Breathe in"');
+    expect(cueStart).toBeGreaterThan(0);
+    expect(buttonStart).toBeGreaterThan(cueStart);
+    expect(screen.slice(cueStart, buttonStart)).toContain('numberOfLines={1}');
+    expect(screen.slice(buttonStart)).not.toContain('numberOfLines={1}');
   });
 });
