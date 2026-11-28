@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { PROCESSED_LIST_FOLD, processedSeeLabel, type ProcessedFoodNote } from '@/domain/nutrition';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { MoreInfoButton } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
@@ -16,20 +17,27 @@ export function ProcessedFoodList({
   cue = 'see',
   periodLine,
   heading,
+  title,
 }: {
   notes: readonly ProcessedFoodNote[];
   cue?: 'see' | 'more';
   periodLine?: string;
   heading?: string;
+  /** Fixed name, such as “About processed food”. It stays put when open. */
+  title?: string;
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
   const [rest, setRest] = useState(false);
   if (notes.length === 0) return null;
-  const see = processedSeeLabel(notes.length);
+  const see = processedSeeLabel(notes.length).replace(/\s*›\s*$/, '');
   const folded = notes.length > PROCESSED_LIST_FOLD;
   const shown = open && folded && !rest ? notes.slice(0, PROCESSED_LIST_FOLD) : notes;
   const hidden = notes.length - PROCESSED_LIST_FOLD;
+  const label = title ?? (open ? 'Less info' : 'More info');
+  const spoken = title
+    ? `${title}, ${open ? 'expanded' : 'collapsed'}`
+    : `${label} about processed foods`;
 
   return (
     <View
@@ -48,21 +56,18 @@ export function ProcessedFoodList({
       {periodLine ? <T variant="muted">{periodLine}</T> : null}
       {cue === 'more' ? (
         <MoreInfoButton
-          label={open ? 'Less info' : 'More info'}
+          label={label}
           expanded={open}
-          accessibilityLabel={`${open ? 'Less info' : 'More info'} about processed foods`}
+          accessibilityLabel={spoken}
           onPress={() => setOpen((value) => !value)}
         />
       ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={see}
-          accessibilityState={{ expanded: open }}
+        <ExpandableRow
+          label={open ? 'Hide' : see}
+          expanded={open}
           onPress={() => setOpen((value) => !value)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T style={{ color: theme.colors.ink }}>{open ? 'Hide' : see}</T>
-        </Pressable>
+          variant="divider"
+        />
       )}
       {open ? shown.map((note) => (
         <View key={note.id} style={{ gap: 2, paddingBottom: 10, borderTopWidth: 1, borderTopColor: theme.colors.line, paddingTop: 8 }}>
@@ -73,15 +78,12 @@ export function ProcessedFoodList({
         </View>
       )) : null}
       {open && folded ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={rest ? 'Hide the rest' : `Show ${hidden} more`}
-          accessibilityState={{ expanded: rest }}
+        <ExpandableRow
+          label={rest ? 'Hide the rest' : `Show ${hidden} more`}
+          expanded={rest}
           onPress={() => setRest((value) => !value)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T style={{ color: theme.colors.ink }}>{rest ? 'Hide the rest' : `Show ${hidden} more`}</T>
-        </Pressable>
+          variant="divider"
+        />
       ) : null}
     </View>
   );

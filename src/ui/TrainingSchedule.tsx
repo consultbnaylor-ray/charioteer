@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { normaliseTrainingSchedule, trainingScheduleSummary } from '@/domain/healthPlan';
-import { useAppTheme } from '@/ui/theme';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
@@ -13,7 +13,6 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 export function TrainingScheduleCard() {
   const snap = useSnapshot();
   const repo = useRepository();
-  const theme = useAppTheme();
   const saved = snap.trainingSchedule;
   const [open, setOpen] = useState(false);
   const [days, setDays] = useState<string[]>(saved?.days ?? []);
@@ -114,17 +113,12 @@ export function TrainingScheduleCard() {
 
   return (
     <Card>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="My training schedule"
-        accessibilityState={{ expanded: open }}
-        aria-expanded={open}
+      <ExpandableRow
+        label="My training schedule"
+        expanded={open}
         onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-      >
-        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>My training schedule</T>
-        <T variant="muted">{open ? 'Hide' : 'Show'}</T>
-      </Pressable>
+        hint={open ? 'Hide' : 'Show'}
+      />
       {open ? null : <T variant="muted">{trainingScheduleSummary(saved)}</T>}
       {open ? (
         <View style={{ gap: 8 }}>

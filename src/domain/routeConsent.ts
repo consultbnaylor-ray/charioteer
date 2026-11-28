@@ -18,6 +18,10 @@ export const ROUTE_FINDING_SWITCH = 'Route finding';
 export const ROUTE_SEND_LINE =
   "A route sends the coordinates and the travel type only. It does not send your name or account number. HeiGIT sees our server's address, not your phone's. A place search sends the words you type.";
 
+/** Search text and a drawn sketch. Same service as the route line above. */
+export const ROUTE_SKETCH_LINE =
+  'A search sends the words you type, and a sketch sends its points, to the same service.';
+
 /**
  * Verified 25 Oct 2026 at https://account.heigit.org/info/transparency-statement
  * The statement says it is voluntary and non-binding. Two decimal places is their example.
@@ -28,6 +32,7 @@ export const ROUTE_RETENTION_LINE =
 /** Visible sentences. Not a request to accept OpenStreetMap's terms. */
 export const ROUTE_CONSENT_LINES = [
   'The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route.',
+  ROUTE_SKETCH_LINE,
   ROUTE_SEND_LINE,
   ROUTE_RETENTION_LINE,
   'Nothing is shared with other people.',
@@ -54,7 +59,7 @@ export const ROUTE_CONSENT_DEVICE_LINE =
   'This choice is stored on this phone only. Another phone starts off. Nothing is shared.';
 
 export const ROUTE_NOT_NOW_LINE =
-  'Not now leaves Outside is Good, saved routes, and the map working.';
+  'Not now leaves Map a Route, saved routes, and the map working.';
 
 export const OSM_CONTRIBUTORS = '© OpenStreetMap contributors';
 

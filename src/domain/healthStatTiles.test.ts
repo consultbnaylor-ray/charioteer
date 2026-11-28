@@ -163,7 +163,7 @@ describe('health stat tiles', () => {
 
     const resting = tile(board, 'resting_heart_rate');
     expect(resting.unit).toBe('bpm');
-    expect(resting.valueText).toBe('61');
+    expect(resting.valueText).toBe('62');
     expect(resting.status).toBe('Within 60 to 100 bpm');
     expect(resting.mark).toBe('On track');
     expect(resting.hasGuideline).toBe(true);
@@ -492,7 +492,7 @@ describe('health stat tiles', () => {
     ];
     const lowBoard = buildHealthStatBoard(input({ today: lowToday, samples: lowSamples, goalAge: 42, adult: true }));
     const lowRest = tile(lowBoard, 'resting_heart_rate');
-    expect(lowRest.valueText).toBe('58');
+    expect(lowRest.valueText).toBe('59');
     expect(lowRest.period).toBe(PERIOD_LAST_7);
     expect(lowRest.mark).toBe('Note');
     expect(lowRest.status).toBe('Seek professional guidance.');
@@ -500,13 +500,13 @@ describe('health stat tiles', () => {
     expect(restingTileShowsFitLine(lowRest)).toBe(true);
     expect(lowRest.visual.kind).toBe('zone');
     if (lowRest.visual.kind === 'zone') {
-      expect(lowRest.visual.value).toBe(58);
+      expect(lowRest.visual.value).toBe(59);
       expect(lowRest.visual.zoneLow).toBe(60);
       expect(lowRest.visual.zoneHigh).toBe(100);
       expect(lowRest.visual.scaleMin).toBe(40);
       expect(lowRest.visual.scaleMax).toBe(120);
       const span = lowRest.visual.scaleMax - lowRest.visual.scaleMin;
-      expect((lowRest.visual.value - lowRest.visual.scaleMin) / span).toBeCloseTo(18 / 80, 5);
+      expect((lowRest.visual.value - lowRest.visual.scaleMin) / span).toBeCloseTo(19 / 80, 5);
       expect((lowRest.visual.zoneLow - lowRest.visual.scaleMin) / span).toBeCloseTo(20 / 80, 5);
     }
     const shown = lowRest.readings.map((point) => point.value);
@@ -653,7 +653,8 @@ describe('health stat tiles', () => {
     expect(screen).toContain('body={snap.bodyComposition}');
     expect(screen).toContain('activityEnergyKcal={snap.nutrition.activityEnergyKcal}');
     expect(screen).toContain('period={period}');
-    expect(screen).toContain('<StatPeriodToggle');
+    expect(screen).toContain('<MovementCharts');
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('<StatPeriodToggle />');
     const toggle = readFileSync('src/ui/StatPeriodToggle.tsx', 'utf8');
     const periodHook = readFileSync('src/health/useStatPeriod.ts', 'utf8');
     expect(toggle).toContain('HEALTH_STAT_PERIODS');
@@ -826,7 +827,7 @@ describe('health stat tiles', () => {
       }
     }
     expect(tile(board, 'sleep_hours').valueText).toBe('7.2');
-    expect(tile(board, 'resting_heart_rate').valueText).toBe('61');
+    expect(tile(board, 'resting_heart_rate').valueText).toBe('62');
     expect(tile(board, 'vo2_max').valueText).toBe('42');
     expect(tile(board, 'vo2_max').trend).toBe('Steady against the 7 days before.');
     expect(tile(board, 'workouts').valueText).toBe('97');
@@ -1023,5 +1024,81 @@ describe('health stat tiles', () => {
     }));
     expect(tile(month, 'sleep_hours').period).toBe('older than the last 30 days');
     expect(tile(month, 'sleep_hours').valueText).toBe('Latest night 5h 48m · 1 Sep');
+  });
+
+  it('names the latest, lowest, and highest body reading in the selected range', () => {
+    const month = buildHealthStatBoard(alex({ period: '30' }));
+    const weight = tile(month, 'weight_kg');
+    expect(weight.valueText).toBe('74.6');
+    expect(weight.status).toBe('Within the healthy BMI band');
+    expect(weight.span).toEqual({
+      latest: 'Latest 74.2 kg on 17 Oct',
+      lowest: 'Lowest 74.2 kg on 17 Oct',
+      highest: 'Highest 74.6 kg on 10 Oct',
+    });
+    const fat = tile(month, 'body_fat');
+    expect(fat.valueText).toBe('15');
+    expect(fat.status).toBe('Good');
+    expect(fat.span).toEqual({
+      latest: 'Latest 15 % on 17 Oct',
+      lowest: 'Lowest 15 % on 17 Oct',
+      highest: 'Highest 15 % on 17 Oct',
+    });
+    const waist = tile(month, 'waist');
+    expect(waist.valueText).toBe('84');
+    expect(waist.status).toBe('Within the healthy range');
+    expect(waist.span).toEqual({
+      latest: 'Latest 84 cm on 17 Oct',
+      lowest: 'Lowest 84 cm on 17 Oct',
+      highest: 'Highest 84 cm on 17 Oct',
+    });
+    expect(tile(month, 'lean_mass').status).toBe('No published guideline.');
+    expect(tile(month, 'lean_mass').span?.latest).toBe('Latest 63.0 kg on 17 Oct');
+
+    const ranged = buildHealthStatBoard(input({
+      today: '2026-11-24',
+      period: '30',
+      samples: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-08-01' },
+        { kind: 'weight_kg', value: 81.2, recordedOn: '2026-11-03' },
+        { kind: 'weight_kg', value: 81.2, recordedOn: '2026-11-10' },
+        { kind: 'weight_kg', value: 84.1, recordedOn: '2026-11-12' },
+        { kind: 'weight_kg', value: 84.1, recordedOn: '2026-11-15' },
+        { kind: 'weight_kg', value: 83, recordedOn: '2026-11-20' },
+      ],
+    }));
+    expect(tile(ranged, 'weight_kg').span).toEqual({
+      latest: 'Latest 83.0 kg on 20 Nov',
+      lowest: 'Lowest 81.2 kg on 3 Nov',
+      highest: 'Highest 84.1 kg on 12 Nov',
+    });
+
+    const year = buildHealthStatBoard(input({
+      today: '2026-11-24',
+      period: '12m',
+      samples: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-08-01' },
+        { kind: 'weight_kg', value: 83, recordedOn: '2026-11-20' },
+      ],
+    }));
+    expect(tile(year, 'weight_kg').span?.highest).toBe('Highest 90.0 kg on 1 Aug');
+    expect(tile(year, 'weight_kg').span?.latest).toBe('Latest 83.0 kg on 20 Nov');
+
+    const once = buildHealthStatBoard(input({
+      samples: [{ kind: 'weight_kg', value: 84.1, recordedOn: today }],
+    }));
+    expect(tile(once, 'weight_kg').valueText).toBe('84.1');
+    expect(tile(once, 'weight_kg').span).toEqual({
+      latest: 'Latest 84.1 kg on 17 Oct',
+      lowest: 'Lowest 84.1 kg on 17 Oct',
+      highest: 'Highest 84.1 kg on 17 Oct',
+    });
+
+    const board = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
+    expect(board).toContain('markExtremes');
+    expect(board).toContain('spanWindow');
+    expect(board).toContain('{valueWithPeriod(tile)}');
+    expect(readFileSync('src/ui/ReadingChart.tsx', 'utf8')).toContain('No readings in this period.');
+    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).not.toContain("skipChartIds={['weight_kg']}");
   });
 });

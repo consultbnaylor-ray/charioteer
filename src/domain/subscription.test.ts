@@ -116,7 +116,9 @@ describe('subscription paywall', () => {
     expect(paywallRequired(open)).toBe(false);
     expect(readFileSync('src/app/_layout.tsx', 'utf8')).toContain('paywallRequired');
     expect(readFileSync('src/app/_layout.tsx', 'utf8')).not.toContain('expo-iap');
-    expect(readFileSync('src/ui/useEntitlement.ts', 'utf8')).toContain('if (!enabled || !snap.ready) return');
+    // The row is read for the AI credits line even with the flag off, but it only gates when the flag is on.
+    expect(readFileSync('src/ui/useEntitlement.ts', 'utf8')).toContain('const row = enabled ? planRow : null');
+    expect(readFileSync('src/ui/useEntitlement.ts', 'utf8')).toContain('entitled: enabled ?');
     expect(readFileSync('src/app/paywall.tsx', 'utf8')).not.toMatch(/^import .*expo-iap/m);
     expect(readFileSync('src/app/paywall.tsx', 'utf8')).toContain("import('expo-iap')");
     expect(readFileSync('src/domain/subscription.ts', 'utf8')).not.toMatch(/bypass|allowlist@|reviewer@/i);

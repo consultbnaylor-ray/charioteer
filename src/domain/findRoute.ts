@@ -1,10 +1,25 @@
-import type { OutdoorKind, OutdoorPoint } from './outdoorRoute';
-import { OSM_CONTRIBUTORS, ORS_CREDIT } from './routeConsent';
+import { UserFacingError } from './errors';
+import {
+  drawnLineAfterSnap,
+  formatWalkDistance,
+  removeRouteSpurs,
+  snapDetourUsable,
+  SPUR_MAX_M,
+  SPUR_WITHIN_M,
+  pathMetres,
+  sketchWaypoints,
+  type OutdoorKind,
+  type OutdoorPoint,
+} from './outdoorRoute';
+import { OSM_CONTRIBUTORS, ORS_CREDIT, ROUTE_SKETCH_LINE } from './routeConsent';
+import { routeTierLimitMessage } from '@/domain/routeLengthLimit';
+import { paywallEnabled } from '@/domain/subscription';
+import type { Tier } from '@/domain/tierLimits';
 
 export { OSM_CONTRIBUTORS, ORS_CREDIT };
 
 export const ROUTE_SERVICE_LINE =
-  'The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route. Nothing is shared with other people.';
+  `The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route. ${ROUTE_SKETCH_LINE} Nothing is shared with other people.`;
 
 export { ROUTE_RETENTION_LINE, ROUTE_SEND_LINE } from './routeConsent';
 
@@ -19,9 +34,45 @@ export const ROUTE_RATE_LIMITED =
 
 export const ROUTE_BAD_REQUEST = 'That route request could not be used.';
 
+/** A snap the route service will not take because of its own limits. */
+export const ROUTE_SNAP_LIMIT = 'That snap is over the route limit. Draw a shorter section.';
+
 export const ROUTE_SIGN_IN = 'Please sign in again.';
 
 export const ROUTE_OFFLINE = 'Check your connection and try again.';
+
+export const SEARCH_SLOW = 'The place search took too long. Try again.';
+
+export const SEARCH_EMPTY = 'No place matched that search.';
+
+/**
+ * Whether to say no place matched. Only after a search that really came back
+ * empty: not once a place has been picked (the list closes, the picked place
+ * shows as the chosen row and the field holds its name).
+ */
+export function placeSearchEmptyShown(
+  searched: boolean,
+  resultCount: number,
+  query: string,
+  pickedName: string | null | undefined,
+): boolean {
+  if (!searched || resultCount > 0) return false;
+  if (pickedName && query.trim() === pickedName.trim()) return false;
+  return true;
+}
+
+/** Same phone location at both ends of an A to B line. */
+export const BOTH_HERE_HINT =
+  'Start and destination are both where you are. Use Loop for a circuit from here.';
+
+export const SEARCH_FAILED = 'The place search did not answer.';
+
+export const ROUTE_SLOW = 'The route took too long. Nothing was saved.';
+
+export const DRAW_TOO_SHORT = 'Draw a longer line.';
+
+/** One client wait for a route or a place search. The edge function stops at 12 seconds. */
+export const ROUTE_CLIENT_TIMEOUT_MS = 15_000;
 
 export const ROUTE_FINDING_OFF = 'Route finding is off.';
 
@@ -59,6 +110,17 @@ export type RoutePlanInput = {
   minutes?: number | null;
   /** Points the route is pulled through, between the start and the destination. At most five. */
   via?: OutdoorPoint[] | null;
+  /** Bias the route toward paths and trails, and away from main roads. */
+  preferPaths?: boolean;
+  /** A pencil sketch. The route follows these points instead of a chosen length. */
+  sketch?: OutdoorPoint[] | null;
+  /** One id for this tap, including a network retry of the same tap. */
+  requestId?: string;
+  /**
+   * The sketch is already a few intent points chosen from a drawing.
+   * It is sent as it is, and the server lets each point join the nearest path.
+   */
+  intent?: boolean;
 };
 
 export type RoutePlan = {
@@ -73,6 +135,14 @@ export type RoutePlan = {
   /** The green start when the route service moved off the GPS point. Null when the start was already on a path. */
   snappedStart: OutdoorPoint | null;
   snapDistanceM: number | null;
+  /** Metres down, when the route service sent a descent. Null when it did not. */
+  descentM?: number | null;
+  /** Steepest grade, percent, when the route service or the elevation samples provide it. */
+  maxGradientPct?: number | null;
+  /** Mean absolute grade, percent. Null when elevation was not returned. */
+  averageGradientPct?: number | null;
+  /** Elevation samples along the line, metres. Null when the snap response has none. */
+  elevationsM?: number[] | null;
 };
 
 /** Public places used as example starts. They are not surveyed routes. */
@@ -90,14 +160,63 @@ const PACE_M_PER_MIN: Record<RouteMode, number> = {
   cycle: 250,
 };
 
+/**
+ * The same window `routeLengthM` sends to OpenRouteService.
+ * A loop asks for a round trip of this length. A longer or shorter figure is clamped there.
+ * A time is turned into a length only inside the minute window, then clamped to the same length.
+ */
+export const ROUTE_DISTANCE_MIN_M = 500;
+export const ROUTE_DISTANCE_MAX_M = 50_000;
+export const ROUTE_MINUTES_MIN = 10;
+export const ROUTE_MINUTES_MAX = 180;
+
+/** One mile, matching the kilometres or miles setting on this phone. */
+const METRES_PER_MILE = 1609.344;
+
+export type RouteDistanceUnit = 'km' | 'mile';
+
+export const ROUTE_DISTANCE_CHOICES = [
+  { id: '3', label: '3 km', metres: 3000 },
+  { id: '5', label: '5 km', metres: 5000 },
+  { id: '8', label: '8 km', metres: 8000 },
+  { id: 'time', label: 'Use time', metres: null },
+  { id: 'custom', label: 'Custom', metres: null },
+] as const;
+
+export const ROUTE_TIME_CHOICES = [
+  { id: 'none', label: 'No set time', minutes: null },
+  { id: '30', label: '30 min', minutes: 30 },
+  { id: '45', label: '45 min', minutes: 45 },
+  { id: '60', label: '60 min', minutes: 60 },
+  { id: 'custom', label: 'Custom', minutes: null },
+] as const;
+
+export type RouteDistanceChoice = (typeof ROUTE_DISTANCE_CHOICES)[number]['id'];
+export type RouteTimeChoice = (typeof ROUTE_TIME_CHOICES)[number]['id'];
+
+export const DISTANCE_WINS_NOTE =
+  'When both distance and time are set, the distance is used. A time on its own is turned into a distance.';
+
+export const ROUTE_DISTANCE_NUMBER_MESSAGE: Record<RouteDistanceUnit, string> = {
+  km: 'Enter a distance in kilometres.',
+  mile: 'Enter a distance in miles.',
+};
+
+export const ROUTE_MINUTES_NUMBER_MESSAGE = 'Enter a whole number of minutes.';
+
 export function routeProfile(mode: RouteMode): RoutePlan['profile'] {
   if (mode === 'run') return 'foot-hiking';
   if (mode === 'cycle') return 'cycling-regular';
   return 'foot-walking';
 }
 
-export function routeKind(shape: RouteShape, craving: boolean): OutdoorKind {
+/**
+ * The saved type. A route the person drew stays 'drawn' (it was saved as 'loop' before,
+ * which labelled a hand-drawn route Loop). Only a loop from the settings is 'loop'.
+ */
+export function routeKind(shape: RouteShape, craving: boolean, drawn = false): OutdoorKind {
   if (craving) return 'craving_walk';
+  if (drawn) return 'drawn';
   return shape === 'a_to_b' ? 'point_to_point' : 'loop';
 }
 
@@ -105,14 +224,157 @@ export function routeKind(shape: RouteShape, craving: boolean): OutdoorKind {
 export function targetLengthM(input: Pick<RoutePlanInput, 'mode' | 'distanceM' | 'minutes'>): number | null {
   const distance = input.distanceM;
   if (typeof distance === 'number' && Number.isFinite(distance)) {
-    return clamp(Math.round(distance), 500, 50_000);
+    return clamp(Math.round(distance), ROUTE_DISTANCE_MIN_M, ROUTE_DISTANCE_MAX_M);
   }
   const minutes = input.minutes;
   if (typeof minutes === 'number' && Number.isFinite(minutes)) {
-    const bounded = clamp(Math.round(minutes), 10, 180);
-    return clamp(bounded * PACE_M_PER_MIN[input.mode], 500, 50_000);
+    const bounded = clamp(Math.round(minutes), ROUTE_MINUTES_MIN, ROUTE_MINUTES_MAX);
+    return clamp(bounded * PACE_M_PER_MIN[input.mode], ROUTE_DISTANCE_MIN_M, ROUTE_DISTANCE_MAX_M);
   }
   return null;
+}
+
+function metresPerUnit(unit: RouteDistanceUnit): number {
+  return unit === 'mile' ? METRES_PER_MILE : 1000;
+}
+
+/** Shortest and longest custom distances that still fall inside the route-service window. */
+function distanceBoundAmount(unit: RouteDistanceUnit, edge: 'min' | 'max'): string {
+  if (unit === 'km') return edge === 'min' ? '0.5' : '50';
+  if (edge === 'min') {
+    let cents = Math.ceil((ROUTE_DISTANCE_MIN_M / METRES_PER_MILE) * 100);
+    while (Math.round((cents / 100) * METRES_PER_MILE) < ROUTE_DISTANCE_MIN_M) cents += 1;
+    return (cents / 100).toFixed(2);
+  }
+  let cents = Math.floor((ROUTE_DISTANCE_MAX_M / METRES_PER_MILE) * 100);
+  while (Math.round((cents / 100) * METRES_PER_MILE) > ROUTE_DISTANCE_MAX_M) cents -= 1;
+  return (cents / 100).toFixed(2);
+}
+
+export function routeDistanceSpan(unit: RouteDistanceUnit): string {
+  const word = unit === 'mile' ? 'miles' : 'km';
+  return `${distanceBoundAmount(unit, 'min')} and ${distanceBoundAmount(unit, 'max')} ${word}`;
+}
+
+export function routeDistanceRangeMessage(unit: RouteDistanceUnit): string {
+  return `Enter a distance between ${routeDistanceSpan(unit)}.`;
+}
+
+export function routeMinutesRangeMessage(): string {
+  return `Enter a time between ${ROUTE_MINUTES_MIN} and ${ROUTE_MINUTES_MAX} minutes.`;
+}
+
+export function routeDistanceFieldHint(unit: RouteDistanceUnit): string {
+  return `Between ${routeDistanceSpan(unit)}.`;
+}
+
+export function routeMinutesFieldHint(): string {
+  return `Between ${ROUTE_MINUTES_MIN} and ${ROUTE_MINUTES_MAX} minutes.`;
+}
+
+function parseDecimal(text: string): number | null {
+  const cleaned = text.trim().replace(',', '.');
+  if (!/^(\d+(\.\d+)?|\.\d+)$/.test(cleaned)) return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** A typed distance in kilometres or miles. Outside the route-service window is refused. */
+export function parseCustomRouteDistance(
+  text: string,
+  unit: RouteDistanceUnit,
+): { ok: true; metres: number } | { ok: false; message: string } {
+  const amount = parseDecimal(text);
+  if (amount == null) return { ok: false, message: ROUTE_DISTANCE_NUMBER_MESSAGE[unit] };
+  const metres = Math.round(amount * metresPerUnit(unit));
+  if (metres < ROUTE_DISTANCE_MIN_M || metres > ROUTE_DISTANCE_MAX_M) {
+    return { ok: false, message: routeDistanceRangeMessage(unit) };
+  }
+  return { ok: true, metres };
+}
+
+/** Whole minutes. Outside the window the route service turns into a length is refused. */
+export function parseCustomRouteMinutes(
+  text: string,
+): { ok: true; minutes: number } | { ok: false; message: string } {
+  const cleaned = text.trim();
+  if (!/^\d+$/.test(cleaned)) return { ok: false, message: ROUTE_MINUTES_NUMBER_MESSAGE };
+  const minutes = Number(cleaned);
+  if (minutes < ROUTE_MINUTES_MIN || minutes > ROUTE_MINUTES_MAX) {
+    return { ok: false, message: routeMinutesRangeMessage() };
+  }
+  return { ok: true, minutes };
+}
+
+export type RouteAsk =
+  | { ok: true; distanceM: number | null; minutes: number | null; lengthM: number }
+  | { ok: false; message: string };
+
+/**
+ * The distance and time the route request should carry.
+ * A preset is used as it is. Custom text is parsed in the phone's distance unit.
+ * Distance wins when both are set. A time on its own becomes `lengthM` from the pace.
+ * The same `lengthM` is used for a loop and for A to B.
+ */
+export function routeAskFromChoices(input: {
+  mode: RouteMode;
+  distanceChoice: RouteDistanceChoice;
+  timeChoice: RouteTimeChoice;
+  customDistance: string;
+  customMinutes: string;
+  unit: RouteDistanceUnit;
+}): RouteAsk {
+  let distanceM: number | null = null;
+  if (input.distanceChoice === 'custom') {
+    const parsed = parseCustomRouteDistance(input.customDistance, input.unit);
+    if (!parsed.ok) return parsed;
+    distanceM = parsed.metres;
+  } else {
+    distanceM = ROUTE_DISTANCE_CHOICES.find((item) => item.id === input.distanceChoice)?.metres ?? null;
+  }
+
+  let minutes: number | null = null;
+  if (input.timeChoice === 'custom') {
+    const trimmed = input.customMinutes.trim();
+    if (trimmed.length === 0) {
+      if (distanceM == null) return { ok: false, message: ROUTE_MINUTES_NUMBER_MESSAGE };
+    } else {
+      const parsed = parseCustomRouteMinutes(trimmed);
+      if (!parsed.ok) return parsed;
+      minutes = parsed.minutes;
+    }
+  } else {
+    minutes = ROUTE_TIME_CHOICES.find((item) => item.id === input.timeChoice)?.minutes ?? null;
+  }
+
+  if (distanceM == null && minutes == null) {
+    return { ok: false, message: 'Choose a distance or a time.' };
+  }
+  const lengthM = targetLengthM({ mode: input.mode, distanceM, minutes });
+  if (lengthM == null) return { ok: false, message: 'Choose a distance or a time.' };
+  return { ok: true, distanceM, minutes, lengthM };
+}
+
+/** What the phone asks for. Loop and A to B both carry the custom distance or the time-converted length. */
+export function plannedRouteFields(input: {
+  mode: RouteMode;
+  shape: RouteShape;
+  distanceM: number | null;
+  minutes: number | null;
+}): {
+  mode: RouteMode;
+  shape: RouteShape;
+  distanceM: number | null;
+  minutes: number | null;
+  lengthM: number | null;
+} {
+  return {
+    mode: input.mode,
+    shape: input.shape,
+    distanceM: input.distanceM,
+    minutes: input.minutes,
+    lengthM: targetLengthM(input),
+  };
 }
 
 function clamp(value: number, low: number, high: number): number {
@@ -181,6 +443,7 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
   const snappedStart = routeCoordinate(row.snappedStart);
   const snapRaw = typeof row.snapDistanceM === 'number' ? row.snapDistanceM : null;
   const snapDistanceM = snapRaw != null && Number.isFinite(snapRaw) && snapRaw >= 0 ? Math.round(snapRaw) : null;
+  const elevationsM = readElevations(row.elevationsM) ?? elevationsFromPoints(row.points);
   return {
     mocked: row.mocked === true,
     mode,
@@ -189,10 +452,51 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
     distanceM: Math.round(distance),
     durationMinutes: Math.max(1, Math.round(duration)),
     ascentM: ascent,
-    points: points.slice(0, 2000),
+    // Do not slice the tail off. A long footpath can have more than 2000 vertices;
+    // dropping the rest was cutting the snapped line short.
+    points,
     snappedStart,
     snapDistanceM,
+    descentM: readMetres(row.descentM),
+    maxGradientPct: readPercent(row.maxGradientPct),
+    averageGradientPct: readPercent(row.averageGradientPct),
+    elevationsM,
   };
+}
+
+function readMetres(value: unknown): number | null {
+  const number = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(number) || number < 0 || number > 20_000) return null;
+  return Math.round(number);
+}
+
+function readPercent(value: unknown): number | null {
+  const number = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(number) || number < 0 || number > 100) return null;
+  return Math.round(number * 10) / 10;
+}
+
+function readElevations(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const metres = value
+    .map((item) => (typeof item === 'number' ? item : Number.NaN))
+    .filter((item) => Number.isFinite(item) && item > -500 && item < 9000)
+    .slice(0, 400);
+  return metres.length >= 2 ? metres : null;
+}
+
+/** Every point must carry an elevation. A partial list would draw a profile that does not match the line. */
+function elevationsFromPoints(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const metres: number[] = [];
+  for (const point of value.slice(0, 400)) {
+    if (!point || typeof point !== 'object') return null;
+    const raw = (point as { elevationM?: unknown; elevation?: unknown }).elevationM
+      ?? (point as { elevation?: unknown }).elevation;
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= -500 || raw >= 9000) return null;
+    metres.push(raw);
+  }
+  return metres.length >= 2 ? metres : null;
 }
 
 function shift(origin: OutdoorPoint, northM: number, eastM: number): OutdoorPoint {
@@ -201,8 +505,31 @@ function shift(origin: OutdoorPoint, northM: number, eastM: number): OutdoorPoin
   return { latitude: lat, longitude: lng };
 }
 
+function profileFor(input: Pick<RoutePlanInput, 'mode' | 'preferPaths'>): RoutePlan['profile'] {
+  if (input.preferPaths === true && input.mode === 'walk') return 'foot-hiking';
+  return routeProfile(input.mode);
+}
+
 /** A bent sample line around the start. It is not a path from the route service. */
 export function mockRoute(input: RoutePlanInput): RoutePlan | null {
+  const sketch = (input.sketch ?? [])
+    .map((point) => routeCoordinate(point))
+    .filter((point): point is OutdoorPoint => point != null);
+  if (sketch.length >= 2) {
+    const distanceM = Math.max(1, pathMetres(sketch));
+    return {
+      mocked: true,
+      mode: input.mode,
+      shape: input.shape,
+      profile: profileFor(input),
+      distanceM,
+      durationMinutes: Math.max(1, Math.round(distanceM / PACE_M_PER_MIN[input.mode])),
+      ascentM: null,
+      points: sketch.slice(0, 2000),
+      snappedStart: null,
+      snapDistanceM: null,
+    };
+  }
   const length = targetLengthM(input);
   const start = routeCoordinate(input.start);
   if (!length || !start) return null;
@@ -218,7 +545,7 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
       mocked: true,
       mode: input.mode,
       shape: input.shape,
-      profile: routeProfile(input.mode),
+      profile: profileFor(input),
       distanceM: length + vias.length * 250,
       durationMinutes: minutes + vias.length * 4,
       ascentM: vias.length * 12,
@@ -242,7 +569,7 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
     mocked: true,
     mode: input.mode,
     shape: input.shape,
-    profile: routeProfile(input.mode),
+    profile: profileFor(input),
     distanceM: length,
     durationMinutes: minutes,
     ascentM: null,
@@ -250,6 +577,91 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
     snappedStart: null,
     snapDistanceM: null,
   };
+}
+
+function copyPlanPoints(points: readonly OutdoorPoint[]): OutdoorPoint[] {
+  return points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+}
+
+/** Figures follow the cleaned geometry, at the pace the route service just used. */
+export function adoptSnappedLine(plan: RoutePlan, points: readonly OutdoorPoint[]): RoutePlan {
+  const line = copyPlanPoints(points);
+  const distanceM = Math.max(1, pathMetres(line));
+  const pace = plan.durationMinutes > 0 ? plan.distanceM / plan.durationMinutes : PACE_M_PER_MIN[plan.mode];
+  const durationMinutes = Math.max(1, Math.round(distanceM / Math.max(1, pace)));
+  const ascentM = plan.ascentM == null || plan.distanceM <= 0
+    ? plan.ascentM
+    : Math.max(0, Math.round(plan.ascentM * (distanceM / plan.distanceM)));
+  const descentM = plan.descentM == null || plan.distanceM <= 0
+    ? plan.descentM ?? null
+    : Math.max(0, Math.round(plan.descentM * (distanceM / plan.distanceM)));
+  const sameShape = line.length === plan.points.length;
+  return {
+    ...plan,
+    points: line,
+    distanceM,
+    durationMinutes,
+    ascentM,
+    descentM,
+    elevationsM: sameShape ? plan.elevationsM ?? null : null,
+    maxGradientPct: sameShape ? plan.maxGradientPct ?? null : null,
+    averageGradientPct: sameShape ? plan.averageGradientPct ?? null : null,
+  };
+}
+
+/** The pencil line, when no snap stayed close to it. Climb is unknown. */
+export function unmatchedDrawnPlan(input: {
+  mode: RouteMode;
+  shape: RouteShape;
+  preferPaths: boolean;
+  points: readonly OutdoorPoint[];
+}): RoutePlan {
+  const line = copyPlanPoints(input.points);
+  const distanceM = Math.max(1, pathMetres(line));
+  const pace = PACE_M_PER_MIN[input.mode];
+  return {
+    mocked: false,
+    mode: input.mode,
+    shape: input.shape,
+    profile: input.preferPaths && input.mode === 'walk' ? 'foot-hiking' : routeProfile(input.mode),
+    distanceM,
+    durationMinutes: Math.max(1, Math.round(distanceM / pace)),
+    ascentM: null,
+    points: line,
+    snappedStart: null,
+    snapDistanceM: null,
+  };
+}
+
+/**
+ * One route call for the corner sketch.
+ * A line that comes back is `matched` when it still follows the pencil closely.
+ * A line that strays but stays on nearby paths comes back as `detour`.
+ * A line that goes a long way round has no `detour`: there is no path along that part of the pencil.
+ * `sawRoute` says whether that one call answered.
+ */
+export async function matchDrawnSketch(input: {
+  sketch: readonly OutdoorPoint[];
+  send: (waypoints: readonly OutdoorPoint[]) => Promise<RoutePlan>;
+}): Promise<
+  | { matched: true; plan: RoutePlan }
+  | { matched: false; sawRoute: true; detour: RoutePlan | null }
+  | { matched: false; sawRoute: false; error: unknown }
+> {
+  const waypoints = sketchWaypoints(input.sketch);
+  if (waypoints.length < 2) return { matched: false, sawRoute: false, error: new Error('short') };
+  try {
+    const plan = await input.send(waypoints);
+    const choice = drawnLineAfterSnap({ sketch: input.sketch, routed: plan.points });
+    if (choice.matched) return { matched: true, plan: adoptSnappedLine(plan, choice.points) };
+    // The service found real paths, just not close to the pencil. Those paths are still the route
+    // unless they go a long way round, which means there is no path along that part of the pencil.
+    const cleaned = plan.points.length >= 2 ? removeRouteSpurs(plan.points, SPUR_WITHIN_M, SPUR_MAX_M, input.sketch) : [];
+    const detour = cleaned.length >= 2 && snapDetourUsable(input.sketch, cleaned) ? adoptSnappedLine(plan, cleaned) : null;
+    return { matched: false, sawRoute: true, detour };
+  } catch (error) {
+    return { matched: false, sawRoute: false, error };
+  }
 }
 
 /** A few points only. Apple draws its own line between them. */
@@ -297,17 +709,211 @@ function calmOr(value: unknown, fallback: string): string {
   return text;
 }
 
+function isFunctionsFetchError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { name?: unknown }).name === 'FunctionsFetchError');
+}
+
+/** The error `functions.invoke` wrapped. A local rejection sits on `context` and never left the phone. */
+function routeErrorCause(error: unknown): unknown {
+  if (!isFunctionsFetchError(error)) return error;
+  const context = (error as { context?: unknown }).context;
+  return context ?? error;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const name = (error as { name?: unknown }).name;
+  if (name === 'TimeoutError') return true;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === 'string' && /timed out|\btimeout\b/i.test(message);
+}
+
+/** Dev log. A token, a key, or a coordinate is not written. */
+function logRouteRequestFailure(cause: unknown): void {
+  const record = cause && typeof cause === 'object' ? cause as { name?: unknown; message?: unknown } : null;
+  const name = typeof record?.name === 'string' && record.name ? record.name : 'Error';
+  const message = typeof record?.message === 'string' ? record.message : '';
+  const safe = `${name}: ${message}`.replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!safe || /eyJ|bearer|sb_publishable|sb_secret|latitude|longitude|\d+\.\d{4,}/i.test(safe)) {
+    console.error('route request failed');
+    return;
+  }
+  console.error('route request failed', safe);
+}
+
 /**
  * Why a route call did not return a line.
  * `functions.invoke` leaves a non-2xx body on `error.context`, with `data` null.
  * A 401 or a dropped connection never reaches the function, so those are not "the route service".
+ * A failure thrown before `fetch` is wrapped the same way. Its own message is the one shown.
  */
-export async function explainRouteFailure(error: unknown): Promise<string> {
-  const status = statusOf(error);
+export async function explainRouteFailure(error: unknown, now = Date.now()): Promise<string> {
+  const cause = routeErrorCause(error);
+  logRouteRequestFailure(cause);
+  if (cause instanceof UserFacingError) return cause.message;
+  if (isTimeoutError(cause)) return ROUTE_SLOW;
+  const status = statusOf(error) ?? statusOf(cause);
   if (status === 401) return ROUTE_SIGN_IN;
-  if (isRouteNetworkError(error)) return ROUTE_OFFLINE;
+  if (isRouteNetworkError(cause) || (isFunctionsFetchError(error) && (cause === error || isRouteNetworkError(cause)))) {
+    return ROUTE_OFFLINE;
+  }
   const body = await readInvokeBody(error);
-  return messageForRouteBody(body, status);
+  const message = messageForRouteBody(body, status);
+  if (status === 429 || isRateLimitedBody(body)) {
+    const extra = rateLimitFreesLine(body, retryAfterHeader(error), now);
+    if (extra && !message.includes('You can try again in')) return `${message} ${extra}`;
+  }
+  return message;
+}
+
+function isRateLimitedBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const code = (body as { code?: unknown }).code;
+  return code === 'rate_limited' || code === 'rate';
+}
+
+/**
+ * When the refusal says when the limit lifts.
+ * A missing time stays quiet. The phone does not guess from the 40-a-day rule.
+ */
+export function rateLimitFreesLine(body: unknown, retryAfterHeaderValue: string | null = null, now = Date.now()): string | null {
+  const seconds = retrySecondsFromBody(body, now) ?? retrySecondsFromHeader(retryAfterHeaderValue, now);
+  if (seconds == null || seconds > 86_400 * 2) return null;
+  return freesIn(seconds);
+}
+
+function freesIn(seconds: number): string {
+  const whole = Math.max(1, Math.round(seconds));
+  if (whole < 90) return `You can try again in ${whole} ${whole === 1 ? 'second' : 'seconds'}.`;
+  const minutes = Math.max(1, Math.round(whole / 60));
+  if (minutes < 90) return `You can try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+  const hours = Math.max(1, Math.round(minutes / 60));
+  return `You can try again in ${hours} ${hours === 1 ? 'hour' : 'hours'}.`;
+}
+
+function retrySecondsFromBody(body: unknown, now: number): number | null {
+  if (!body || typeof body !== 'object') return null;
+  const row = body as Record<string, unknown>;
+  const direct = row.retryAfter ?? row.retry_after ?? row.retryAfterSeconds;
+  if (typeof direct === 'number' && Number.isFinite(direct) && direct > 0) return direct;
+  if (typeof direct === 'string' && /^\d+$/.test(direct.trim())) {
+    const seconds = Number(direct.trim());
+    return seconds > 0 ? seconds : null;
+  }
+  return secondsUntil(row.resetAt ?? row.freesAt ?? row.retryAt ?? row.availableAt, now);
+}
+
+function retrySecondsFromHeader(header: string | null, now: number): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return seconds > 0 ? seconds : null;
+  }
+  return secondsUntil(trimmed, now);
+}
+
+function secondsUntil(value: unknown, now: number): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 1_000_000_000_000) {
+    const seconds = Math.round((value - now) / 1000);
+    return seconds > 0 ? seconds : null;
+  }
+  if (typeof value !== 'string') return null;
+  const at = Date.parse(value);
+  if (!Number.isFinite(at)) return null;
+  const seconds = Math.round((at - now) / 1000);
+  return seconds > 0 ? seconds : null;
+}
+
+function retryAfterHeader(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const context = (error as { context?: unknown }).context;
+  if (!context || typeof context !== 'object') return null;
+  const headers = (context as { headers?: { get?: (name: string) => string | null } }).headers;
+  if (!headers || typeof headers.get !== 'function') return null;
+  try {
+    const value = headers.get('Retry-After') ?? headers.get('retry-after');
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function modeWord(mode: RouteMode): string {
+  if (mode === 'run') return 'Run';
+  if (mode === 'cycle') return 'Cycle';
+  return 'Walk';
+}
+
+function formatPercent(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/**
+ * Distance, time for the mode, and climb.
+ * Descent, gradient, and a profile are added only when the snap response carried them.
+ */
+export function routeSnapLines(plan: Pick<RoutePlan, 'distanceM' | 'durationMinutes' | 'mode' | 'ascentM'> & Partial<Pick<RoutePlan, 'descentM' | 'maxGradientPct' | 'averageGradientPct' | 'elevationsM'>>): string[] {
+  const lines = [
+    `${formatWalkDistance(plan.distanceM)} · ${modeWord(plan.mode)} · ${plan.durationMinutes} min`,
+    formatClimb(plan.ascentM ?? null),
+  ];
+  if (typeof plan.descentM === 'number' && Number.isFinite(plan.descentM)) {
+    lines.push(`Descent ${Math.max(0, Math.round(plan.descentM))} m`);
+  }
+  const derived = gradientFromElevations(plan.elevationsM, plan.distanceM);
+  const max = readPercent(plan.maxGradientPct) ?? derived?.max ?? null;
+  const average = readPercent(plan.averageGradientPct) ?? derived?.average ?? null;
+  if (max != null && average != null) lines.push(`Max gradient ${formatPercent(max)}% · average ${formatPercent(average)}%`);
+  else if (max != null) lines.push(`Max gradient ${formatPercent(max)}%`);
+  else if (average != null) lines.push(`Average gradient ${formatPercent(average)}%`);
+  return lines;
+}
+
+/** At least two samples. One number is not a profile. */
+export function routeElevations(plan: { elevationsM?: readonly number[] | null }): number[] | null {
+  const values = plan.elevationsM?.filter((value) => typeof value === 'number' && Number.isFinite(value));
+  if (!values || values.length < 2) return null;
+  return [...values];
+}
+
+/** A short list for the profile line. The samples are the route's own elevations, thinned for drawing. */
+export function elevationProfileSamples(metres: readonly number[], limit = 48): number[] {
+  if (metres.length <= limit) return [...metres];
+  const sampled: number[] = [];
+  const last = metres.length - 1;
+  for (let index = 0; index < limit; index += 1) {
+    const at = Math.round((index / (limit - 1)) * last);
+    sampled.push(metres[at] ?? metres[last] ?? 0);
+  }
+  return sampled;
+}
+
+/**
+ * Grade from elevation samples and the route length.
+ * No samples means no grade. The length is not turned into a made-up hill.
+ */
+export function gradientFromElevations(
+  elevationsM: readonly number[] | null | undefined,
+  distanceM: number,
+): { max: number; average: number } | null {
+  if (!elevationsM || elevationsM.length < 2 || !(distanceM > 0)) return null;
+  const step = distanceM / (elevationsM.length - 1);
+  if (!(step > 0)) return null;
+  let climb = 0;
+  let drop = 0;
+  let max = 0;
+  for (let index = 1; index < elevationsM.length; index += 1) {
+    const delta = (elevationsM[index] ?? 0) - (elevationsM[index - 1] ?? 0);
+    const grade = (Math.abs(delta) / step) * 100;
+    if (grade > max) max = grade;
+    if (delta > 0) climb += delta;
+    else drop += -delta;
+  }
+  const average = ((climb + drop) / distanceM) * 100;
+  if (!Number.isFinite(max) || !Number.isFinite(average) || max > 100) return null;
+  return { max: Math.round(max * 10) / 10, average: Math.round(average * 10) / 10 };
 }
 
 export function messageForRouteBody(body: unknown, status: number | null): string {
@@ -317,6 +923,12 @@ export function messageForRouteBody(body: unknown, status: number | null): strin
   if (named === 'unauthorised' || named === 'unauthorized') return ROUTE_SIGN_IN;
   if (named === 'no_path' || status === 422) return calmOr(body, ROUTE_NO_PATH);
   if (named === 'rate_limited' || named === 'rate' || status === 429) return calmOr(body, ROUTE_RATE_LIMITED);
+  if (named === 'tier_limit') {
+    const raw = body && typeof body === 'object' ? (body as { tier?: unknown }).tier : null;
+    const tier: Tier = raw === 'pro' || raw === 'max' || raw === 'standard' ? raw : 'standard';
+    return routeTierLimitMessage({ tier, offerUpgrade: paywallEnabled() });
+  }
+  if (named === 'limit') return calmOr(body, ROUTE_SNAP_LIMIT);
   if (named === 'bad_request' || named === 'input' || status === 400) return calmOr(body, ROUTE_BAD_REQUEST);
   if (named === 'unavailable' || status === 503) return calmOr(body, ROUTE_UNAVAILABLE);
   return ROUTE_UNAVAILABLE;
@@ -405,6 +1017,23 @@ export async function retryRouteInvoke<T>(
   if (!routeInvokeShouldRetry(first.error)) return first;
   await sleep(ROUTE_INVOKE_RETRY_MS);
   return send(1);
+}
+
+/** Stops a route or place search that never answers, so the spinner can finish. */
+export function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new UserFacingError(message, 'generic')), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function pointFromPair(value: unknown): OutdoorPoint | null {

@@ -66,7 +66,7 @@ A craving walk can be used the same way. The line is still only a guide. Turns a
 
 A saved route does not keep the via-points. It keeps the finished line. Adjusting it is a new request, not a replay of the old one.
 
-**Adjust this route** would turn on the same gestures as Find a route: one request when the finger lifts, after a 500 millisecond pause, five points at most, Undo and Reset on the phone. The quota is the one already in the route function: 40 a day and 12 in 10 minutes for the account, shared with place search. The phone still does not show the shared remainder or the 1,500 app cap.
+**Adjust this route** would turn on the same gestures as Find a route: one request when the finger lifts, after a 500 millisecond pause, five points at most, Undo and Reset on the phone. The quota is the one already in the route function: 40 routes a day and 12 in 10 minutes for the account. Place search has its own allowance. The phone still does not show the shared remainder or the 1,500 app cap.
 
 What that request sends:
 

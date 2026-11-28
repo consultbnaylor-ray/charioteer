@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkDate } from '@/domain/dates';
@@ -8,6 +8,7 @@ import { appleDayValues } from '@/domain/dailyActivity';
 import type { GarminSleep } from '@/domain/garminConnect';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
 import { feelPatternLine, mealsBeforeSession, sleepHoursOnDay } from '@/domain/workoutFeel';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Choice, Field, T, playSavedHaptic } from '@/ui/ui';
@@ -75,15 +76,11 @@ export function HowItFelt({
 
   return (
     <View style={{ gap: 8, alignSelf: 'stretch' }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="How it felt"
-        accessibilityState={{ expanded: open }}
+      <ExpandableRow
+        label="How it felt"
+        expanded={open}
         onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, justifyContent: 'center' }}
-      >
-        <T variant="label" style={{ color: open ? green : theme.colors.muted }}>{open ? 'How it felt' : 'How it felt'}</T>
-      </Pressable>
+      />
       {open ? (
         <View style={{ gap: 8 }}>
           <T>{formatUkDate(day)}</T>

@@ -213,7 +213,7 @@ describe('workout day list', () => {
     expect(WORKOUT_HISTORY_FOLD).toBe(5);
     expect(foldedCount(6, WORKOUT_HISTORY_FOLD)).toBe(1);
     expect(WORKOUT_HISTORY_EMPTY).toContain('Apple Health');
-    expect(WORKOUT_HISTORY_HINT).toBe("Tap a bar to see that day's workouts.");
+    expect(WORKOUT_HISTORY_HINT).toBe("Tap a point to see that day's workouts.");
   });
 
   it('folds a long day and keeps the chart hint on the list', () => {
@@ -235,7 +235,7 @@ describe('workout day list', () => {
     expect(list).toContain('difficultyAxis');
     expect(list).toContain('difficultyDetailLines');
     expect(list).toContain('routeSummaryLine');
-    expect(list).toContain('>View route</T>');
+    expect(list).toContain('>{VIEW_ROUTE_MAP}</T>');
     expect(calendar).toContain('routeSummaryLine');
     expect(calendar).toContain('matched?.routeExpected');
     expect(list).toContain('DIFFICULTY_DAY_LINK');
@@ -243,7 +243,7 @@ describe('workout day list', () => {
     expect(list).toContain('Workout history');
     expect(list).toContain('WORKOUT_HISTORY_SHOW_ALL');
     expect(list).toContain('WORKOUT_HISTORY_EMPTY');
-    expect(list).toContain('{WORKOUT_HISTORY_HINT}');
+    expect(readFileSync('src/ui/WorkoutHistoryCharts.tsx', 'utf8')).toContain('{WORKOUT_HISTORY_HINT}');
     expect(list).toContain('{WORKOUT_OPEN_HINT}');
     expect(list).toContain('function TapRow');
     expect(list).toContain('accessibilityRole="button"');
@@ -255,12 +255,12 @@ describe('workout day list', () => {
     expect(list).toContain('NO_WORKOUT_MARKER');
     expect(list).not.toContain('Show all workouts');
     expect(list).toContain('setHistoryDay(null)');
-    expect(list.indexOf('<DurationChart')).toBeLessThan(list.indexOf('<WorkoutHistory'));
+    expect(list.indexOf('<WorkoutHistoryCharts')).toBeLessThan(list.indexOf('<WorkoutHistory '));
     expect(list).toContain('<SeriesLegend');
     expect(list).toContain('<T>{label}</T>');
     expect(list).not.toContain('STACK_OPACITY');
     expect(list).not.toContain('typeOpacity');
-    expect(list.match(/<SeriesLegend/g)).toHaveLength(2);
+    expect(list.match(/<SeriesLegend/g)).toHaveLength(1);
     expect(list).toContain(ROUTE_MARK);
     expect(list).not.toContain('No GPS route');
     expect(list).not.toContain('scrollTo');
@@ -276,7 +276,7 @@ describe('workout day list', () => {
     const strip = calendar.slice(calendar.indexOf('Previous week'), calendar.indexOf('function webScrollParent'));
     expect(strip).not.toContain('scrollTo');
     expect(strip).not.toContain('scrollIntoView');
-    expect(calendar).toContain('View route');
+    expect(calendar).toContain('VIEW_ROUTE_MAP');
     expect(calendar).not.toContain('No GPS route');
     expect(reader).toContain('HKQuantityTypeIdentifierWorkoutEffortScore');
     expect(reader).toContain('filter: { date: { startDate: start, endDate: end } }');

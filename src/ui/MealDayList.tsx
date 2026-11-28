@@ -1,10 +1,9 @@
 import { useEffect, useState, type ReactNode, type RefObject } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { MealDayGroup } from '@/domain/nutrition';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { MealNutrientBars } from '@/ui/MealNutrientBars';
-import { useAppTheme } from '@/ui/theme';
-import { T } from '@/ui/ui';
 
 /**
  * One compact row per day. Today starts open, and so does the day just saved.
@@ -49,26 +48,21 @@ function MealDay({
   anchorRef?: RefObject<View | null>;
   children: ReactNode;
 }) {
-  const theme = useAppTheme();
   const [open, setOpen] = useState(group.isToday || pinned);
   useEffect(() => {
     if (pinned) setOpen(true);
   }, [pinned]);
   return (
     <View ref={anchorRef} nativeID={`meal-day-${group.day}`} collapsable={false} style={{ gap: 8 }}>
-      <Pressable
-        accessibilityRole="button"
+      <ExpandableRow
+        label={group.heading}
         accessibilityLabel={`${group.heading}. ${open ? 'Hide' : 'Show'}`}
-        accessibilityState={{ expanded: open }}
+        expanded={open}
         onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, justifyContent: 'center', gap: 6 }}
+        hint={open ? 'Hide' : 'Show'}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{group.heading}</T>
-          <T variant="muted">{open ? 'Hide' : 'Show'}</T>
-        </View>
         <MealNutrientBars bars={group.bars} />
-      </Pressable>
+      </ExpandableRow>
       {open ? <View style={{ gap: 8 }}>{children}</View> : null}
     </View>
   );

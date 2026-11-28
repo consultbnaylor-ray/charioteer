@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { dailyRowsFor, garminCoachLines, mapGarminPush, missingColumn, readingsFromRows } from '../../supabase/functions/_shared/garmin';
-import { HEALTH_KINDS } from './healthInsights';
+import { HEALTH_KINDS, weekdayShort } from './healthInsights';
+import { periodDayCount } from './statWindow';
 import {
   DAILY_ACTIVITY_RINGS_HINT,
   DAILY_ACTIVITY_TAP_HINT,
@@ -13,9 +14,13 @@ import {
   GARMIN_VIGOROUS_MINUTE_WEIGHT,
   NO_STEPS_YET_TODAY,
   activityDayName,
+  activityAverageLine,
+  activityBarAxis,
+  activityFullDayStats,
   calorieSeries,
   chartSourceCaption,
   distanceSeries,
+  weekDistanceSummary,
   exerciseChartCaption,
   exerciseSeries,
   garminMinuteSeries,
@@ -177,8 +182,8 @@ describe('daily activity', () => {
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
     const charts = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     const screen = readFileSync('src/app/(main)/workouts.tsx', 'utf8');
-    expect(list.indexOf('<DurationChart')).toBeLessThan(list.indexOf('<DailyActivityCharts'));
-    expect(list.indexOf('<DailyActivityCharts')).toBeLessThan(list.indexOf('<WorkoutHistory'));
+    expect(list.indexOf('<WorkoutHistoryCharts')).toBeLessThan(list.indexOf('<DailyActivityCharts'));
+    expect(list.indexOf('<DailyActivityCharts')).toBeLessThan(list.indexOf('<WorkoutHistory '));
     const diaryStart = charts.indexOf('<MovementCharts');
     const diary = charts.slice(diaryStart, charts.indexOf('/>', diaryStart));
     expect(diary).toContain('showHealthStats={false}');
@@ -188,9 +193,10 @@ describe('daily activity', () => {
     expect(healthCharts).not.toContain('showHealthStats');
     expect(healthCharts).toContain('steps=');
     expect(healthCharts).toContain('restingHeart=');
-    expect(charts).toContain('Workout History Charts');
+    expect(charts).toContain('Activity charts');
+    expect(readFileSync('src/ui/WorkoutHistoryCharts.tsx', 'utf8')).toContain('Workout History Charts');
     expect(charts).toContain('const [chartsOpen, setChartsOpen] = useState(false)');
-    expect(charts).toContain('title={name}');
+    expect(charts).toContain('title={chart.title}');
     expect(charts).toContain('Not medical advice. Not a diagnosis.');
     expect(charts).toContain('title="Steps"');
     expect(charts).toContain('title="Distance"');
@@ -243,6 +249,10 @@ describe('daily activity', () => {
     ]);
     expect(resting.find((point) => point.day === '2026-10-22')?.label).toContain('60 bpm (Apple Health)');
     expect(resting.find((point) => point.day === '2026-10-21')?.label).toContain('58 bpm (Garmin)');
+    const sameDay = restingSeries(end, 7, [{ day: '2026-10-21', value: 61 }], [
+      { calendarDate: '2026-10-21', restingHeartRateBpm: 52, averageHeartRateBpm: 70, moderateMinutes: null, vigorousMinutes: null },
+    ]);
+    expect(sameDay.find((point) => point.day === '2026-10-21')).toMatchObject({ value: 52, source: 'garmin' });
     const lines = garminLatestLines({
       dailies: [{
         calendarDate: '2026-10-22',
@@ -419,7 +429,7 @@ describe('daily activity', () => {
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).not.toContain('<MovementCharts');
     expect(charts).toContain('Not medical advice. Not a diagnosis.');
     expect(charts).toContain('numberOfLines={1}');
-    expect(charts).toContain('activityAxisPlan');
+    expect(charts).toContain('activityBarAxis');
     expect(charts).toContain('goodZoneBand');
     expect(charts).not.toContain('barSourceName');
   });
@@ -442,6 +452,156 @@ describe('daily activity', () => {
     expect(activityScaleLine('Most in one day 68 bpm (Apple Health)', '(Apple Health and Garmin)')).toBe('Most in one day 68 bpm (Apple Health and Garmin)');
     expect(activityScaleLine('Most in one day 40 min (Garmin)', 'Garmin. Plain minutes, not doubled.')).toBe('Most in one day 40 min. Garmin. Plain minutes, not doubled.');
     expect(activityScaleLine('Most in one day 4.2 km', '(Garmin)')).toBe('Most in one day 4.2 km (Garmin)');
+  });
+
+  it('averages full days only and says today so far only on an open today', () => {
+    const points = [
+      { day: '2026-11-14', value: 11600 },
+      { day: '2026-11-15', value: 4800 },
+      { day: '2026-11-20', value: 5200 },
+    ];
+    const open = weekDistanceSummary(points, '2026-11-20', new Date('2026-11-20T08:00:00Z'));
+    expect(open?.total).toBe('21.6 km');
+    expect(open?.average).toBe('8.2 km/day avg');
+    expect(open?.line).toContain('Today 5.2 km so far');
+    expect(open?.line).not.toMatch(/Today so far.*Today so far/);
+    const past = weekDistanceSummary(points, '2026-11-21', new Date('2026-11-21T08:00:00Z'));
+    expect(past?.line).not.toContain('Today so far');
+    expect(past?.line).not.toContain('so far');
+    expect(past?.average).toBe('7.2 km/day avg');
+  });
+});
+
+describe('workout history activity range', () => {
+  const today = '2026-11-24';
+  const blank = {
+    restingHeartRateBpm: null,
+    averageHeartRateBpm: null,
+    moderateMinutes: null,
+    vigorousMinutes: null,
+  };
+
+  it('maps the selected range to one bar per day and leaves today out of the average', () => {
+    const days = periodDayCount('7');
+    const exercise = exerciseSeries(today, days, [
+      { day: today, value: 53 },
+      { day: '2026-11-22', value: 10 },
+      { day: '2026-11-18', value: 30 },
+      { day: '2026-11-17', value: 80 },
+    ], []);
+    expect(exercise).toHaveLength(7);
+    expect(exercise.map((point) => point.day)).toEqual([
+      '2026-11-18',
+      '2026-11-19',
+      '2026-11-20',
+      '2026-11-21',
+      '2026-11-22',
+      '2026-11-23',
+      '2026-11-24',
+    ]);
+    expect(exercise.find((point) => point.day === '2026-11-22')?.value).toBe(10);
+    expect(exercise.find((point) => point.day === today)?.value).toBe(53);
+    expect(exercise.some((point) => point.day === '2026-11-17')).toBe(false);
+
+    const stats = activityFullDayStats(exercise, today);
+    expect(stats.days).toBe(6);
+    expect(stats.sum).toBe(40);
+    expect(stats.average).toBe(40 / 6);
+    expect(stats.average).not.toBe((40 + 53) / 6);
+    expect(stats.average).not.toBe((40 + 53) / 7);
+    expect(activityAverageLine(stats.average, stats.days, '7 min')).toBe('Average 7 min a day over 6 full days.');
+    expect(activityAverageLine(stats.average, stats.days, '7 min')).not.toMatch(/Today/);
+    expect(activityAverageLine(null, 0, '')).toBe('Not enough finished days for an average yet.');
+
+    const onlyToday = activityFullDayStats(exerciseSeries(today, days, [{ day: today, value: 53 }], []), today);
+    expect(onlyToday).toEqual({ sum: null, average: null, days: 0 });
+  });
+
+  it('counts quiet days after the first reading and ignores days before any reading', () => {
+    const steps = stepsSeries(today, periodDayCount('30'), [{ day: '2026-11-20', value: 8000 }], []);
+    expect(steps).toHaveLength(30);
+    expect(steps.filter((point) => point.value > 0).map((point) => point.day)).toEqual(['2026-11-20']);
+    const stats = activityFullDayStats(steps, today);
+    expect(stats.days).toBe(4);
+    expect(stats.sum).toBe(8000);
+    expect(stats.average).toBe(2000);
+    expect(steps.some((point) => point.day < '2026-11-20' && point.value > 0)).toBe(false);
+
+    const distance = distanceSeries(today, periodDayCount('90'), [
+      { calendarDate: '2026-11-22', restingHeartRateBpm: null, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null, distanceMetres: 4200 },
+    ]);
+    expect(distance).toHaveLength(90);
+    expect(distance.find((point) => point.day === '2026-11-22')?.value).toBe(4200);
+    expect(activityFullDayStats(distance, today)).toMatchObject({ days: 2, sum: 4200, average: 2100 });
+
+    const resting = restingSeries(today, periodDayCount('7'), [
+      { day: '2026-11-20', value: 60 },
+      { day: '2026-11-23', value: 58 },
+    ], []);
+    expect(resting).toHaveLength(7);
+    expect(resting.find((point) => point.day === '2026-11-23')).toMatchObject({ value: 58, source: 'apple' });
+    expect(activityFullDayStats(resting, today, 'skip')).toEqual({ days: 2, sum: 118, average: 59 });
+    expect(activityFullDayStats(resting, today).days).toBe(4);
+
+    const moderate = garminMinuteSeries(today, periodDayCount('7'), [
+      { ...blank, calendarDate: '2026-11-22', moderateMinutes: 20, vigorousMinutes: 0 },
+      { ...blank, calendarDate: '2026-11-23', moderateMinutes: 0, vigorousMinutes: 0 },
+    ], 'moderate');
+    expect(moderate).toHaveLength(7);
+    expect(moderate.find((point) => point.day === '2026-11-22')).toMatchObject({ value: 20, empty: false });
+    expect(moderate.find((point) => point.day === '2026-11-23')).toMatchObject({ value: 0, source: 'garmin', empty: false });
+    expect(moderate.find((point) => point.day === '2026-11-21')?.empty).toBe(true);
+    expect(activityFullDayStats(moderate, today)).toEqual({ sum: 20, average: 10, days: 2 });
+
+    const vigorous = garminMinuteSeries(today, periodDayCount('30'), [
+      { ...blank, calendarDate: '2026-11-10', moderateMinutes: 0, vigorousMinutes: 12 },
+    ], 'vigorous');
+    expect(vigorous).toHaveLength(30);
+    const vigorousStats = activityFullDayStats(vigorous, today);
+    expect(vigorousStats.sum).toBe(12);
+    expect(vigorousStats.days).toBe(14);
+    expect(vigorousStats.average).toBe(12 / 14);
+    expect(vigorousStats.days).not.toBe(29);
+  });
+
+  it('uses weekday initials on a week and thins dates on a longer range', () => {
+    const weekDays = daysEnding('2026-10-22', 7);
+    const week = activityBarAxis(weekDays);
+    expect(week.labels).toEqual(weekDays.map((day) => weekdayShort(day).slice(0, 1)));
+    expect(week.dividers).toEqual([]);
+    expect(week.labels).toHaveLength(7);
+
+    const monthDays = daysEnding('2026-11-01', 30);
+    const month = activityBarAxis(monthDays);
+    expect(month.labels.filter(Boolean)).toEqual(['5 Oct', '12 Oct', '19 Oct', '26 Oct', '1 Nov']);
+    expect(month.dividers.map((index) => monthDays[index])).toEqual(['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26']);
+    expect(month.labels.filter(Boolean).length).toBeLessThan(monthDays.length);
+
+    const quarterDays = daysEnding('2026-11-01', 90);
+    const quarter = activityBarAxis(quarterDays);
+    expect(quarter.labels.filter(Boolean)).toEqual(['Sep', 'Oct', 'Nov']);
+    expect(quarter.labels.filter(Boolean).length).toBeLessThan(10);
+
+    const year = activityBarAxis(daysEnding(today, periodDayCount('12m')));
+    expect(year.labels).toHaveLength(periodDayCount('12m'));
+    expect(year.labels.filter(Boolean).length).toBeLessThan(20);
+  });
+
+  it('draws the workout bars from the shared range and keeps the rating and the explanation', () => {
+    const charts = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
+    expect(charts).toContain('span={trendDays}');
+    expect(charts).toContain('selected={endDay}');
+    expect(charts).toContain('rangeBars');
+    expect(charts).toContain("activityFullDayStats(points, today, cumulative ? 'zero' : 'skip')");
+    expect(charts).toContain('onSelect={pickDay}');
+    expect(charts).not.toContain('exerciseSeries(endDay, span');
+    expect(charts).toContain('explanation={chart.explanation}');
+    expect(charts).toContain('<RatingChip');
+    expect(charts).toContain('<DataMeaning about={title}>');
+    expect(charts).toContain('maxWidth: rangeBars ? 16 : undefined');
+    const history = charts.slice(charts.indexOf('Activity charts'), charts.indexOf('title="Exercise minutes"'));
+    expect(history).toContain('explanation={chart.explanation}');
+    expect(history).not.toContain('meaning="none"');
   });
 });
 

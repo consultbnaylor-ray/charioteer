@@ -1,16 +1,23 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { summaryRows } from '../../supabase/functions/_shared/garminSummaries';
 import { buildThumosContext } from '../../supabase/functions/_shared/thumos';
 import {
   GARMIN_BACKFILL_TYPES,
+  GARMIN_CREDENTIAL_TABLES,
   GARMIN_DATA_TABLES,
+  GARMIN_DEREGISTER_URL,
   GARMIN_SUMMARY_TABLES,
   GARMIN_REDIRECT_URI,
   activityRowsFor,
   applyGarminPush,
+  disconnectGarminAccount,
+  forgetGarminAccount,
   dailyRowsFor,
   dedupeBy,
+  dedupeUpsertRows,
+  preferLastComplete,
   emptyGarminReadings,
   garminAllowedForCoach,
   garminAppReturn,
@@ -30,6 +37,9 @@ import {
   preferGarminDaily,
   preferLargerDuration,
   preferLast,
+  readingsFromRows,
+  reconnectGarminUser,
+  releaseGarminConnection,
   userMetricRowsFor,
   pkceChallenge,
   pkceRecord,
@@ -43,6 +53,7 @@ import {
   webhookGate,
   webhookPathSecret,
   withoutGarminUser,
+  type GarminDb,
   type GarminReadings,
   type GarminStore,
 } from '../../supabase/functions/_shared/garmin';
@@ -421,6 +432,117 @@ describe('Garmin webhook mapping', () => {
     expect(JSON.stringify(rows)).not.toContain('1700000000');
   });
 
+  it('collapses duplicate upsert keys and keeps the last complete row', () => {
+    const sparse = {
+      user_id: 'user-1',
+      summary_id: 'epoch-1',
+      calendar_date: '2026-11-25',
+      active_seconds: null,
+      steps: 12,
+      distance_metres: null,
+      mean_heart_rate_bpm: null,
+    };
+    const complete = {
+      user_id: 'user-1',
+      summary_id: 'epoch-1',
+      calendar_date: '2026-11-25',
+      active_seconds: 900,
+      steps: 40,
+      distance_metres: 30,
+      mean_heart_rate_bpm: 110,
+    };
+    const other = {
+      user_id: 'user-1',
+      summary_id: 'epoch-2',
+      calendar_date: '2026-11-25',
+      active_seconds: 60,
+      steps: 5,
+      distance_metres: 4,
+      mean_heart_rate_bpm: null,
+    };
+    const epochs = dedupeUpsertRows([sparse, complete, other, sparse], 'user_id,summary_id');
+    expect(epochs).toHaveLength(2);
+    expect(epochs[0]).toEqual(complete);
+    expect(epochs[1]).toMatchObject({ summary_id: 'epoch-2', steps: 5 });
+    type EpochRow = { user_id: string; summary_id: string; steps: number; distance_metres: number | null };
+    const fuller: EpochRow = { user_id: 'user-1', summary_id: 'epoch-1', steps: 40, distance_metres: 30 };
+    const thinner: EpochRow = { user_id: 'user-1', summary_id: 'epoch-1', steps: 12, distance_metres: null };
+    expect(preferLastComplete(fuller, thinner)).toEqual(fuller);
+    const tied = dedupeUpsertRows(
+      [
+        { user_id: 'user-1', summary_id: 'sleep-1', duration_seconds: 100, sleep_score: 70 },
+        { user_id: 'user-1', summary_id: 'sleep-1', duration_seconds: 27000, sleep_score: 81 },
+      ],
+      'user_id,summary_id',
+    );
+    expect(tied).toEqual([{ user_id: 'user-1', summary_id: 'sleep-1', duration_seconds: 27000, sleep_score: 81 }]);
+    const days = dedupeUpsertRows(
+      [
+        { user_id: 'user-1', calendar_date: '2026-11-25', steps: 1 },
+        { user_id: 'user-1', calendar_date: '2026-11-24', steps: 2 },
+        { user_id: 'user-1', calendar_date: '2026-11-25', steps: 9, distance_metres: 10 },
+      ],
+      'user_id,calendar_date',
+    );
+    expect(days.map((row) => row.calendar_date)).toEqual(['2026-11-25', '2026-11-24']);
+    expect(days[0]).toMatchObject({ steps: 9, distance_metres: 10 });
+    const longer = { user_id: 'user-1', calendar_date: '2026-11-25', duration_seconds: 5000, steps: 1 };
+    const shorter = { user_id: 'user-1', calendar_date: '2026-11-25', duration_seconds: 100, steps: 9, distance_metres: 10, floors_climbed: 2 };
+    const ranked = dedupeBy([longer, shorter], (row) => `${row.user_id}:${row.calendar_date}`, preferLargerDuration);
+    expect(ranked).toEqual([longer]);
+    expect(dedupeUpsertRows(ranked, 'user_id,calendar_date')).toEqual([longer]);
+
+    const plan = mapGarminPush({
+      epochs: [
+        { userId: 'garmin1', summaryId: 'epoch-1', calendarDate: '2026-11-25', steps: 12 },
+        {
+          userId: 'garmin1',
+          summaryId: 'epoch-1',
+          calendarDate: '2026-11-25',
+          steps: 40,
+          distanceInMeters: 30,
+          activeTimeInSeconds: 900,
+          meanHeartRateInBeatsPerMinute: 110,
+        },
+      ],
+      sleeps: [
+        { userId: 'garmin1', summaryId: 'night-1', calendarDate: '2026-11-25', durationInSeconds: 100 },
+        { userId: 'garmin1', summaryId: 'night-1', calendarDate: '2026-11-25', durationInSeconds: 27000, overallSleepScore: { value: 81 } },
+      ],
+    });
+    const users = new Map([['garmin1', 'user-1']]);
+    const epochRows = summaryRows(plan.epochs, users, (row) => ({
+      active_seconds: row.activeSeconds,
+      steps: row.steps,
+      distance_metres: row.distanceMetres,
+      mean_heart_rate_bpm: row.meanHeartRateBpm,
+    }));
+    expect(epochRows).toHaveLength(2);
+    expect(dedupeUpsertRows(epochRows, 'user_id,summary_id')).toEqual([
+      expect.objectContaining({ user_id: 'user-1', summary_id: 'epoch-1', steps: 40, distance_metres: 30, active_seconds: 900, mean_heart_rate_bpm: 110 }),
+    ]);
+    const nightRows = dedupeUpsertRows(sleepRowsFor(plan, users), 'user_id,summary_id');
+    expect(nightRows).toHaveLength(1);
+    expect(nightRows[0]).toMatchObject({ summary_id: 'night-1', duration_seconds: 27000, sleep_score: 81 });
+
+    const webhook = readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8');
+    const save = webhook.slice(webhook.indexOf('async function saveRows'), webhook.indexOf('function columnMissing'));
+    expect(save.indexOf('dedupeUpsertRows')).toBeGreaterThan(-1);
+    expect(save.indexOf('dedupeUpsertRows')).toBeLessThan(save.indexOf('.upsert('));
+    expect(webhook.match(/\.upsert\(/g)).toHaveLength(2);
+    expect(webhook.indexOf('.upsert(')).toBeGreaterThan(webhook.indexOf('async function saveRows'));
+    for (const table of ['garmin_dailies', 'garmin_activities', 'garmin_sleep', 'garmin_user_metrics', 'garmin_respiration', 'garmin_pulse_ox', 'garmin_hrv', 'garmin_epoch', 'garmin_blood_pressure', 'garmin_body_comp', 'garmin_skin_temp', 'garmin_stress', 'garmin_health_snapshot', 'garmin_move_iq', 'garmin_activity_detail', 'garmin_activity_file']) {
+      expect(webhook, table).toContain(`'${table}'`);
+    }
+    expect(webhook).toContain('preferLastComplete');
+    expect(webhook).toContain('preferLargerDuration');
+    const callback = readFileSync('supabase/functions/garmin-oauth-callback/index.ts', 'utf8');
+    expect(callback.match(/\.upsert\(/g)).toHaveLength(1);
+    expect(callback).toContain(".from('garmin_connections').upsert({");
+    expect(readFileSync('supabase/functions/garmin-refresh/index.ts', 'utf8')).not.toContain('.upsert(');
+    expect(readFileSync('supabase/functions/garmin-disconnect/index.ts', 'utf8')).not.toContain('.upsert(');
+  });
+
   it('keeps VO2 max from a user metrics push and drops a path', () => {
     const plan = mapGarminPush({
       userMetrics: [{
@@ -471,7 +593,7 @@ describe('Garmin webhook mapping', () => {
     expect(readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8')).toContain("'garmin_user_metrics'");
   });
 
-  it('upserts on the summary key and removes that person on deregistration', () => {
+  it('upserts on the summary key and keeps summaries when Garmin deregisters', () => {
     const store: GarminStore = {
       connections: [
         { userId: 'user-1', garminUserId: 'garmin1', accessToken: 'kept-secret' },
@@ -494,10 +616,92 @@ describe('Garmin webhook mapping', () => {
     expect(upserted.activities.filter((row) => row.userId === 'user-2')).toHaveLength(1);
     const cleared = applyGarminPush(upserted, { ...plan, dailies: [], activities: [], sleep: [] }, users);
     expect(withoutGarminUser(cleared, 'user-2').connections).toEqual([]);
+    expect(withoutGarminUser(cleared, 'user-1').dailies).toEqual([]);
+    expect(cleared.connections.find((row) => row.userId === 'user-1')).toBeUndefined();
     expect(cleared.connections.find((row) => row.userId === 'user-2')?.accessToken).toBe('other-secret');
-    expect(cleared.dailies).toEqual([]);
-    expect(cleared.activities).toEqual([{ userId: 'user-2', summaryId: 'ride' }]);
+    expect(cleared.dailies).toEqual(upserted.dailies);
+    expect(cleared.sleep).toEqual(upserted.sleep);
+    expect(cleared.activities).toEqual(upserted.activities);
     expect(cleared.states).toEqual([]);
+  });
+
+  it('shows the same history after a reconnect, including a different Garmin user id', () => {
+    const store: GarminStore = {
+      connections: [{ userId: 'user-1', garminUserId: 'garmin-old', accessToken: 'old-secret' }],
+      dailies: [{ userId: 'user-1', calendarDate: '2026-10-21' }],
+      activities: [{ userId: 'user-1', summaryId: 'run1' }],
+      sleep: [{ userId: 'user-1', summaryId: 'night1' }],
+      userMetrics: [{ userId: 'user-1', summaryId: 'vo2-1' }],
+      states: [{ userId: 'user-1', state: 'abc' }],
+    };
+    const disconnected = releaseGarminConnection(store, 'user-1');
+    expect(disconnected.connections).toEqual([]);
+    expect(disconnected.states).toEqual([]);
+    expect(disconnected.dailies).toEqual(store.dailies);
+    expect(disconnected.activities).toEqual(store.activities);
+    expect(disconnected.sleep).toEqual(store.sleep);
+
+    const sameWatch = reconnectGarminUser(disconnected, {
+      userId: 'user-1',
+      garminUserId: 'garmin-old',
+      accessToken: 'new-secret',
+    });
+    const otherWatch = reconnectGarminUser(disconnected, {
+      userId: 'user-1',
+      garminUserId: 'garmin-new',
+      accessToken: 'other-secret',
+    });
+    for (const reconnected of [sameWatch, otherWatch]) {
+      expect(reconnected.connections).toHaveLength(1);
+      expect(reconnected.connections[0]?.userId).toBe('user-1');
+      expect(reconnected.connections[0]?.accessToken).not.toBe('old-secret');
+      expect(reconnected.dailies).toEqual(store.dailies);
+      const garminUserId = reconnected.connections[0]?.garminUserId ?? '';
+      const users = new Map([[garminUserId, 'user-1']]);
+      const again = applyGarminPush(reconnected, mapGarminPush({
+        dailies: [{ userId: garminUserId, calendarDate: '2026-10-21', restingHeartRateInBeatsPerMinute: 58 }],
+        activities: [{ userId: garminUserId, summaryId: 'run1', startTimeInSeconds: 1761000000, durationInSeconds: 1920 }],
+        sleeps: [{ userId: garminUserId, summaryId: 'night1', calendarDate: '2026-10-21', durationInSeconds: 27000 }],
+      }), users);
+      expect(again.dailies.filter((row) => row.userId === 'user-1')).toEqual([{ userId: 'user-1', calendarDate: '2026-10-21' }]);
+      expect(again.activities.filter((row) => row.userId === 'user-1')).toEqual([{ userId: 'user-1', summaryId: 'run1' }]);
+      expect(again.sleep.filter((row) => row.userId === 'user-1')).toEqual([{ userId: 'user-1', summaryId: 'night1' }]);
+      const added = applyGarminPush(again, mapGarminPush({
+        dailies: [{ userId: garminUserId, calendarDate: '2026-10-22', restingHeartRateInBeatsPerMinute: 57 }],
+      }), users);
+      expect(added.dailies.filter((row) => row.userId === 'user-1').map((row) => row.calendarDate)).toEqual(['2026-10-21', '2026-10-22']);
+      const shown = readingsFromRows({
+        connected: true,
+        connectedAt: '2026-11-14T00:00:00Z',
+        dailies: added.dailies.filter((row) => row.userId === 'user-1').map((row) => ({
+          calendar_date: row.calendarDate,
+          resting_heart_rate_bpm: row.calendarDate === '2026-10-21' ? 58 : 57,
+        })),
+        activities: [{
+          summary_id: 'run1',
+          activity_type: 'RUNNING',
+          activity_name: 'Morning run',
+          started_at: '2026-10-21T07:00:00Z',
+          duration_seconds: 1920,
+        }],
+        sleep: [{ summary_id: 'night1', calendar_date: '2026-10-21', duration_seconds: 27000, sleep_score: 81 }],
+      });
+      expect(shown.connected).toBe(true);
+      expect(shown.dailies.map((day) => [day.calendarDate, day.restingHeartRateBpm])).toEqual([
+        ['2026-10-21', 58],
+        ['2026-10-22', 57],
+      ]);
+      expect(shown.activities.map((activity) => activity.summaryId)).toEqual(['run1']);
+      expect(shown.sleep.map((night) => night.summaryId)).toEqual(['night1']);
+    }
+    expect(withoutGarminUser(otherWatch, 'user-1')).toEqual({
+      connections: [],
+      dailies: [],
+      activities: [],
+      sleep: [],
+      userMetrics: [],
+      states: [],
+    });
   });
 });
 
@@ -554,6 +758,16 @@ describe('Garmin coach gate', () => {
     expect(lines.join('\n')).not.toContain('51.5');
     const shown = garminFigures(readings);
     expect(shown.heartChart).toEqual([61, 58]);
+    const averageOnly = garminFigures({
+      ...readings,
+      dailies: [
+        { calendarDate: '2026-10-21', restingHeartRateBpm: 52, averageHeartRateBpm: 70, moderateMinutes: 0, vigorousMinutes: 0 },
+        { calendarDate: '2026-10-22', restingHeartRateBpm: null, averageHeartRateBpm: 69, moderateMinutes: 0, vigorousMinutes: 0 },
+      ],
+    });
+    expect(averageOnly.heartRate?.value).toBe('52');
+    expect(averageOnly.heartRate?.name).toBe('Resting heart rate');
+    expect(averageOnly.heartChart).toEqual([52]);
     expect(shown.sleepChart).toEqual([7.5]);
     expect(shown.effortChart).toEqual([3.2]);
     const context = buildThumosContext({
@@ -604,6 +818,171 @@ describe('Garmin token sealing', () => {
     await expect(sealGarminToken('access-secret', encodeBase64(new Uint8Array(16).fill(1)), aad)).rejects.toThrow('garmin-token: key');
   });
 });
+
+describe('Garmin disconnect keeps history', () => {
+  const userId = 'user-1';
+  const credentials = {
+    clientId: 'garmin-client',
+    clientSecret: 'garmin-client-secret',
+    tokenKey: encodeBase64(new Uint8Array(32).fill(7)),
+    now: Date.parse('2026-10-22T12:00:00Z'),
+  };
+
+  function seed(connection: Record<string, unknown>) {
+    const tables: Record<string, Record<string, unknown>[]> = {};
+    for (const table of GARMIN_SUMMARY_TABLES) {
+      tables[table] = [
+        { user_id: userId, marker: 'kept' },
+        { user_id: 'other-user', marker: 'other' },
+      ];
+    }
+    tables.garmin_connections = [
+      {
+        user_id: userId,
+        garmin_user_id: 'garmin-old',
+        access_token_ciphertext: '',
+        access_token_nonce: '',
+        refresh_token_ciphertext: '',
+        refresh_token_nonce: '',
+        token_key_version: 1,
+        ...connection,
+      },
+      {
+        user_id: 'other-user',
+        garmin_user_id: 'garmin-other',
+        access_token_ciphertext: 'other-secret',
+        access_token_nonce: 'other-nonce',
+        refresh_token_ciphertext: 'other-refresh',
+        refresh_token_nonce: 'other-refresh-nonce',
+        token_key_version: 1,
+      },
+    ];
+    tables.garmin_oauth_states = [
+      { user_id: userId, state: 'pending' },
+      { user_id: 'other-user', state: 'other-state' },
+    ];
+    return memoryGarminDb(tables);
+  }
+
+  it('clears tokens and the connection, and leaves every summary table', async () => {
+    const access = await sealGarminToken('access-secret', credentials.tokenKey, garminTokenAad(userId, 'access', 1));
+    const refresh = await sealGarminToken('refresh-secret', credentials.tokenKey, garminTokenAad(userId, 'refresh', 1));
+    const calls: { url: string; method: string; authorization: string }[] = [];
+    const { db, rows } = seed({
+      access_token_ciphertext: access.ciphertext,
+      access_token_nonce: access.nonce,
+      refresh_token_ciphertext: refresh.ciphertext,
+      refresh_token_nonce: refresh.nonce,
+      token_key_version: access.keyVersion,
+      access_expires_at: '2026-12-01T00:00:00.000Z',
+    });
+    const fetchImpl: typeof fetch = async (url, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({ url: String(url), method: init?.method ?? 'GET', authorization: headers.get('Authorization') ?? '' });
+      return new Response(null, { status: 204 });
+    };
+
+    await disconnectGarminAccount(db, userId, credentials, fetchImpl);
+
+    expect(calls).toEqual([{ url: GARMIN_DEREGISTER_URL, method: 'DELETE', authorization: 'Bearer access-secret' }]);
+    expect(rows('garmin_connections').map((row) => row.user_id)).toEqual(['other-user']);
+    expect(rows('garmin_oauth_states').map((row) => row.user_id)).toEqual(['other-user']);
+    expect(JSON.stringify(rows('garmin_connections'))).not.toContain(access.ciphertext);
+    expect(JSON.stringify(rows('garmin_connections'))).not.toContain(refresh.ciphertext);
+    expect(rows('garmin_connections')[0]?.access_token_ciphertext).toBe('other-secret');
+    for (const table of GARMIN_SUMMARY_TABLES) {
+      expect(rows(table).map((row) => row.user_id).sort()).toEqual(['other-user', userId]);
+    }
+    for (const table of GARMIN_CREDENTIAL_TABLES) {
+      expect(rows(table).some((row) => row.user_id === userId)).toBe(false);
+    }
+  });
+
+  it('account deletion still removes summaries and credentials', async () => {
+    const { db, rows } = seed({});
+    await forgetGarminAccount(db, userId, credentials, async () => new Response(null, { status: 204 }));
+    for (const table of GARMIN_DATA_TABLES) {
+      expect(rows(table).map((row) => row.user_id)).toEqual(['other-user']);
+    }
+  });
+});
+
+function memoryGarminDb(seed: Record<string, Record<string, unknown>[]>): {
+  db: GarminDb;
+  rows(table: string): Record<string, unknown>[];
+} {
+  const tables = new Map<string, Record<string, unknown>[]>();
+  for (const [name, tableRows] of Object.entries(seed)) {
+    tables.set(name, tableRows.map((row) => ({ ...row })));
+  }
+  const rows = (table: string) => {
+    const found = tables.get(table);
+    if (found) return found;
+    const created: Record<string, unknown>[] = [];
+    tables.set(table, created);
+    return created;
+  };
+  const db = {
+    from(table: string) {
+      return {
+        select() {
+          return {
+            eq(column: string, value: string) {
+              const matched = rows(table).filter((row) => row[column] === value);
+              const result = Promise.resolve({ data: matched, error: null });
+              return Object.assign(result, {
+                maybeSingle: () => Promise.resolve({ data: matched[0] ?? null, error: null }),
+              });
+            },
+            in() {
+              return this;
+            },
+          };
+        },
+        delete() {
+          const write = {
+            eq(column: string, value: string) {
+              tables.set(table, rows(table).filter((row) => row[column] !== value));
+              const result = Promise.resolve({ data: null, error: null });
+              return Object.assign(result, write);
+            },
+            lt() {
+              return write;
+            },
+            select() {
+              return write;
+            },
+          };
+          return write;
+        },
+        upsert() {
+          return Promise.resolve({ data: null, error: null });
+        },
+        update() {
+          const write = {
+            eq() {
+              return write;
+            },
+            lt() {
+              return write;
+            },
+            select() {
+              return write;
+            },
+            then(resolve: (value: { data: null; error: null }) => void) {
+              resolve({ data: null, error: null });
+            },
+          };
+          return write;
+        },
+        insert() {
+          return Promise.resolve({ data: null, error: null });
+        },
+      };
+    },
+  } as unknown as GarminDb;
+  return { db, rows };
+}
 
 function encodeBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -662,16 +1041,28 @@ describe('Garmin storage rules', () => {
     const config = readFileSync('supabase/config.toml', 'utf8');
     expect(webhook).toContain("onConflict: 'user_id,calendar_date'");
     expect(webhook).toContain("onConflict: 'user_id,summary_id'");
-    expect(webhook).toContain('deleteGarminRows');
+    expect(webhook).toContain('clearGarminCredentials');
     expect(webhook).toContain('webhookGate');
     expect(webhook).toContain('console.error(gate.log)');
-    expect(disconnect).toContain('forgetGarminAccount');
+    expect(webhook).not.toContain('deleteGarminRows');
+    expect(webhook).not.toContain('deleteGarminSummaries');
+    expect(disconnect).toContain('disconnectGarminAccount');
+    expect(disconnect).not.toContain('forgetGarminAccount');
     expect(deleted).toContain('forgetGarminAccount');
-    expect(webhook).toContain('deleteGarminSummaries');
     expect(webhook).not.toContain("from('garmin_dailies').delete()");
     const shared = readFileSync('supabase/functions/_shared/garmin.ts', 'utf8');
-    const forget = shared.slice(shared.indexOf('export async function forgetGarminAccount'), shared.indexOf('function sealedText'));
-    expect(forget).toContain('GARMIN_DATA_TABLES');
+    const disconnectFn = shared.slice(shared.indexOf('export async function disconnectGarminAccount'), shared.indexOf('export async function forgetGarminAccount'));
+    expect(disconnectFn).toContain('clearGarminCredentials');
+    expect(disconnectFn).not.toContain('deleteGarminRows');
+    expect(disconnectFn).not.toContain('GARMIN_SUMMARY_TABLES');
+    const forget = shared.slice(shared.indexOf('export async function forgetGarminAccount'), shared.indexOf('async function revokeStoredGarminRegistration'));
+    expect(forget).toContain('deleteGarminRows');
+    expect(forget).not.toContain('clearGarminCredentials');
+    const wiped = shared.slice(shared.indexOf('export async function deleteGarminRows'), shared.indexOf('export async function clearGarminCredentials'));
+    expect(wiped).toContain('deleteGarminSummaries');
+    expect(wiped).toContain('clearGarminCredentials');
+    expect(shared.slice(shared.indexOf('export async function clearGarminCredentials'), shared.indexOf('async function deleteGarminTables'))).toContain('GARMIN_CREDENTIAL_TABLES');
+    expect(shared.slice(shared.indexOf('export async function deleteGarminSummaries'), shared.indexOf('export async function deleteGarminRows'))).toContain('GARMIN_SUMMARY_TABLES');
     expect(forget).not.toContain("from('garmin_dailies')");
     for (const table of GARMIN_DATA_TABLES) expect(shared).toContain(`'${table}'`);
     for (const name of [
@@ -731,6 +1122,11 @@ describe('Garmin storage rules', () => {
       'supabase/functions/_shared/garmin.ts',
     ]) {
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/console\.(log|error|info|debug)\([^)\n]*(access_token|refresh_token|client_secret|heart rate|sleep)/i);
+      // The webhook writes the Garmin route track (approved 26 November 2026). It never logs a position.
+      if (path === 'supabase/functions/garmin-webhook/index.ts') {
+        expect(readFileSync(path, 'utf8')).not.toMatch(/console\.(log|error|info|debug)\([^)\n]*(latitude|longitude|points)/i);
+        continue;
+      }
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/latitude|longitude/);
     }
   });

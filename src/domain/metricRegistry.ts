@@ -40,6 +40,7 @@ import {
   NICE_BMI_HEALTHY_MIN,
 } from '@/domain/guidance';
 import { GOAL_LABEL, isAnyBoxer, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
+import { rateWalkingHeart } from '@/domain/walkingHeartRating';
 
 export const METRIC_CAVEAT = 'Not medical advice. Not a diagnosis.';
 
@@ -86,6 +87,18 @@ export type MetricContext = {
   build?: import('@/domain/nutrition').BodyBuild | null;
   /** A one-day chart of a past day must not say today. */
   viewedDay?: 'today' | 'past' | null;
+  /** Garmin overnight HRV. Walking heart rate prefers this to Apple SDNN. */
+  hrvRmssd?: number | null;
+  /** Apple SDNN, used for walking heart rate when overnight HRV is absent. */
+  hrvSdnn?: number | null;
+  /** Mean daily steps in the walking rating window. */
+  stepsPerDay?: number | null;
+  /** Workout days in that window. Null when workouts are not stored. */
+  workoutDays?: number | null;
+  /** Vigorous minutes in that window. */
+  windowVigorousMinutes?: number | null;
+  /** Active minutes in that window. */
+  windowActiveMinutes?: number | null;
 };
 
 export type MetricReading = {
@@ -866,15 +879,26 @@ function rateGratitude(id: string, value: number | null, ctx: MetricContext): Me
 
 function rateWalking(id: string, value: number | null, ctx: MetricContext): MetricReading {
   if (value == null || value <= 0) return blank(id, TANAKA, 'No walking heart rate in this window.');
-  const zones = intensityZones(ctx.age);
-  if (!zones) return made(id, TANAKA, 'Usual', `${Math.round(value)} bpm. Age is not set, so the moderate-zone approximation is not drawn.${usualClause(value, ctx.ownUsual, 'bpm')}`, { more: TANAKA });
-  const place = zonePlace(value, zones);
-  const label: MetricRatingLabel = place === 'moderate' || place === 'between' ? 'Good' : 'Fair';
-  const where = `${Math.round(value)} bpm. The approximate moderate zone is ${zones.moderateLow}–${zones.moderateHigh} bpm. Apple publishes no normal range for walking heart rate. A lower figure can be an easy walk or a fitter heart.`;
-  return made(id, TANAKA, label, where, {
-    band: { low: zones.moderateLow, high: zones.moderateHigh },
-    draw: true,
-    tips: ['If the walk felt hard and the number stays high, slow the pace and see whether it settles.'],
+  const verdict = rateWalkingHeart(value, {
+    age: ctx.age,
+    sex: ctx.sex,
+    vo2: ctx.vo2,
+    restingHr: ctx.restingHr,
+    hrvRmssd: ctx.hrvRmssd,
+    hrvSdnn: ctx.hrvSdnn,
+    stepsPerDay: ctx.stepsPerDay,
+    workoutDays: ctx.workoutDays,
+    vigorousMinutes: ctx.windowVigorousMinutes,
+    activeMinutes: ctx.windowActiveMinutes,
+    windowDays: ctx.windowDays,
+  });
+  const where = verdict.band
+    ? verdict.where
+    : `${verdict.where}${usualClause(value, ctx.ownUsual, 'bpm')}`;
+  return made(id, TANAKA, verdict.label, where, {
+    band: verdict.band,
+    draw: verdict.band != null,
+    tips: verdict.tips,
     more: where,
   });
 }
@@ -1091,12 +1115,12 @@ export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   steps: define('steps', 'steps', PALUCH, 'Health, Stats, Workouts, profile', 'Research band and a step chart. No Fair/Good line.', 'Paluch age band, label, tips when under the range, source once, caveat.', rateSteps),
   distance: define('distance', 'm', 'Garmin or Apple Health daily distance.', 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('distance', 'Garmin or Apple Health daily distance.', value, ctx, 'm', true)),
   floors: define('floors', 'floors', 'Garmin daily floors climbed.', 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('floors', 'Garmin daily floors climbed.', value, ctx, 'floors', true)),
-  resting_heart_rate: define('resting_heart_rate', 'bpm', NHS_REST, 'Health tiles, movement charts, Your fitness', 'NHS 60–100 band and a fitness comment.', 'Good from about 40–80. A sport goal’s trained range is about 40–60. Under 40 is a check if unwell or dizzy, not a poor fitness mark.', rateResting),
-  walking_heart_rate: define('walking_heart_rate', 'bpm', TANAKA, 'Health tiles', 'Approximate moderate zone when age is set.', 'Same zone, with a Good/Fair label. Age missing stays Usual and says so.', rateWalking),
+  resting_heart_rate: define('resting_heart_rate', 'bpm', NHS_REST, 'Health tiles, movement charts', 'NHS 60–100 band and a fitness comment.', 'Good from about 40–80. A sport goal’s trained range is about 40–60. Under 40 is a check if unwell or dizzy, not a poor fitness mark.', rateResting),
+  walking_heart_rate: define('walking_heart_rate', 'bpm', TANAKA, 'Health tiles', 'Approximate moderate zone when age is set.', 'Below the zone is Good or Excellent when other fitness markers are strong, and stays Fair when they are poor or missing. A high rate keeps its zone label. Age missing stays Usual.', rateWalking),
   heart_rate_recovery: define('heart_rate_recovery', 'bpm', COLE, 'Health tiles', 'Cole 1999 referred-group note.', 'Good above 12 bpm, Fair at or under, with the study’s limit named as not a healthy-population cutoff.', rateRecovery),
   session_heart_rate: define('session_heart_rate', 'bpm', TANAKA, 'Health tiles', 'Training-zone sheet when age is set.', 'Good inside an effort zone. No single healthy bpm. Age missing says so.', rateSession),
-  vo2_max: define('vo2_max', 'ml/kg/min', KAMINSKY, 'Health tiles, Your fitness', 'Percentile band and level words.', 'Good inside or above the Kaminsky middle half. Fair or Poor only below that range. A sport line stays separate.', rateVo2),
-  vo2: define('vo2', 'ml/kg/min', KAMINSKY, 'Garmin VO2 chart, Your fitness chart', 'Percentile band when age and sex exist, otherwise “no standard range”.', 'Good inside or above the Kaminsky middle half. Fair or Poor only below that range. A sport line stays separate.', rateVo2),
+  vo2_max: define('vo2_max', 'ml/kg/min', KAMINSKY, 'Health tiles', 'Percentile band and level words.', 'Good inside or above the Kaminsky middle half. Fair or Poor only below that range. A sport line stays separate.', rateVo2),
+  vo2: define('vo2', 'ml/kg/min', KAMINSKY, 'Garmin VO2 chart', 'Percentile band when age and sex exist, otherwise “no standard range”.', 'Good inside or above the Kaminsky middle half. Fair or Poor only below that range. A sport line stays separate.', rateVo2),
   mix: define('mix', 'min', 'Workout minutes logged in this app.', 'Health tiles', 'No mix guideline, said on the card.', 'Usual against your own minutes. No invented national mix. Source once. Caveat.', (_id, value, ctx) => rateOwn('mix', 'Workout minutes logged in this app.', value, ctx, 'min', true, 'There is no published mix of strength, cardio, and other minutes, so this is compared with your own usual.')),
   sleep_hours: define('sleep_hours', 'h', NHS_SLEEP, 'Health tiles', 'NHS 7–9 hour status line.', 'Good inside 7–9 (7–8 from 65), tips when under Good, source once, caveat.', rateSleepHours),
   sleep_duration: define('sleep_duration', 'h', NHS_SLEEP, 'More Garmin Stats', '“No standard range” and no green band.', 'Green band 7–9 hours (7–8 from 65), NHS and National Sleep Foundation named once, tips when under Good.', rateSleepHours),
@@ -1158,7 +1182,7 @@ export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   snapshot_heart: define('snapshot_heart', 'bpm', NHS_REST, 'More Garmin Stats', '60–100 band.', 'Same resting rating as the resting-heart card, for Garmin’s short check.', rateResting),
   epoch_minutes: define('epoch_minutes', 'min', GARMIN_EPOCH_SOURCE, 'More Garmin Stats and the main charts', 'A minutes total that repeated “no published range”.', 'Plain explanation of 15-minute blocks versus intensity minutes. Source is the Garmin Health API.', (_id, value, ctx) => rateOwn('epoch_minutes', GARMIN_EPOCH_SOURCE, value, ctx, 'min', true, 'Compared with your own usual. The explanation above says what these minutes include.')),
   move_iq: define('move_iq', 'min', 'Garmin Health API Move IQ summaries.', 'More Garmin Stats', 'Minutes Garmin noticed. No rating.', 'Usual against your own days.', (_id, value, ctx) => rateOwn('move_iq', 'Garmin Health API Move IQ summaries.', value, ctx, 'min', true, 'Move IQ is movement Garmin noticed without a started activity. There is no published healthy-person range, so this is compared with your own usual.')),
-  activity_detail: define('activity_detail', 'min', 'Garmin Health API activity details.', 'More Garmin Stats', 'Recorded activity length. No rating.', 'Usual against your own activities. The sample trace is not kept.', (_id, value, ctx) => rateOwn('activity_detail', 'Garmin Health API activity details.', value, ctx, 'min', true, 'This is the length Garmin stored for a recorded activity. The sample trace is not kept. There is no published healthy-person range, so this is compared with your own usual.')),
+  activity_detail: define('activity_detail', 'min', 'Garmin Health API activity details.', 'More Garmin Stats', 'Recorded activity length. No rating.', 'Usual against your own activities. The route track is used only for the route map of that workout.', (_id, value, ctx) => rateOwn('activity_detail', 'Garmin Health API activity details.', value, ctx, 'min', true, 'This is the length Garmin stored for a recorded activity. The route track is used only for the route map of that workout. There is no published healthy-person range, so this is compared with your own usual.')),
   sober: define('sober', 'days', OWN_APP, 'Stats, Health Plan, profile', 'A day count or a drink-free ring.', 'Good when the streak or your drink-free aim is met. Tips only when short of your aim.', rateSober),
   'days-sober': define('days-sober', 'days', OWN_APP, 'Profile, when the sober date is missing', 'An empty line.', 'Same sober rating, or a plain empty line. Caveat.', rateSober),
   mood: define('mood', '1–10', OWN_APP, 'Stats, Health Plan', 'Latest score and a trend word.', 'Excellent/Good/Fair/Poor on the 1–10 scale. Tips when under Good. Not clinical.', rateMood),

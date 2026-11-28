@@ -24,9 +24,13 @@ export const VOICE_UNREACHABLE = 'Couldn\'t reach voice. Text chat is still here
 export const SIGN_IN_AGAIN = 'Please sign in again.';
 /** Shown when the session refresh itself cannot reach the network. */
 export const CHECK_CONNECTION = 'Check your connection.';
+/** Shown when the session step times out before a meal estimate is sent. */
+export const COULD_NOT_CONNECT = 'Couldn\'t connect. Check your connection and try again.';
 export const ESTIMATE_WAIT_NOTE = 'Reading your meal… this can take up to a minute.';
 /** The phone waits longer than the function, so the function can return its own error first. */
 export const ESTIMATE_CLIENT_TIMEOUT_MS = 110_000;
+/** A session refresh that has not answered. The estimate stops here instead of spinning. */
+export const AI_SESSION_TIMEOUT_MS = 15_000;
 /** The meal function gives up on the model. 90s stays inside the 150s Free wall clock, with room to reply. */
 export const ESTIMATE_PROVIDER_TIMEOUT_MS = 90_000;
 
@@ -100,16 +104,45 @@ export function sessionFailureKind(error: unknown): 'connection' | 'signed-out' 
   return 'signed-out';
 }
 
+/** An aborted or timed-out refresh must not start another one. */
+export function sessionAttemptGaveUp(error: unknown): boolean {
+  if (error instanceof EdgeSessionError) return true;
+  const name = error instanceof Error ? error.name : '';
+  return name === 'AbortError' || name === 'TimeoutError';
+}
+
+function keptToken(ticket: SessionTicket, now: number): { accessToken: string; userId: string | null } | null {
+  if (!tokenUsable(ticket, now) || !ticket.accessToken) return null;
+  return { accessToken: ticket.accessToken, userId: ticket.userId };
+}
+
+function timeoutError(): Error {
+  const error = new Error('The request timed out.');
+  error.name = 'TimeoutError';
+  return error;
+}
+
+function whenTimedOut(signal: AbortSignal): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    const fail = () => reject(timeoutError());
+    if (signal.aborted) fail();
+    else signal.addEventListener('abort', fail, { once: true });
+  });
+}
+
 /**
  * Refresh once before a model call, and once more if that refresh does not return a token.
- * A still-valid token is kept when both refreshes fail on the network.
+ * A still-valid token is kept when a refresh fails on the network.
+ * An abort or a timeout does not start the second refresh.
  */
 export async function prepareAiSession(input: {
   read: () => Promise<SessionTicket>;
   refresh: () => Promise<SessionRefreshResult>;
   now?: number;
+  signal?: AbortSignal;
 }): Promise<{ accessToken: string; userId: string | null } | { failure: 'connection' | 'signed-out' }> {
   const now = input.now ?? Date.now();
+  if (input.signal?.aborted) return { failure: 'connection' };
   let current: SessionTicket = { accessToken: null, expiresAt: null, userId: null };
   let readError: unknown = null;
   try {
@@ -118,7 +151,15 @@ export async function prepareAiSession(input: {
     readError = error;
     current = { accessToken: null, expiresAt: null, userId: null };
   }
+  if (sessionAttemptGaveUp(readError) || input.signal?.aborted) {
+    return keptToken(current, now) ?? { failure: 'connection' };
+  }
   const attempt = async (): Promise<SessionRefreshResult> => {
+    if (input.signal?.aborted) {
+      const error = new Error('The operation was aborted.');
+      error.name = 'AbortError';
+      return { ticket: { accessToken: null, expiresAt: null, userId: null }, error };
+    }
     try {
       return await input.refresh();
     } catch (error) {
@@ -128,6 +169,9 @@ export async function prepareAiSession(input: {
   const first = await attempt();
   if (tokenUsable(first.ticket, now) && first.ticket.accessToken) {
     return { accessToken: first.ticket.accessToken, userId: first.ticket.userId ?? current.userId };
+  }
+  if (sessionAttemptGaveUp(first.error) || input.signal?.aborted) {
+    return keptToken(current, now) ?? { failure: 'connection' };
   }
   const second = await attempt();
   if (tokenUsable(second.ticket, now) && second.ticket.accessToken) {
@@ -139,6 +183,81 @@ export async function prepareAiSession(input: {
   const errors = [readError, first.error, second.error].filter((error) => error != null);
   if (errors.some((error) => sessionFailureKind(error) === 'connection')) return { failure: 'connection' };
   return { failure: 'signed-out' };
+}
+
+export type AiSessionBinder = {
+  /** True while a refresh is in flight and has not failed or timed out. */
+  inflight: () => boolean;
+  /** One shared refresh. A rejection or a timeout drops it so the next tap starts again. */
+  session: (load: (signal: AbortSignal) => Promise<string>) => Promise<string>;
+};
+
+/** Overlapping AI calls share one session read. A stuck read cannot block the next tap. */
+export function bindAiSession(timeoutMs = AI_SESSION_TIMEOUT_MS): AiSessionBinder {
+  let current: Promise<string> | null = null;
+  return {
+    inflight: () => current != null,
+    session(load) {
+      if (current) return current;
+      const abort = new AbortController();
+      let resolveToken: (token: string) => void = () => undefined;
+      let rejectToken: (error: unknown) => void = () => undefined;
+      const limited = new Promise<string>((resolve, reject) => {
+        resolveToken = resolve;
+        rejectToken = reject;
+      });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const tracked = limited.finally(() => {
+        if (timer) clearTimeout(timer);
+        if (current === tracked) current = null;
+      });
+      current = tracked;
+      timer = setTimeout(() => {
+        abort.abort();
+        rejectToken(new EdgeSessionError('connection'));
+      }, timeoutMs);
+      Promise.resolve()
+        .then(() => load(abort.signal))
+        .then(
+          (token) => {
+            if (timer) clearTimeout(timer);
+            resolveToken(token);
+          },
+          (error) => {
+            if (timer) clearTimeout(timer);
+            abort.abort();
+            rejectToken(error);
+          },
+        );
+      return tracked;
+    },
+  };
+}
+
+/**
+ * The deadline starts before prepare, so a session read counts against it.
+ * prepare is the session step. send is the request, and it does not run when prepare fails.
+ */
+export async function callWithinDeadline<T>(input: {
+  timeoutMs?: number;
+  prepare: () => Promise<void>;
+  send: (signal: AbortSignal | undefined) => Promise<T>;
+}): Promise<T> {
+  const controller = input.timeoutMs != null ? new AbortController() : null;
+  const timer = controller && input.timeoutMs != null
+    ? setTimeout(() => controller.abort(), input.timeoutMs)
+    : null;
+  try {
+    if (controller) {
+      await Promise.race([input.prepare(), whenTimedOut(controller.signal)]);
+      if (controller.signal.aborted) throw timeoutError();
+    } else {
+      await input.prepare();
+    }
+    return await input.send(controller?.signal);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export function classifyEdgeError(error: unknown): 'timeout' | 'network' {
@@ -157,6 +276,14 @@ export function classifyEdgeStatus(status: number): 'auth' | 'server' | null {
 
 export function edgeStatusShouldRetry(status: number): boolean {
   return (EDGE_RETRY_STATUSES as readonly number[]).includes(status);
+}
+
+/** Matches MEAL_NO_RETRY_HEADER in supabase/functions/_shared/mealProvider.ts. */
+export const EDGE_NO_RETRY_HEADER = 'X-Charioteer-No-Retry';
+
+/** The server marked this failure as one a quick retry cannot fix, such as the AI provider being out of credit. */
+export function edgeServerSaysNoRetry(response: { headers?: { get(name: string): string | null } | null }): boolean {
+  return response.headers?.get?.(EDGE_NO_RETRY_HEADER) === '1';
 }
 
 /** A dropped connection, not a refusal from the server. */
@@ -214,7 +341,7 @@ export async function postWithRetry(input: {
     try {
       input.onState?.('waiting');
       const response = await input.fetchImpl(retryUrl(input.url, attempt), freshConnectionInit(input.init, attempt));
-      if (edgeStatusShouldRetry(response.status) && attempt < EDGE_RETRY_BACKOFF_MS.length) {
+      if (edgeStatusShouldRetry(response.status) && !edgeServerSaysNoRetry(response) && attempt < EDGE_RETRY_BACKOFF_MS.length) {
         await sleep(EDGE_RETRY_BACKOFF_MS[attempt] ?? 1500);
         continue;
       }

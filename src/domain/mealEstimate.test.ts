@@ -10,6 +10,8 @@ import {
   mealEstimateLog,
   mealEstimateMessage,
   mealPhotoFailure,
+  PHOTO_PROVIDER_UNAVAILABLE,
+  ROUGH_ESTIMATE_NOTE,
 } from '@/domain/mealEstimate';
 import { PHOTO_READ_FAIL } from '@/domain/nutrition';
 
@@ -34,8 +36,24 @@ describe('meal estimate failures', () => {
     expect(mealEstimateCategoryFromStatus(422, 'unread')).toBe('unreadable');
     expect(mealEstimateCategoryFromStatus(402, 'subscription_required')).toBe('credits');
     expect(mealEstimateCategoryFromStatus(429, 'limit_reached')).toBe('credits');
+    expect(mealEstimateCategoryFromStatus(503, 'ai_unavailable')).toBe('unavailable');
+    expect(mealEstimateCategoryFromStatus(503, 'provider_unavailable')).toBe('unavailable');
+    expect(mealEstimateCategoryFromStatus(503, 'provider_busy')).toBe('unavailable');
+    expect(mealEstimateCategoryFromStatus(402, 'provider_unavailable')).toBe('unavailable');
     expect(mealEstimateCategoryFromStatus(200, null)).toBeNull();
     expect(mealEstimateMessage('credits')).not.toMatch(/photo|jpeg|base64/i);
+    expect(mealEstimateMessage('unavailable')).toBe(PHOTO_PROVIDER_UNAVAILABLE);
+    expect(mealEstimateMessage('unavailable')).toBe('Meal reading is resting right now. Logging by hand still works. Try again a bit later.');
+    expect(mealEstimateMessage('unavailable')).toContain('Logging by hand still works');
+    expect(mealEstimateMessage('unavailable')).not.toContain(PHOTO_READ_FAIL);
+    expect(ROUGH_ESTIMATE_NOTE).toBe('Rough estimate. Meal reading is resting right now.');
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const editor = readFileSync('src/ui/MealEdit.tsx', 'utf8');
+    const status = readFileSync('src/ui/MealEstimateStatus.tsx', 'utf8');
+    expect(screen).toContain('ROUGH_ESTIMATE_NOTE');
+    expect(screen).toContain('estimate.providerUnavailable === true');
+    expect(editor).toContain('ROUGH_ESTIMATE_NOTE');
+    expect(status).toContain('label="Try again"');
   });
 
   it('does not treat closing the photo picker as a failed reading', () => {

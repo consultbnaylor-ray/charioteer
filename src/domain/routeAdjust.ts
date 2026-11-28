@@ -1,6 +1,8 @@
 import { isoDay } from '@/domain/dates';
-import type { OutdoorPoint } from '@/domain/outdoorRoute';
-import { ROUTE_OFFLINE, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import type { RoutePlace } from '@/domain/findRoute';
+import { ROUTE_OFFLINE, ROUTE_SNAP_LIMIT, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { simplifyLine, sketchWaypoints, type OutdoorPoint } from '@/domain/outdoorRoute';
+import { ORS_SKETCH_POINT_CAP } from '@/domain/routeLengthLimit';
 
 export const VIA_POINT_CAP = 5;
 export const REDRAW_PAUSE_MS = 500;
@@ -21,9 +23,249 @@ export const REDRAWING_THE_ROUTE = 'Redrawing the route.';
 export const LAST_ROUTE_FIGURES = 'Last route. The figures change when the redraw finishes.';
 export const ROUTE_UNCHANGED = 'The route on the map is unchanged.';
 export const ROUTE_REQUEST_LIMIT_LINE =
-  'The account limit is 40 a day and 12 in 10 minutes, shared with place search.';
+  '40 route requests a day and 12 in 10 minutes. Place search has its own allowance.';
 
 export const ROUTE_REQUEST_DAY_KEY = 'charioteer.route-requests.day';
+
+export const PREFER_PATHS_KEY = 'charioteer.prefer-footpaths';
+
+export const PREFER_PATHS_LABEL = 'Prefer footpaths over roads';
+
+export const PREFER_PATHS_NOTE = 'Paths and trails are preferred. A main road is used when there is no path.';
+
+export const DRAW_ROUTE = 'Draw';
+
+export const EXIT_DRAW = 'Exit draw';
+
+export const CLEAR_DRAW = 'Clear';
+
+export const REDRAW_DRAW = 'Redraw';
+
+export const UNDO_DRAW = 'Undo';
+
+export const DRAW_HINT = 'Drag on the map to sketch a line. Lift your finger to follow paths.';
+
+/** Spoken name of the green tick. It snaps the pencil and leaves drawing. */
+export const CONFIRM_DRAW = 'Snap to nearest paths';
+
+/** Filled green behind the tick, the same green as a snapped route on the light map. */
+export const DRAW_TICK_GREEN = '#047857';
+
+/** Shown once the tick has put the pencil onto the nearest paths. */
+export const DRAW_SNAPPED = 'Snapped to the nearest paths.';
+
+/** The only drawing instructions. They sit above the map, so nothing covers the map while drawing. */
+export const DRAW_PEN_HINT =
+  'Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Use the rubber to wipe out bits you don\'t want, then tap Recalculate route. Tap X to stop drawing.';
+
+/** Shown when a lift does not come back as a path. The pencil line stays. */
+export const DRAW_NO_PATH = 'No path matched that line.';
+
+/** Shown when a snap wanders off the pencil. The pencil line is the route. */
+export const DRAW_SNAP_PARTIAL = 'Couldn\'t match all of that to paths — showing your line';
+
+/** The snap was refused. The pencil line stays a sketch. */
+/** Most of the line snapped. A short piece the paths did not match follows the pencil. */
+export const DRAW_SNAP_MOSTLY = 'Snapped to paths. A short part follows your line.';
+
+export const DRAW_SNAP_FAILED = 'Couldn\'t snap to paths';
+
+/**
+ * Some of the pencil sat over houses or gardens, so that part of the route takes the nearest
+ * streets and footpaths instead. Every part of the line is a real path.
+ */
+export const DRAW_SNAP_STRAYED = 'Snapped to paths. Part of your line had no path under it, so that part uses the nearest streets and footpaths.';
+
+/**
+ * Part of the pencil has no path along it, such as across a river or open fields.
+ * A straight line there would cross it, so the snap is refused and the person can redraw that part.
+ */
+export const DRAW_SNAP_NO_PATH_ALONG = 'Part of your line has no path along it, such as across a river or fields. Undo and draw that part along a street or footpath, or try again.';
+
+/** The route service did not answer for one piece. The other pieces snapped. */
+export const DRAW_SNAP_SERVICE_GAP = 'Snapped to paths. The route service missed one part, so that part follows your line.';
+
+export const DRAW_SNAP_KEPT_LINE = 'Snapped to paths. Part of your line could not be snapped, so that part follows your drawing.';
+
+export const KEEP_DRAWING = 'Keep drawing';
+
+/** The route service's own cap: too many points, too long a leg, or too big a request. */
+export const DRAW_SNAP_LIMIT = ROUTE_SNAP_LIMIT;
+
+/** A server limit, including the message the deployed function still uses for too many points. */
+export function snapLimitMessage(message: string | null): string | null {
+  if (!message) return null;
+  if (message === DRAW_SNAP_LIMIT || /fewer points on the sketch/i.test(message)) return DRAW_SNAP_LIMIT;
+  if (/over the route limit/i.test(message)) return DRAW_SNAP_LIMIT;
+  return null;
+}
+
+export const DRAW_SNAP_TRY_AGAIN = 'Try again';
+
+/** Dev log for a failed snap. Coordinates and tokens are left out. */
+export function logDrawSnapFailure(error: unknown): void {
+  const name = error instanceof Error ? error.name : 'Error';
+  const message = error instanceof Error ? error.message : '';
+  const safe = `${name}: ${message}`.replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!safe || /eyJ|bearer|sb_publishable|sb_secret|latitude|longitude|\d+\.\d{4,}/i.test(safe)) {
+    console.error('draw snap failed');
+    return;
+  }
+  console.error('draw snap failed', safe);
+}
+
+/** Wait after the last keystroke before a place lookup. */
+export const PLACE_SEARCH_PAUSE_MS = 800;
+
+/** Shorter text is not sent. Two letters were enough to spend a route request. */
+export const PLACE_SEARCH_MIN_CHARS = 3;
+
+export function parsePreferPaths(value: unknown): boolean {
+  return value === 'on';
+}
+
+type PreferListener = (value: boolean) => void;
+const preferListeners = new Set<PreferListener>();
+
+export function subscribePreferPaths(listener: PreferListener): () => void {
+  preferListeners.add(listener);
+  return () => preferListeners.delete(listener);
+}
+
+export async function readPreferPaths(store: DayStore): Promise<boolean> {
+  return parsePreferPaths(await store.getItem(PREFER_PATHS_KEY));
+}
+
+export async function writePreferPaths(store: DayStore, on: boolean): Promise<void> {
+  await store.setItem(PREFER_PATHS_KEY, on ? 'on' : 'off');
+  preferListeners.forEach((listener) => listener(on));
+}
+
+let chosenPlace: { role: 'start' | 'end'; place: RoutePlace } | null = null;
+
+/** A place picked on the saved-route map, for the planner to use next. */
+export function holdChosenPlace(role: 'start' | 'end', place: RoutePlace): void {
+  chosenPlace = {
+    role,
+    place: { id: place.id, name: place.name, latitude: place.latitude, longitude: place.longitude },
+  };
+}
+
+export function takeChosenPlace(): { role: 'start' | 'end'; place: RoutePlace } | null {
+  const next = chosenPlace;
+  chosenPlace = null;
+  return next;
+}
+
+const placeResultCache = new Map<string, RoutePlace[]>();
+const placeSearchFlight = new Map<string, Promise<RoutePlace[]>>();
+
+export function placeQueryKey(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function copyPlaces(places: readonly RoutePlace[]): RoutePlace[] {
+  return places.map((place) => ({
+    id: place.id,
+    name: place.name,
+    latitude: place.latitude,
+    longitude: place.longitude,
+  }));
+}
+
+/** A result already fetched this session. A miss is null, so a failure is not reused. */
+export function cachedPlaceResults(query: string): RoutePlace[] | null {
+  const key = placeQueryKey(query);
+  if (key.length < PLACE_SEARCH_MIN_CHARS || !placeResultCache.has(key)) return null;
+  const found = placeResultCache.get(key);
+  return found ? copyPlaces(found) : null;
+}
+
+export function rememberPlaceResults(query: string, places: readonly RoutePlace[]): void {
+  const key = placeQueryKey(query);
+  if (key.length < PLACE_SEARCH_MIN_CHARS) return;
+  if (placeResultCache.size >= 40 && !placeResultCache.has(key)) {
+    const oldest = placeResultCache.keys().next().value;
+    if (oldest) placeResultCache.delete(oldest);
+  }
+  placeResultCache.set(key, copyPlaces(places));
+}
+
+export function clearPlaceResultCache(): void {
+  placeResultCache.clear();
+  placeSearchFlight.clear();
+}
+
+/**
+ * One lookup for a query in this session.
+ * A cached result is returned without another request. A request already in flight is shared.
+ */
+export function placeSearchOnce(
+  query: string,
+  load: (query: string) => Promise<RoutePlace[]>,
+): Promise<RoutePlace[]> {
+  const key = placeQueryKey(query);
+  if (key.length < PLACE_SEARCH_MIN_CHARS) return Promise.resolve([]);
+  const cached = cachedPlaceResults(query);
+  if (cached) return Promise.resolve(cached);
+  const pending = placeSearchFlight.get(key);
+  if (pending) return pending.then((places) => copyPlaces(places));
+  const next = load(query.trim()).then((places) => {
+    rememberPlaceResults(query, places);
+    return copyPlaces(places);
+  }).finally(() => {
+    if (placeSearchFlight.get(key) === next) placeSearchFlight.delete(key);
+  });
+  placeSearchFlight.set(key, next);
+  return next;
+}
+
+/**
+ * One lookup after the person pauses.
+ * Fewer than three letters are not sent. A repeat of the last lookup is not sent again.
+ * A new pause replaces the one that is waiting. `missed` lets that same text be sent after a refusal.
+ */
+export function createPlaceSearch(
+  send: (query: string) => void,
+  pauseMs = PLACE_SEARCH_PAUSE_MS,
+): { type: (query: string) => void; now: () => void; missed: () => void; dispose: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let serial = 0;
+  let lastSent = '';
+  return {
+    type(query: string) {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      const trimmed = query.trim();
+      if (trimmed.length < PLACE_SEARCH_MIN_CHARS) {
+        lastSent = '';
+        return;
+      }
+      const key = trimmed.toLowerCase();
+      if (key === lastSent) return;
+      const ticket = ++serial;
+      timer = setTimeout(() => {
+        timer = null;
+        if (ticket !== serial) return;
+        lastSent = key;
+        send(trimmed);
+      }, pauseMs);
+    },
+    now() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      serial += 1;
+    },
+    missed() {
+      lastSent = '';
+    },
+    dispose() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      serial += 1;
+    },
+  };
+}
 
 export function viaCountLine(count: number): string {
   const shown = Math.max(0, Math.min(count, VIA_POINT_CAP));
@@ -42,11 +284,6 @@ export function routeRequestsTodayLine(count: number): string {
  */
 export function countsPhoneRouteRequest(message: string | null): boolean {
   return message !== ROUTE_OFFLINE;
-}
-
-/** Adjust is on after the button is tapped, and off after it is tapped again. */
-export function adjustControlsOn(input: { craving: boolean; adjusting: boolean; hasPlan: boolean }): boolean {
-  return !input.craving && input.adjusting && input.hasPlan;
 }
 
 export type DayStore = {
@@ -81,6 +318,12 @@ export function placeSearchBody(query: string): { action: 'search'; query: strin
   return { action: 'search', query };
 }
 
+function capVia(points: readonly OutdoorPoint[]): OutdoorPoint[] {
+  const clean = points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+  if (clean.length <= VIA_POINT_CAP) return clean;
+  return simplifyLine(clean, VIA_POINT_CAP);
+}
+
 export function routePlanBody(input: RoutePlanInput): {
   action: 'route';
   mode: RoutePlanInput['mode'];
@@ -90,6 +333,10 @@ export function routePlanBody(input: RoutePlanInput): {
   distanceM: number | null;
   minutes: number | null;
   via: OutdoorPoint[];
+  preferPaths: boolean;
+  sketch: OutdoorPoint[];
+  requestId?: string;
+  intent?: true;
 } {
   return {
     action: 'route',
@@ -99,7 +346,13 @@ export function routePlanBody(input: RoutePlanInput): {
     end: input.end ?? null,
     distanceM: input.distanceM ?? null,
     minutes: input.minutes ?? null,
-    via: (input.via ?? []).slice(0, VIA_POINT_CAP),
+    via: capVia(input.via ?? []),
+    preferPaths: input.preferPaths === true,
+    sketch: input.intent === true
+      ? (input.sketch ?? []).slice(0, ORS_SKETCH_POINT_CAP).map((point) => ({ latitude: point.latitude, longitude: point.longitude }))
+      : sketchWaypoints(input.sketch ?? []),
+    ...(input.requestId ? { requestId: input.requestId } : {}),
+    ...(input.intent === true ? { intent: true as const } : {}),
   };
 }
 

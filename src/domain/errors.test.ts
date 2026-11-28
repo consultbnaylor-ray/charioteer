@@ -5,11 +5,14 @@ import {
   EMAIL_TAKEN_MESSAGE,
   OFFLINE_MESSAGE,
   UserFacingError,
+  VPN_SIGN_IN_TIP,
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
   asUserFacing,
   isTransientNetworkError,
   privateMessageFailure,
+  signInNetworkHint,
+  signInWithPasswordOnce,
 } from './errors';
 import { APPLE_HEALTH_READ_ERROR, healthRefreshLogLine } from './healthUpload';
 import { fetchWithOneRetry, isRetrySafeRequest } from './retryFetch';
@@ -53,6 +56,19 @@ describe('user facing errors', () => {
     expect(isTransientNetworkError(new Error('HKError timeout reading 8421 steps'))).toBe(false);
     expect(isTransientNetworkError(new Error('The request timed out'))).toBe(true);
     expect(asUserFacing(new Error('The request timed out'), 'general').message).toBe(OFFLINE_MESSAGE);
+    const denied = Object.assign(new Error('permission denied for table interests'), { status: 401, code: '42501' });
+    expect(isTransientNetworkError(denied)).toBe(false);
+    expect(asUserFacing(denied, 'sign-in').code).not.toBe('offline');
+    expect(asUserFacing(denied, 'sign-in').message).not.toBe(OFFLINE_MESSAGE);
+    const expired = Object.assign(new Error('JWT expired'), { status: 401 });
+    expect(isTransientNetworkError(expired)).toBe(false);
+    expect(asUserFacing(expired, 'sign-in').message).not.toBe(OFFLINE_MESSAGE);
+    const aborted = new Error('Network request failed');
+    aborted.name = 'AbortError';
+    expect(isTransientNetworkError(aborted)).toBe(false);
+    expect(asUserFacing(aborted, 'sign-in').message).not.toBe(OFFLINE_MESSAGE);
+    expect(isTransientNetworkError(new TypeError('Network request failed'))).toBe(true);
+    expect(asUserFacing(new TypeError('Network request failed'), 'sign-in').message).toBe(OFFLINE_MESSAGE);
     expect(APPLE_HEALTH_READ_ERROR).toBe("Apple Health couldn't be read");
     const logged = healthRefreshLogLine('read', new Error('HKError timeout reading 8421 steps, heart 72'));
     expect(logged).toBe('read: timeout');
@@ -96,6 +112,76 @@ describe('user facing errors', () => {
     expect(open).not.toContain('select(');
     expect(open).toContain('requestConnection');
     error.mockRestore();
+  });
+});
+
+describe('sign-in network hint', () => {
+  it('adds the VPN line only under the lost-connection error', () => {
+    expect(signInNetworkHint(OFFLINE_MESSAGE)).toBe(VPN_SIGN_IN_TIP);
+    expect(VPN_SIGN_IN_TIP).toBe('Using a VPN? Try turning it off or switching to a UK server, then try again.');
+    expect(signInNetworkHint(WRONG_PASSWORD_MESSAGE)).toBeNull();
+    expect(signInNetworkHint('Could not sign in. Try again.')).toBeNull();
+    expect(signInNetworkHint('Could not create the account. Try again.')).toBeNull();
+    expect(signInNetworkHint(null)).toBeNull();
+    for (const path of ['src/app/sign-in.tsx', 'src/app/sign-up.tsx']) {
+      const source = readFileSync(path, 'utf8');
+      expect(source, path).toContain('signInNetworkHint(error)');
+      const note = source.indexOf('<ErrorNote>{error}</ErrorNote>');
+      const hint = source.indexOf('{networkHint ?');
+      expect(note, path).toBeGreaterThan(-1);
+      expect(hint, path).toBeGreaterThan(note);
+      expect(source, path).not.toContain(VPN_SIGN_IN_TIP);
+    }
+  });
+
+  it('retries the password grant once when the reply is lost, and not for a wrong password', async () => {
+    let calls = 0;
+    const recovered = await signInWithPasswordOnce(async () => {
+      calls += 1;
+      if (calls === 1) return { error: new TypeError('Network request failed') };
+      return { error: null, session: 'ok' };
+    });
+    expect(calls).toBe(2);
+    expect(recovered).toEqual({ error: null, session: 'ok' });
+
+    let wrongs = 0;
+    const wrong = await signInWithPasswordOnce(async () => {
+      wrongs += 1;
+      return { error: new Error('Invalid login credentials') };
+    });
+    expect(wrongs).toBe(1);
+    expect((wrong.error as Error).message).toBe('Invalid login credentials');
+
+    let thrown = 0;
+    const afterThrow = await signInWithPasswordOnce(async () => {
+      thrown += 1;
+      if (thrown === 1) throw new Error('The network connection was lost');
+      return { error: null };
+    });
+    expect(thrown).toBe(2);
+    expect(afterThrow.error).toBeNull();
+
+    let answered = 0;
+    await expect(signInWithPasswordOnce(async () => {
+      answered += 1;
+      throw new Error('Invalid login credentials');
+    })).rejects.toThrow(/Invalid login credentials/);
+    expect(answered).toBe(1);
+
+    let bothLost = 0;
+    const stillLost = await signInWithPasswordOnce(async () => {
+      bothLost += 1;
+      return { error: new TypeError('Network request failed') };
+    });
+    expect(bothLost).toBe(2);
+    expect(isTransientNetworkError(stillLost.error)).toBe(true);
+
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const signIn = repo.slice(repo.indexOf('async signIn('), repo.indexOf('private async finishSignIn'));
+    expect(signIn).toContain('signInWithPasswordOnce(() => this.client.auth.signInWithPassword(');
+    expect(signIn).toContain("throw asUserFacing(error, 'sign-in')");
+    expect(signIn).toContain('finishSignIn()');
+    expect(signIn.match(/signInWithPassword\(/g)).toHaveLength(1);
   });
 });
 

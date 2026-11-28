@@ -28,11 +28,15 @@ import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
+import { ExpandableRow } from '@/ui/ExpandableRow';
+import { HealthInsightRow } from '@/ui/HealthInsightRow';
+import { Explain, MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { DailyTargets } from '@/ui/DailyTargets';
 import { YourGoal } from '@/ui/YourGoal';
 import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
+import { TodayGlance } from '@/ui/TodayGlance';
 import { WalkThisOff } from '@/ui/WalkThisOff';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -62,6 +66,7 @@ export default function Home() {
   const saving = useRef(false);
   const { run: runRelapse, isPending: relapsePending } = usePendingPress();
   const [refreshing, setRefreshing] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const { samples: mergedHealth } = useHealthSources();
 
   useEffect(() => {
@@ -158,8 +163,30 @@ export default function Home() {
   }).headlines.slice(0, 3);
 
   return (
-    <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
+    <Screen eyebrow={sober ? undefined : greeting(now)} title={sober ? undefined : (profile.displayName || 'Friend')} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
       <OutingInProgressBanner />
+      {sober ? <TodayGlance now={now} onCorrectDate={openCorrection} /> : null}
+      {sober && !moreOpen ? (
+        <>
+          <AiCreditLine />
+          <Button
+            label="SOS"
+            tone="sos"
+            accessibilityLabel="SOS, open craving support with Thumos"
+            onPress={() => router.push('/thumos?mode=craving' as never)}
+          />
+        </>
+      ) : null}
+      {sober ? (
+        <ExpandableRow
+          label={moreOpen ? 'Hide the rest of today' : 'More on today'}
+          accessibilityLabel={moreOpen ? 'Hide the rest of today' : 'More on today'}
+          expanded={moreOpen}
+          onPress={() => setMoreOpen((open) => !open)}
+        />
+      ) : null}
+      {!sober || moreOpen ? (
+      <>
       <ScrollTarget id="sober">
       {sober ? (
       <View style={{ gap: 8 }}>
@@ -219,7 +246,9 @@ export default function Home() {
         {profile.stage === 'exploring' ? (
           <>
             <T variant="label">When you’re ready</T>
-            <T>You can look around, talk to Thumos, and decide what you want. Nothing here assumes you have stopped.</T>
+            <MoreInfo title="About looking around" about="looking around">
+              <T>You can look around, talk to Thumos, and decide what you want. Nothing here assumes you have stopped.</T>
+            </MoreInfo>
           </>
         ) : null}
       </Card>
@@ -229,27 +258,33 @@ export default function Home() {
       <AiCreditLine />
       <DailyTargets />
       <WalkThisOff place="today" />
-      <Card accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)}>
-        <T variant="label">Health Stats</T>
-        <T>A plain look at sober days, check-ins, food, and the rest.</T>
+      <Card>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
+          <T variant="label">Health Stats</T>
+        </Pressable>
+        <MoreInfo title="About Health Stats" about="Health Stats">
+          <T>A plain look at sober days, check-ins, food, and the rest.</T>
+        </MoreInfo>
       </Card>
       <Card featured>
         <T variant="label">Quote of the day</T>
-        <QuoteWords>{dailyQuote.text}</QuoteWords>
-        <T variant="muted">{quoteCredit(dailyQuote)}</T>
         <InPlainWords plain={dailyQuote.plain} />
+        <MoreInfo title="About this quote" about="this quote">
+          <QuoteWords>{dailyQuote.text}</QuoteWords>
+          <T variant="muted">{quoteCredit(dailyQuote)}</T>
+        </MoreInfo>
         <Button label="Stoic & classical wisdom" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       </Card>
       {sober ? (
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <Card style={{ flex: 1 }} onPress={openWeek} accessibilityLabel="Edit weekly spend">
+          <Card style={{ flex: 1, minWidth: 0 }} onPress={openWeek} accessibilityLabel="Edit weekly spend">
             <EditMark label="Saved" />
-            <T variant="title">{saved ? formatGbp(saved.moneyGbp) : '—'}</T>
+            <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{saved ? formatGbp(saved.moneyGbp) : '—'}</T>
             <T variant="muted">{profile.weeklySpendGbp != null ? `from £${profile.weeklySpendGbp} a week` : 'Add your usual spend'}</T>
           </Card>
-          <Card style={{ flex: 1 }} onPress={openWeek} accessibilityLabel="Edit weekly units">
+          <Card style={{ flex: 1, minWidth: 0 }} onPress={openWeek} accessibilityLabel="Edit weekly units">
             <EditMark label="Units avoided" />
-            <T variant="title">{saved ? saved.units : '—'}</T>
+            <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{saved ? saved.units : '—'}</T>
             <T variant="muted">{profile.weeklyUnits != null ? `from ${profile.weeklyUnits} a week` : 'Add your usual units'}</T>
           </Card>
         </View>
@@ -260,7 +295,9 @@ export default function Home() {
         accessibilityLabel="SOS, open craving support with Thumos"
         onPress={() => router.push('/thumos?mode=craving' as never)}
       />
-      <T variant="muted">One tap opens Thumos in craving support: a ten-minute timer, breathing, and your reasons.</T>
+      <MoreInfo title="About SOS" about="SOS">
+        <T>One tap opens Thumos in craving support: a ten-minute timer, breathing, and your reasons.</T>
+      </MoreInfo>
       {sober ? <Card>
         <T variant="label">Milestones</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
@@ -282,16 +319,15 @@ export default function Home() {
       </Card>
       <Card>
         <IconLabel name="day">Today</IconLabel>
-        <T>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
+        <T numberOfLines={1}>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10` : 'Not checked in'}</T>
+        <MoreInfo title="About the check-in" about="the check-in">
+          <T>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
+        </MoreInfo>
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
       </Card>
       <Card>
         <IconLabel name="pulse">Health Stats</IconLabel>
-        {healthHeadlines.length === 0 ? (
-          <T variant="muted">Not enough readings yet to compare the last 7 days with the 7 before.</T>
-        ) : (
-          healthHeadlines.map((line) => <T key={line}>{line}</T>)
-        )}
+        <HealthInsightRow headlines={healthHeadlines} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="See all health stats"
@@ -328,7 +364,7 @@ export default function Home() {
       </Card>
       {sober ? <Card>
         <T variant="label">If you drank</T>
-        <T>A lapse is information, not a verdict. The days you already kept stay in your history. Resetting the clock just starts this stretch again.</T>
+        <Explain title="About resetting" about="resetting the clock" text="A lapse is information, not a verdict. The days you already kept stay in your history. Resetting the clock just starts this stretch again." />
         {relapseOpen ? (
           <View style={{ gap: 10 }}>
             <Field label="Anything you want to remember" value={note} onChangeText={setNote} placeholder="Optional" />
@@ -372,6 +408,8 @@ export default function Home() {
         )}
         <ErrorNote>{error}</ErrorNote>
       </EditSheet>
+      </>
+      ) : null}
     </Screen>
   );
 }

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { View } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
+import { useId, useState, type ReactNode } from 'react';
+import { useWindowDimensions, View } from 'react-native';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 
 import {
   chartBucketCaption,
@@ -18,11 +18,31 @@ import {
   type ChartBucket,
   type ChartPoint,
 } from '@/domain/readingChart';
+import { formatReadingSpan, formatSpanAmount, readingSpan } from '@/domain/readingSpan';
+import { DATA_MEANING_TITLE, MoreInfo } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
+/** The grain line and the direction line. A card can place this inside its own toggle. */
+export function ChartMeaningCopy({ bucket, aggregate }: { bucket: ChartBucket; aggregate: ChartAggregate }) {
+  const caption = chartBucketCaption(bucket, aggregate);
+  return (
+    <>
+      {caption ? <T variant="muted">{caption}</T> : null}
+      <T variant="muted">{CHART_DIRECTION_HINT}</T>
+    </>
+  );
+}
+
 /** Plot height stays put when text grows. Labels use the text scale. */
 const PLOT_H = 200;
+
+/** Last measured plot width. The next chart can draw on the first frame instead of flashing empty. */
+let measuredChartWidth = 0;
+
+function chartWidthGuess(screen: number): number {
+  return measuredChartWidth > 0 ? measuredChartWidth : Math.max(260, Math.min(screen, 760) - 80);
+}
 
 /**
  * One line chart for readings. Dots are real values only.
@@ -39,7 +59,17 @@ export function ReadingChart({
   bucket,
   accessibilityLabel = 'Chart',
   title,
+  subtitle,
   onSelectDay,
+  accent,
+  meaning = 'chart',
+  meaningTitle,
+  explanation,
+  markExtremes = false,
+  hideSummary = false,
+  spanWindow = false,
+  today,
+  rangeLine,
 }: {
   points: readonly ChartPoint[];
   start: string;
@@ -52,19 +82,50 @@ export function ReadingChart({
   accessibilityLabel?: string;
   /** Name of the series, kept above the latest, minimum, and maximum line. */
   title?: string;
+  /** One plain-English line under the title. Omitted charts stay as they were. */
+  subtitle?: string;
   /** Choosing a point can open that day on the page. */
   onSelectDay?: (day: string) => void;
+  /** Stroke colour for this metric. Omitted charts stay on the ink. */
+  accent?: string;
+  /** Ring the lowest and highest points, and name them in the summary. */
+  markExtremes?: boolean;
+  /** The card already shows the latest, lowest, and highest lines. */
+  hideSummary?: boolean;
+  /** Keep the date axis on the selected range when readings are sparse. */
+  spanWindow?: boolean;
+  /** Year reference for the summary dates. The range end is used when omitted. */
+  today?: string;
+  /**
+   * `chart` shows What this means when `explanation` is set.
+   * `none` leaves that note to the card, so the card has one toggle.
+   * A node is extra explanation, shown with the direction note.
+   * No explanation and no node means no button.
+   */
+  meaning?: 'chart' | 'none' | ReactNode;
+  /** Toggle name when this chart draws one. A node defaults to What this Data means. */
+  meaningTitle?: string;
+  /** Two or three sentences for What this means. Blank hides the button. */
+  explanation?: string;
+  /**
+   * Replaces “Latest · Min · Max” when a card has a clearer line.
+   * Omitted charts keep that line, so other pages do not change.
+   */
+  rangeLine?: string;
 }) {
   const theme = useAppTheme();
-  const [width, setWidth] = useState(0);
+  const screen = useWindowDimensions().width;
+  const rawId = useId();
+  const fillId = `chart-fill-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const [width, setWidth] = useState(() => chartWidthGuess(screen));
   const [chosen, setChosen] = useState<string | null>(null);
   const windowStart = start <= end ? start : end;
   const windowEnd = start <= end ? end : start;
-  const grain = bucket ?? bucketForSpan(windowStart, windowEnd);
+  const grain = bucket ?? chartWindowBucket(windowStart, windowEnd);
   const plot = chartPlot({ points, start: windowStart, end: windowEnd, bucket: grain, aggregate });
   const shown = plot.points;
-  const axisStart = plot.start;
-  const axisEnd = plot.end;
+  const axisStart = spanWindow ? windowStart : plot.start;
+  const axisEnd = spanWindow ? windowEnd : plot.end;
   const extent = chartExtent(shown);
   const ticks = yAxisTicks(shown.map((point) => point.value));
   const yName = yTitle ?? unit;
@@ -111,20 +172,59 @@ export function ReadingChart({
 
   const marks = datedAxisTicks(axisStart, axisEnd);
   const grainCaption = chartBucketCaption(grain, aggregate);
-  const summary = `Latest ${formatChartValue(extent.latest.value, unit)} · Min ${formatAxisNumber(extent.min)} · Max ${formatAxisNumber(extent.max)}`;
+  const extremes = markExtremes ? readingSpan(shown) : null;
+  const headlines = extremes ? formatReadingSpan(extremes, unit, today ?? windowEnd) : null;
+  const summary = rangeLine
+    ?? (headlines
+      ? `${headlines.latest}. ${headlines.lowest}. ${headlines.highest}`
+      : `Latest ${formatChartValue(extent.latest.value, unit)} · Min ${formatAxisNumber(extent.min)} · Max ${formatAxisNumber(extent.max)}`);
+  const lowDay = extremes?.lowest.day ?? null;
+  const highDay = extremes?.highest.day ?? null;
+  function amount(value: number): string {
+    return markExtremes ? formatSpanAmount(value, unit) : formatChartValue(value, unit);
+  }
+  function pointLabel(value: number): string {
+    if (!markExtremes || unit !== 'kg') return formatAxisNumber(value);
+    return (Math.round(value * 10) / 10).toFixed(1);
+  }
+  function extremeLabel(day: string): string | null {
+    if (day === lowDay && day === highDay) return 'Low and high';
+    if (day === lowDay) return 'Low';
+    if (day === highDay) return 'High';
+    return null;
+  }
   const spoken = selected
-    ? `${accessibilityLabel}. ${tooltipWhen(selected.day, grain)}, ${formatChartValue(selected.value, unit)}.`
+    ? `${accessibilityLabel}. ${tooltipWhen(selected.day, grain)}, ${amount(selected.value)}.`
     : `${accessibilityLabel}. ${summary}. Older on the left, newer on the right.`;
+
+  const explanationText = explanation?.replace(/\s+/g, ' ').trim() ?? '';
+  const customMeaning = meaning !== 'none' && meaning !== 'chart';
+  const meaningToggle = meaning === 'none' || (!explanationText && !customMeaning) ? null : (
+    <MoreInfo
+      about={accessibilityLabel}
+      title={meaningTitle ?? (meaning === 'chart' ? 'What this means' : DATA_MEANING_TITLE)}
+    >
+      {explanationText ? <T variant="muted">{explanationText}</T> : null}
+      {meaning === 'chart' ? null : meaning}
+      {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
+      <T variant="muted">{CHART_DIRECTION_HINT}</T>
+    </MoreInfo>
+  );
 
   return (
     <View accessibilityLabel={spoken} style={{ gap: 6, alignSelf: 'stretch' }}>
       {title ? <T variant="label">{title}</T> : null}
-      <T>{summary}</T>
+      {subtitle ? <T variant="muted">{subtitle}</T> : null}
       {yName ? (
         <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted }}>{yName}</T>
       ) : null}
       <View
-        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+        onLayout={(event) => {
+          const next = event.nativeEvent.layout.width;
+          if (!(next > 0) || Math.abs(next - width) < 1) return;
+          measuredChartWidth = next;
+          setWidth(next);
+        }}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
         onResponderGrant={(event) => selectAt(event.nativeEvent.locationX)}
@@ -138,6 +238,12 @@ export function ReadingChart({
         {width > 0 ? (
           <View style={{ height: PLOT_H }}>
             <Svg width={width} height={PLOT_H}>
+              <Defs>
+                <LinearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={accent ?? theme.colors.ink} stopOpacity={0.32} />
+                  <Stop offset="1" stopColor={accent ?? theme.colors.ink} stopOpacity={0} />
+                </LinearGradient>
+              </Defs>
               {ticks.map((tick) => (
                 <Line
                   key={`grid-${tick}`}
@@ -149,6 +255,23 @@ export function ReadingChart({
                   strokeWidth={1}
                 />
               ))}
+              {shown.length > 1 ? (
+                <Path
+                  d={`${shown.map((point, index) => `${index === 0 ? 'M' : 'L'}${xFor(point.day).toFixed(1)} ${yFor(point.value).toFixed(1)}`).join(' ')} L${xFor(shown[shown.length - 1].day).toFixed(1)} ${PLOT_H - 12} L${xFor(shown[0].day).toFixed(1)} ${PLOT_H - 12} Z`}
+                  fill={`url(#${fillId})`}
+                />
+              ) : null}
+              {shown.length > 1 ? (
+                <Path
+                  d={shown.map((point, index) => `${index === 0 ? 'M' : 'L'}${xFor(point.day).toFixed(1)} ${yFor(point.value).toFixed(1)}`).join(' ')}
+                  stroke={accent ?? theme.colors.ink}
+                  strokeWidth={5}
+                  fill="none"
+                  opacity={0.22}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ) : null}
               {shown.slice(1).map((point, index) => {
                 const previous = shown[index];
                 if (!previous) return null;
@@ -159,7 +282,7 @@ export function ReadingChart({
                     y1={yFor(previous.value)}
                     x2={xFor(point.day)}
                     y2={yFor(point.value)}
-                    stroke={theme.colors.ink}
+                    stroke={accent ?? theme.colors.ink}
                     strokeWidth={2}
                   />
                 );
@@ -174,17 +297,78 @@ export function ReadingChart({
                   strokeWidth={1}
                 />
               ) : null}
-              {shown.map((point) => {
+              {shown.map((point, index) => {
                 const active = point.day === selected?.day;
+                const latest = index === shown.length - 1;
+                const marked = extremeLabel(point.day);
+                const ink = accent ?? theme.colors.ink;
                 return (
                   <Circle
                     key={point.day}
                     cx={xFor(point.day)}
                     cy={yFor(point.value)}
-                    r={active ? 6 : 4}
-                    fill={theme.colors.ink}
-                    onPress={() => setChosen(point.day)}
+                    r={active || latest || marked ? 5 : 3.5}
+                    fill={ink}
+                    stroke={marked ? theme.colors.surface : 'none'}
+                    strokeWidth={marked ? 2 : 0}
                   />
+                );
+              })}
+              {shown.map((point) => {
+                const marked = extremeLabel(point.day);
+                if (!marked) return null;
+                const ink = accent ?? theme.colors.ink;
+                return (
+                  <Circle
+                    key={`ring-${point.day}`}
+                    cx={xFor(point.day)}
+                    cy={yFor(point.value)}
+                    r={9}
+                    fill="none"
+                    stroke={ink}
+                    strokeWidth={2}
+                  />
+                );
+              })}
+              {shown.length <= 10 ? shown.map((point) => (
+                <SvgText
+                  key={`label-${point.day}`}
+                  x={xFor(point.day)}
+                  y={Math.max(12, yFor(point.value) - 8)}
+                  textAnchor="middle"
+                  fill={theme.colors.ink}
+                  fontSize={10}
+                  fontFamily={theme.font.bodyStrong}
+                >
+                  {pointLabel(point.value)}
+                </SvgText>
+              )) : (
+                <SvgText
+                  x={xFor(shown[shown.length - 1].day)}
+                  y={Math.max(12, yFor(shown[shown.length - 1].value) - 8)}
+                  textAnchor="middle"
+                  fill={theme.colors.ink}
+                  fontSize={11}
+                  fontFamily={theme.font.bodyStrong}
+                >
+                  {pointLabel(shown[shown.length - 1].value)}
+                </SvgText>
+              )}
+              {shown.map((point) => {
+                const marked = extremeLabel(point.day);
+                if (!marked) return null;
+                return (
+                  <SvgText
+                    key={`extreme-${point.day}`}
+                    x={xFor(point.day)}
+                    y={Math.min(PLOT_H - 2, yFor(point.value) + 18)}
+                    textAnchor="middle"
+                    fill={theme.colors.ink}
+                    fontSize={10}
+                    fontFamily={theme.font.bodyStrong}
+                  >
+                    {marked}
+                  </SvgText>
                 );
               })}
             </Svg>
@@ -221,7 +405,7 @@ export function ReadingChart({
               >
                 <T style={{ fontSize: 12 * label, lineHeight: 16 * label }}>{tooltipWhen(selected.day, grain)}</T>
                 <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 12 * label, lineHeight: 16 * label }}>
-                  {formatChartValue(selected.value, unit)}
+                  {amount(selected.value)}
                 </T>
               </View>
             ) : null}
@@ -232,8 +416,8 @@ export function ReadingChart({
       </View>
       <AxisLabels marks={marks} width={width} gutter={gutter} scale={label} xFor={xFor} />
       <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{xTitle}</T>
-      <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
-      {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
+      {hideSummary ? null : <T>{summary}</T>}
+      {meaningToggle}
     </View>
   );
 }
@@ -290,7 +474,7 @@ function AxisLabels({
   );
 }
 
-function bucketForSpan(start: string, end: string): ChartBucket {
+export function chartWindowBucket(start: string, end: string): ChartBucket {
   const span = daySpan(start, end);
   if (span <= 90) return 'day';
   if (span <= 200) return 'week';

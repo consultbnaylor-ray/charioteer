@@ -5,7 +5,8 @@ import Svg, { Path } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { useRepository, useSnapshot } from '@/data';
 import { randomId } from '@/domain/id';
-import { formatUkDate, isoDay, parseIsoDay } from '@/domain/dates';
+import { formatUkDate, parseIsoDay } from '@/domain/dates';
+import { workoutDayFromPicker, workoutPickerDate } from '@/domain/workoutDate';
 import { OFFLINE_MESSAGE, serverReachedRecently, shownError } from '@/domain/errors';
 import { londonDay, mondayOf, shiftDay, weekdayShort } from '@/domain/healthInsights';
 import {
@@ -40,7 +41,7 @@ import {
   rescheduleWorkoutReminders,
   saveWorkoutReminders,
 } from '@/notifications/sessionReminder';
-import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
+import { routeSummaryLine, VIEW_ROUTE_MAP, type DeviceWorkout } from '@/domain/workoutRoute';
 import { presentSessionEvent } from '@/ui/addToCalendar';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
@@ -81,7 +82,7 @@ function stripDate(iso: string): string {
 }
 
 function startsAtFrom(day: Date, time: string): string | null {
-  return londonWallTime(isoDay(day), time);
+  return londonWallTime(workoutDayFromPicker(day), time);
 }
 
 export function WorkoutCalendar({
@@ -111,7 +112,6 @@ export function WorkoutCalendar({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
   const [sessionType, setSessionType] = useState<PlannedSessionType>('boxing');
-  const [day, setDay] = useState(() => new Date());
   const [selected, setSelected] = useState(() => londonDay(new Date()));
   const [time, setTime] = useState('18:00');
   const fieldsRef = useRef<View>(null);
@@ -154,7 +154,6 @@ export function WorkoutCalendar({
     setDraftId(randomId());
     setSessionType('boxing');
     setSelected(planDay);
-    setDay(parseIsoDay(planDay));
     setTime(nextSessionClock(new Date(), planDay));
     setDurationText('30');
     setPlannedEffort(null);
@@ -170,7 +169,6 @@ export function WorkoutCalendar({
     setSessionType('outdoor');
     const today = new Date();
     setSelected(londonDay(today));
-    setDay(today);
     setTime(nextSessionClock(today));
     setDurationText('30');
     setPlannedEffort(null);
@@ -264,7 +262,6 @@ export function WorkoutCalendar({
     setSessionType(session?.sessionType ?? 'boxing');
     const iso = session ? sessionDay(session) : londonDay(date);
     setSelected(iso);
-    setDay(parseIsoDay(iso));
     setTime(session ? snapSessionClock(sessionClock(session)) : nextSessionClock(new Date(), iso));
     setDurationText(String(session?.durationMinutes ?? 30));
     setPlannedEffort(session?.plannedEffort ?? null);
@@ -274,7 +271,7 @@ export function WorkoutCalendar({
   }
 
   async function saveSession() {
-    const startsAt = startsAtFrom(day, time);
+    const startsAt = startsAtFrom(workoutPickerDate(selected), time);
     const duration = Number(durationText);
     if (!startsAt) {
       setError('Enter a time like 18:00.');
@@ -492,12 +489,9 @@ export function WorkoutCalendar({
           </View>
           <DateField
             label="Date"
-            value={day}
-            onChange={(value) => {
-              setDay(value);
-              setSelected(isoDay(value));
-            }}
-            earliestDate={editing && parseIsoDay(sessionDay(editing)).getTime() < Date.now() ? parseIsoDay(sessionDay(editing)) : new Date()}
+            value={workoutPickerDate(selected)}
+            unrestricted
+            onChange={(value) => setSelected(workoutDayFromPicker(value))}
           />
           <SessionTimeField value={time} onChange={setTime} />
           <View ref={fieldsRef} nativeID="planned-session-fields" collapsable={false} style={{ gap: 10 }}>
@@ -581,8 +575,8 @@ export function WorkoutCalendar({
                 </Pressable>
               )}
               {matched?.routeExpected ? (
-                <Pressable accessibilityRole="button" accessibilityLabel={`View route, ${matched.label}`} onPress={() => router.push(`/workout/${encodeURIComponent(matched.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
-                  <T>View route</T>
+                <Pressable accessibilityRole="button" accessibilityLabel={`${VIEW_ROUTE_MAP}, ${matched.label}`} onPress={() => router.push(`/workout/${encodeURIComponent(matched.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <T>{VIEW_ROUTE_MAP}</T>
                 </Pressable>
               ) : null}
               <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => begin(session)} style={{ minHeight: 44, justifyContent: 'center' }}>

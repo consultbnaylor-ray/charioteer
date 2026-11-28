@@ -1,10 +1,21 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
-import { gateAiUse } from '../_shared/aiAllowance.ts';
-import { json, preflight } from '../_shared/http.ts';
+import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { xaiErrorText } from '../_shared/aiBilling.ts';
+import {
+  AI_UNAVAILABLE_CODE,
+  AI_UNAVAILABLE_MESSAGES,
+  classifyXaiFailure,
+  logAiUnavailable,
+  xaiFailureFromError,
+  type AiUnavailableReason,
+} from '../_shared/aiUnavailable.ts';
+import { parseXaiUsage, recordAiSpend } from '../_shared/aiSpend.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
+import { MEAL_NO_RETRY_HEADER, mealProviderResult, providerRetryPointless, type MealProviderFault } from '../_shared/mealProvider.ts';
 import { MEAL_ESTIMATE_PROMPT, PHOTO_READ_FAIL, estimateFromText, parseMealEstimate } from '../_shared/nutrition.ts';
-import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { buildChatCompletionBody, THUMOS_CHAT, XAI_PROMPT_CACHE_KEYS } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 
 type Body = { text?: string; imageBase64?: string; source?: string };
@@ -21,7 +32,20 @@ function requestLabel(req: Request): string {
   return /^[0-9a-f-]{8,40}$/i.test(raw) ? raw : '';
 }
 
-/** Category only. The photo and the meal text are not logged. */
+/** A 503 the phone should show at once instead of retrying, because the provider is out of credit. */
+function noRetry(body: Record<string, unknown>, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+      [MEAL_NO_RETRY_HEADER]: '1',
+      'Access-Control-Expose-Headers': MEAL_NO_RETRY_HEADER,
+    },
+  });
+}
+
+/** Category only. The photo, the meal text, the key, and provider bodies are not logged. */
 function note(requestId: string, code: string): void {
   console.error('estimate-meal', requestId || 'no-request', code);
 }
@@ -73,10 +97,29 @@ Deno.serve(async (req) => {
   }
 
   const typed = text ? estimateFromText(text) : [];
-  const unreadPhoto = () => json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
   const warnMeal = (reason: string) => {
     console.warn(`meal-estimate ${reason}`);
     note(requestId, reason);
+  };
+  const replyFor = (fault: MealProviderFault, reason: AiUnavailableReason | null = null) => {
+    const decision = mealProviderResult(Boolean(image), fault);
+    const billing = reason === 'billing';
+    // Our provider could not answer. The phone says so calmly, that typing the meal still works, and no credit is used.
+    // billing stays for older phones that read it.
+    const billed = reason
+      ? { code: AI_UNAVAILABLE_CODE, reason, message: AI_UNAVAILABLE_MESSAGES.meal, ...(billing ? { billing: true } : {}) }
+      : {};
+    if (decision.outcome === 'unread') {
+      return json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
+    }
+    if (decision.outcome === 'unavailable') {
+      const body = { ok: false, requestId: requestId || null, ...billed, code: decision.code };
+      return providerRetryPointless(fault) || billing ? noRetry(body, 503) : json(body, 503);
+    }
+    if (decision.providerUnavailable) {
+      return json({ ok: true, items: typed, source: 'local', providerUnavailable: true, ...billed });
+    }
+    return json({ ok: true, items: typed, source: 'local' });
   };
   /**
    * Supabase stops an edge function at 150s on the Free plan and 400s on Pro.
@@ -90,12 +133,14 @@ Deno.serve(async (req) => {
     userOptIn: await readInterimCoachOptIn(userClient, userData.user.id),
   });
   if (!apiKey) {
-    if (image) warnMeal('no_key');
-    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    warnMeal('no_key');
+    return replyFor({ kind: 'missing_key' });
   }
   if (!personalDataEnabled) {
     if (image) warnMeal('gate');
-    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    // The model is not called. That is not a photo the model failed to read.
+    if (image) return json({ ok: false, code: AI_UNAVAILABLE_CODE, requestId: requestId || null, message: AI_UNAVAILABLE_MESSAGES.meal }, 503);
+    return json({ ok: true, items: typed, source: 'local' });
   }
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
@@ -105,11 +150,16 @@ Deno.serve(async (req) => {
     kind: 'meal',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once the model returns a usable estimate.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json({ ...gate.body, usage: null }, gate.status);
 
+  // The long estimate instructions sit in the system message so they form a stable cached prefix.
+  const mealSystem = `You estimate meals. Reply with JSON only.\n\n${MEAL_ESTIMATE_PROMPT}`;
+  const mealUser = text ? `Meal: ${text}` : 'See the photo.';
   const content: ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail?: 'low' } })[] = [
-    { type: 'text', text: text ? `${MEAL_ESTIMATE_PROMPT}\n\nMeal: ${text}` : MEAL_ESTIMATE_PROMPT },
+    { type: 'text', text: mealUser },
   ];
   if (image) {
     const urlPart = image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
@@ -118,18 +168,20 @@ Deno.serve(async (req) => {
 
   const textBody = buildChatCompletionBody({
     model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
-    system: 'You estimate meals. Reply with JSON only.',
+    system: mealSystem,
     history: [],
-    user: text || 'See the photo.',
+    user: mealUser,
     stream: false,
+    cacheKey: XAI_PROMPT_CACHE_KEYS.estimateMeal,
   });
   const photoBody = {
     model: THUMOS_CHAT.model,
     reasoning_effort: 'low' as const,
     stream: false,
     max_tokens: 2000,
+    prompt_cache_key: XAI_PROMPT_CACHE_KEYS.estimateMeal,
     messages: [
-      { role: 'system' as const, content: 'You estimate meals. Reply with JSON only.' },
+      { role: 'system' as const, content: mealSystem },
       { role: 'user' as const, content },
     ],
   };
@@ -141,27 +193,42 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(image ? photoBody : { ...textBody, messages: [
-        { role: 'system', content: 'You estimate meals. Reply with JSON only.' },
-        { role: 'user', content },
-      ] }),
+      body: JSON.stringify(image ? photoBody : textBody),
       signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) {
-      if (image) warnMeal(`http ${response.status}`);
-      return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+      const bodyText = response.status === 402 ? null : await xaiErrorText(response);
+      if (response.status === 402) await response.body?.cancel().catch(() => undefined);
+      const reason = classifyXaiFailure(response.status, bodyText);
+      warnMeal(`http ${response.status}`);
+      if (reason) logAiUnavailable('estimate-meal', reason, response.status);
+      return replyFor({ kind: 'http', status: response.status }, reason);
     }
-    const parsed = parseMealEstimate(completionText(await response.json()));
+    const payload = await response.json();
+    // xAI charged for this call whether or not the estimate is usable, so it is logged either way.
+    await recordAiSpend(admin, {
+      fn: 'estimate-meal',
+      tier: gate.ok ? gate.tier : null,
+      model: image ? photoBody.model : textBody.model,
+      usage: parseXaiUsage(payload),
+    });
+    const parsed = parseMealEstimate(completionText(payload));
     if (!parsed) {
-      if (image) warnMeal('parse');
-      return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+      warnMeal('parse');
+      return replyFor({ kind: 'unparsed' });
     }
+    await countAiUse({
+      admin,
+      userId: userData.user.id,
+      kind: 'meal',
+      tier: gate.ok ? gate.tier : null,
+      requestId,
+    }).catch(() => false);
     return json({ ok: true, items: parsed, source: 'model', requestId: requestId || null });
   } catch (error) {
-    if (image) {
-      const name = error instanceof Error ? error.name : '';
-      warnMeal(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'http');
-    }
-    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    const failure = xaiFailureFromError(error);
+    warnMeal(failure === 'timeout' ? 'timeout' : 'http');
+    logAiUnavailable('estimate-meal', failure, failure);
+    return replyFor({ kind: failure }, failure);
   }
 });

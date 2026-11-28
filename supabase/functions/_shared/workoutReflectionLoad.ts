@@ -1,6 +1,6 @@
 import { parseWorkoutActivityType, workoutTypeLabel } from './fitnessSnapshot.ts';
 import { londonDay, shiftDay } from './healthInsights.ts';
-import { missingColumn, missingRelation } from './garmin.ts';
+import { missingColumn } from './garmin.ts';
 import {
   buildWorkoutReflections,
   WORKOUT_REFLECTION_DAYS,
@@ -51,7 +51,7 @@ export async function loadWorkoutReflections(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return [];
   const start = shiftDay(day, -(WORKOUT_REFLECTION_DAYS - 1));
   const queryFrom = shiftDay(start, -1);
-  const [feelingsRes, plansRes, activitiesRes, sleepRes, appleSleepRes, appleWorkRes, foodRes, settingsRes] = await Promise.all([
+  const [feelingsRes, plansRes, activitiesRes, sleepRes, appleSleepRes, appleWorkRes, foodRes] = await Promise.all([
     client.from('workout_feelings').select('recorded_on, workout_key, note, effort, mood').eq('user_id', userId).gte('recorded_on', start).limit(80),
     client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, done_at').eq('user_id', userId).gte('starts_at', queryFrom).limit(120),
     client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds').eq('user_id', userId).gte('started_at', queryFrom).limit(120),
@@ -59,7 +59,6 @@ export async function loadWorkoutReflections(
     client.from('health_samples').select('kind, value, recorded_on').eq('user_id', userId).eq('kind', 'sleep_hours').gte('recorded_on', start).limit(40),
     client.from('health_samples').select('kind, value, recorded_on').eq('user_id', userId).like('kind', 'workout_type_%').gte('recorded_on', start).limit(120),
     readFood(client, userId, start),
-    client.from('nutrition_settings').select('hide_calories').eq('user_id', userId).limit(1),
   ]);
   const feelings = feelingsOf(rowsOf(feelingsRes));
   const sessions = [
@@ -69,8 +68,7 @@ export async function loadWorkoutReflections(
   ];
   const sleep = sleepHours(rowsOf(sleepRes), rowsOf(appleSleepRes));
   const meals = mealsOf(foodRes);
-  const hideCalories = hidesCalories(settingsRes);
-  return buildWorkoutReflections({ today: day, feelings, sessions, sleep, meals, hideCalories });
+  return buildWorkoutReflections({ today: day, feelings, sessions, sleep, meals, hideCalories: false });
 }
 
 async function readFood(client: WorkoutReflectionClient, userId: string, start: string): Promise<QueryResult> {
@@ -210,13 +208,6 @@ function mealsOf(result: QueryResult): ReflectionMeal[] {
     const eatenAt = text(record.eaten_at);
     return [{ eatenOn, eatenAt: eatenAt || null, kcal: Math.round(kcal) }];
   });
-}
-
-function hidesCalories(result: QueryResult): boolean {
-  if (result.error && missingRelation(result.error.message ?? '')) return false;
-  const row = Array.isArray(result.data) ? result.data[0] : result.data;
-  if (!row || typeof row !== 'object') return false;
-  return (row as { hide_calories?: unknown }).hide_calories === true;
 }
 
 function text(value: unknown): string {

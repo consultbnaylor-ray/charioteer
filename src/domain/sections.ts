@@ -46,6 +46,9 @@ export type AppSection = {
   group?: MenuGroup;
 };
 
+/** The Breathe screen's full name. The bottom tab keeps the short 'Breathe' so all six tabs stay one size. */
+export const BREATHE_SECTION_TITLE = 'Breath Work and Meditation';
+
 export const MENU_GROUPS: readonly { id: MenuGroup; label: string }[] = [
   { id: 'main', label: 'Main' },
   { id: 'tools', label: 'Tools' },
@@ -55,7 +58,7 @@ export const MENU_GROUPS: readonly { id: MenuGroup; label: string }[] = [
 export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'today', label: 'Today', href: '/home', tab: true, icon: 'sun', group: 'main' },
   { id: 'check-in', label: 'Check-in', href: '/check-in', tab: true, icon: 'check', group: 'main' },
-  { id: 'breathe', label: 'Breathe', href: '/breathe', tab: true, icon: 'breath', group: 'main' },
+  { id: 'breathe', label: BREATHE_SECTION_TITLE, href: '/breathe', tab: true, tabLabel: 'Breathe', icon: 'breath', group: 'main' },
   { id: 'thumos', label: 'Thumos', href: '/thumos', tab: true, icon: 'chat', group: 'main' },
   { id: 'people', label: 'People', href: '/people', tab: true, icon: 'people', group: 'main' },
   { id: 'gratitude', label: 'Gratitude Diary', href: '/gratitude', tab: true, tabLabel: 'Gratitude', icon: 'star', group: 'main' },

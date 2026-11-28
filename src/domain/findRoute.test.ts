@@ -23,10 +23,16 @@ import {
   ROUTE_OFFLINE,
   ROUTE_RATE_LIMITED,
   ROUTE_SIGN_IN,
+  ROUTE_SLOW,
   ROUTE_UNAVAILABLE,
+  messageForRouteBody,
   appleMapsUrl,
+  elevationProfileSamples,
   explainRouteFailure,
   formatClimb,
+  gradientFromElevations,
+  routeElevations,
+  routeSnapLines,
   mockRoute,
   nearestPathLine,
   parseRoutePlan,
@@ -55,8 +61,14 @@ import { LOCATION_FIX_MESSAGE } from '@/location/whileUsing';
 import {
   BAD_REQUEST_MESSAGE,
   GLOBAL_ROUTE_DAILY_CAP,
+  GLOBAL_SEARCH_DAILY_CAP,
+  ORS_FREE_GEOCODING_PER_DAY,
+  ROUTE_DAILY_CAP,
+  SEARCH_DAILY_CAP,
+  SEARCH_TEN_MINUTE_CAP,
   NO_PATH_MESSAGE,
   ORS_FREE_DIRECTIONS_PER_DAY,
+  ROUTE_LIMIT_MESSAGE,
   RATE_LIMITED_MESSAGE,
   SNAP_RADIUS_M,
   UNAVAILABLE_MESSAGE,
@@ -64,15 +76,21 @@ import {
   readViaPoints,
   buildSnapBody,
   classifyOrsFailure,
+  SERVICE_QUOTA_MESSAGE,
   haversineM,
   parseSnap,
   snapUrl,
   orsRequestHeaders,
+  cleanPlaceQuery,
+  geocodeUrl,
+  isUkPostcode,
   parseDirections,
   parseGeocode,
   routeLengthM,
   withinGlobalRouteLimit,
+  listedUser,
   withinRouteLimit,
+  withinSearchLimit,
 } from '../../supabase/functions/_shared/orsRoute';
 
 const start = { latitude: 51.4504, longitude: -2.5945 };
@@ -202,8 +220,9 @@ describe('route finding', () => {
         },
       }],
     }, 'walk', 'loop');
-    expect(parsed).toMatchObject({ distanceM: 4820, durationMinutes: 60, ascentM: 42, profile: 'foot-walking' });
+    expect(parsed).toMatchObject({ distanceM: 4820, durationMinutes: 60, ascentM: 42, descentM: null, profile: 'foot-walking' });
     expect(parsed?.points).toHaveLength(3);
+    expect(parsed?.elevationsM).toEqual([10, 12, 20]);
     const orsShape = parseDirections({
       type: 'FeatureCollection',
       features: [{
@@ -224,7 +243,7 @@ describe('route finding', () => {
         },
       }],
     }, 'walk', 'loop');
-    expect(orsShape).toMatchObject({ distanceM: 7600, durationMinutes: 45, ascentM: 18 });
+    expect(orsShape).toMatchObject({ distanceM: 7600, durationMinutes: 45, ascentM: 18, descentM: 17, elevationsM: null });
     expect(parseDirections({
       type: 'FeatureCollection',
       features: [{
@@ -232,7 +251,15 @@ describe('route finding', () => {
         properties: { summary: { distance: 1000, duration: 600 } },
         geometry: { coordinates: [[-2.59, 51.45], [-2.58, 51.451]] },
       }],
-    }, 'walk', 'loop')?.ascentM).toBeNull();
+    }, 'walk', 'loop')).toMatchObject({ ascentM: null, descentM: null, elevationsM: null });
+    expect(parseDirections({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: { summary: { distance: 1000, duration: 600, descent: 9.6 } },
+        geometry: { coordinates: [[-2.59, 51.45, 10], [-2.58, 51.451]] },
+      }],
+    }, 'walk', 'loop')).toMatchObject({ descentM: 10, elevationsM: null });
     expect(parseGeocode({
       features: [{ geometry: { coordinates: [-2.59, 51.45] }, properties: { label: 'Queen Square', gid: 'qs' } }],
     })[0]).toMatchObject({ name: 'Queen Square', id: 'qs' });
@@ -277,6 +304,78 @@ describe('route finding', () => {
     expect(withinRouteLimit([now - 86_400_000 - 1], now).ok).toBe(true);
   });
 
+  it('counts a place search apart from the route allowance', () => {
+    const now = 1_000_000_000_000;
+    const routeDay = Array.from({ length: ROUTE_DAILY_CAP }, (_, index) => now - (index + 1) * 60_000);
+    expect(withinRouteLimit(routeDay, now).ok).toBe(false);
+    expect(withinSearchLimit(routeDay, now).ok).toBe(true);
+    const searchBurst = Array.from({ length: SEARCH_TEN_MINUTE_CAP }, (_, index) => now - index * 1000);
+    expect(withinSearchLimit(searchBurst, now).ok).toBe(false);
+    expect(withinSearchLimit(searchBurst.slice(1), now).ok).toBe(true);
+    const searchDay = Array.from({ length: SEARCH_DAILY_CAP }, (_, index) => now - (index + 1) * 60_000);
+    expect(withinSearchLimit(searchDay, now).ok).toBe(false);
+    expect(withinSearchLimit(searchDay.slice(1), now).ok).toBe(true);
+    expect(withinRouteLimit([], now).ok).toBe(true);
+    expect(SEARCH_DAILY_CAP).toBe(300);
+    expect(SEARCH_TEN_MINUTE_CAP).toBe(30);
+    const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
+    expect(fn).toContain("body.action === 'search' ? 'search' : 'route'");
+    expect(fn).toContain(".eq('kind', kind)");
+    expect(fn).toContain('insert({ user_id: userId, kind })');
+    expect(fn).toContain('ROUTE_LIMIT_EXEMPT_USERS');
+    expect(fn).toContain('payload.ok === true');
+    expect(fn.indexOf('payload.ok === true')).toBeLessThan(fn.indexOf('await recordRequest'));
+    expect(fn.indexOf('async function recordRequest')).toBeLessThan(fn.indexOf('async function requestAllowed'));
+    const gate = fn.slice(fn.indexOf('async function requestAllowed'), fn.indexOf('async function tableAllows'));
+    expect(gate).not.toContain('.insert(');
+    expect(fn.slice(fn.indexOf('async function tableAllows'))).toContain('if (exempt) return true');
+    expect(listedUser('11111111-1111-4111-8111-111111111111, other', '11111111-1111-4111-8111-111111111111')).toBe(true);
+    expect(listedUser('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222')).toBe(false);
+    expect(listedUser(undefined, '11111111-1111-4111-8111-111111111111')).toBe(false);
+    expect(fn).toContain('searchRecent');
+    expect(fn).toContain('GLOBAL_SEARCH_DAILY_CAP');
+    const sql = readFileSync('supabase/migrations/20261124160054_outdoor_route_request_kind.sql', 'utf8');
+    expect(sql).toContain("add column if not exists kind text not null default 'route'");
+    expect(sql).toContain('(user_id, kind, created_at desc)');
+    expect(sql).toContain('(kind, created_at desc)');
+    expect(sql).toContain("kind in ('route', 'search')");
+  });
+
+  it('normalises a UK postcode and only then asks the geocoder to stay in GB', () => {
+    expect(isUkPostcode('bs81ab')).toBe(true);
+    expect(isUkPostcode('Queen Square')).toBe(false);
+    expect(cleanPlaceQuery('  bs8   1ab ')).toBe('BS8 1AB');
+    expect(cleanPlaceQuery('sw1a1aa')).toBe('SW1A 1AA');
+    expect(cleanPlaceQuery('Queen Square')).toBe('Queen Square');
+    expect(geocodeUrl('BS8 1AB')).toContain('text=BS8%201AB');
+    expect(geocodeUrl('BS8 1AB')).toContain('boundary.country=GB');
+    expect(geocodeUrl('Queen Square')).not.toContain('boundary.country');
+  });
+
+  it('computes gradient from elevation samples and leaves it out when they are missing', () => {
+    expect(gradientFromElevations(null, 1000)).toBeNull();
+    expect(gradientFromElevations([10], 1000)).toBeNull();
+    expect(gradientFromElevations([0, 10, 0], 0)).toBeNull();
+    expect(gradientFromElevations([0, 10, 0], 200)).toEqual({ max: 10, average: 10 });
+    expect(gradientFromElevations([0, 5, 15], 1000)).toEqual({ max: 2, average: 1.5 });
+    expect(gradientFromElevations([0, 50], 20)).toBeNull();
+    const fromSamples = routeSnapLines({
+      distanceM: 200,
+      durationMinutes: 4,
+      mode: 'walk',
+      ascentM: 10,
+      elevationsM: [0, 10, 0],
+    });
+    expect(fromSamples).toContain('Max gradient 10% · average 10%');
+    expect(fromSamples.join(' ')).not.toContain('Descent');
+    expect(routeSnapLines({
+      distanceM: 200,
+      durationMinutes: 4,
+      mode: 'walk',
+      ascentM: null,
+    }).join(' ')).not.toMatch(/Descent|gradient/);
+  });
+
   it('states the published retention and stays under the free daily quota', () => {
     expect(ROUTE_CONSENT_VERSION).toBe('2026-10-26-1');
     expect(ROUTE_RETENTION_LINE).toContain('7 days');
@@ -301,8 +400,11 @@ describe('route finding', () => {
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('HeiGIT gGmbH');
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('self-host OpenRouteService in the EU');
     expect(GLOBAL_ROUTE_DAILY_CAP).toBe(1500);
+    expect(GLOBAL_SEARCH_DAILY_CAP).toBe(1200);
     expect(GLOBAL_ROUTE_DAILY_CAP).toBeLessThan(ORS_FREE_DIRECTIONS_PER_DAY);
+    expect(GLOBAL_ROUTE_DAILY_CAP + GLOBAL_SEARCH_DAILY_CAP).toBeLessThan(ORS_FREE_GEOCODING_PER_DAY);
     expect(ORS_FREE_DIRECTIONS_PER_DAY).toBe(2000);
+    expect(ORS_FREE_GEOCODING_PER_DAY).toBe(3000);
     const now = 1_000_000_000_000;
     const day = Array.from({ length: GLOBAL_ROUTE_DAILY_CAP }, (_, index) => now - index);
     expect(withinGlobalRouteLimit(day, now).ok).toBe(false);
@@ -392,7 +494,17 @@ describe('route finding', () => {
       status: 400,
       body: { ok: false, code: 'bad_request', message: ROUTE_BAD_REQUEST },
     });
+    expect(classifyOrsFailure(400, { error: { code: 2004, message: 'distance 51.450123' } })).toEqual({
+      status: 400,
+      body: { ok: false, code: 'limit', message: ROUTE_LIMIT_MESSAGE },
+    });
     expect(classifyOrsFailure(500, { error: { code: 2099 } }).status).toBe(503);
+    expect(classifyOrsFailure(403, { error: 'Quota exceeded' })).toEqual({
+      status: 503,
+      body: { ok: false, code: 'unavailable', message: SERVICE_QUOTA_MESSAGE },
+    });
+    expect(classifyOrsFailure(403, { error: 'Access to this API has been disallowed' }).body.message).toBe(ROUTE_UNAVAILABLE);
+    expect(messageForRouteBody({ ok: false, code: 'unavailable', message: SERVICE_QUOTA_MESSAGE }, 503)).toBe(SERVICE_QUOTA_MESSAGE);
 
     const http = (status: number, body: unknown, fail = false) => ({
       name: 'FunctionsHttpError',
@@ -418,6 +530,18 @@ describe('route finding', () => {
       message: 'Failed to send a request to the Edge Function',
       context: new TypeError('Failed to fetch'),
     })).toBe(ROUTE_OFFLINE);
+    expect(await explainRouteFailure({
+      name: 'FunctionsFetchError',
+      message: 'Failed to send a request to the Edge Function',
+      context: new UserFacingError(ROUTE_FINDING_OFF, 'generic'),
+    })).toBe(ROUTE_FINDING_OFF);
+    const timedOut = new Error('The request timed out.');
+    timedOut.name = 'TimeoutError';
+    expect(await explainRouteFailure({
+      name: 'FunctionsFetchError',
+      message: 'Failed to send a request to the Edge Function',
+      context: timedOut,
+    })).toBe(ROUTE_SLOW);
     expect(await explainRouteFailure(new TypeError('Failed to fetch'))).toBe(ROUTE_OFFLINE);
     expect(await explainRouteFailure({ name: 'FunctionsRelayError', message: 'Relay Error invoking the Edge Function' })).toBe(ROUTE_UNAVAILABLE);
     expect(shownError(new UserFacingError(ROUTE_SIGN_IN, 'generic'), ROUTE_UNAVAILABLE)).toBe(ROUTE_SIGN_IN);
@@ -430,6 +554,9 @@ describe('route finding', () => {
     const plan = repo.slice(repo.indexOf('async planOutdoorRoute'), repo.indexOf('async searchRoutePlaces'));
     expect(plan.indexOf('assertRouteFindingAllowed')).toBeLessThan(plan.indexOf('routeCoordinate'));
     expect(plan.indexOf('routeCoordinate')).toBeLessThan(plan.indexOf("functions.invoke('outdoor-route'"));
+    expect(plan.indexOf('accessToken()')).toBeGreaterThan(plan.indexOf('routeCoordinate'));
+    expect(plan.indexOf('accessToken()')).toBeLessThan(plan.indexOf("functions.invoke('outdoor-route'"));
+    expect(plan).toContain('Authorization: `Bearer ${token}`');
     expect(plan).toContain('explainRouteFailure(invoked.error)');
     expect(plan).not.toContain('calmRouteMessage');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
@@ -454,6 +581,95 @@ describe('route finding', () => {
     expect(directions).not.toMatch(/console\./);
     expect(fn.match(/console\.error/g)).toEqual(['console.error']);
     expect(fn).toContain("console.error('outdoor-route request failed')");
+  });
+
+  it('explains a place-search refusal from the error, including when a limit says it lifts', async () => {
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const search = repo.slice(repo.indexOf('async searchRoutePlaces'), repo.indexOf('async deleteOutdoorRoute'));
+    expect(search).toContain('explainRouteFailure(invoked.error)');
+    expect(search).toContain('explainRouteFailure(error)');
+    expect(search).not.toContain('calmRouteMessage');
+    const http = (status: number, body: unknown, fail = false, retryAfter: string | null = null) => ({
+      name: 'FunctionsHttpError',
+      message: 'Edge Function returned a non-2xx status code',
+      context: {
+        status,
+        headers: { get: (name: string) => (name.toLowerCase() === 'retry-after' ? retryAfter : null) },
+        json: async () => {
+          if (fail) throw new Error('body already used');
+          return body;
+        },
+      },
+    });
+    expect(await explainRouteFailure(http(429, { ok: false, code: 'rate_limited', message: ROUTE_RATE_LIMITED }))).toBe(ROUTE_RATE_LIMITED);
+    expect(await explainRouteFailure(http(429, {
+      ok: false,
+      code: 'rate_limited',
+      message: ROUTE_RATE_LIMITED,
+      retryAfter: 2400,
+    }))).toBe(`${ROUTE_RATE_LIMITED} You can try again in 40 minutes.`);
+    const now = Date.parse('2026-11-24T14:00:00Z');
+    expect(await explainRouteFailure(http(429, {
+      ok: false,
+      code: 'rate_limited',
+      message: ROUTE_RATE_LIMITED,
+      resetAt: new Date(now + 40 * 60 * 1000).toISOString(),
+    }), now)).toBe(`${ROUTE_RATE_LIMITED} You can try again in 40 minutes.`);
+    expect(await explainRouteFailure(http(429, {
+      ok: false,
+      code: 'rate_limited',
+      message: ROUTE_RATE_LIMITED,
+    }, false, '120'))).toBe(`${ROUTE_RATE_LIMITED} You can try again in 2 minutes.`);
+    expect(await explainRouteFailure(http(401, { message: 'JWT expired' }))).toBe(ROUTE_SIGN_IN);
+    expect(await explainRouteFailure(http(401, { message: 'Invalid JWT' }))).toBe(ROUTE_SIGN_IN);
+    expect(await explainRouteFailure(http(500, { ok: false, code: 'unavailable', message: ROUTE_UNAVAILABLE }))).toBe(ROUTE_UNAVAILABLE);
+    expect(await explainRouteFailure(http(502, null, true))).toBe(ROUTE_UNAVAILABLE);
+    expect(await explainRouteFailure(http(503, { ok: false, message: 'no' }))).toBe(ROUTE_UNAVAILABLE);
+
+    const walked = {
+      mocked: false,
+      mode: 'walk' as const,
+      shape: 'loop' as const,
+      profile: 'foot-walking' as const,
+      distanceM: 3200,
+      durationMinutes: 40,
+      ascentM: 85,
+      points: [{ latitude: 51.45, longitude: -2.59 }, { latitude: 51.46, longitude: -2.58 }],
+      snappedStart: null,
+      snapDistanceM: null,
+    };
+    expect(routeSnapLines(walked)).toEqual(['3.2 km · Walk · 40 min', 'Climb 85 m']);
+    expect(routeSnapLines(walked).join(' ')).not.toMatch(/Descent|gradient|%/);
+    expect(routeElevations(walked)).toBeNull();
+    expect(gradientFromElevations(null, 3200)).toBeNull();
+    const climbed = parseRoutePlan({
+      ...walked,
+      ok: true,
+      descentM: 70,
+      maxGradientPct: 12,
+      averageGradientPct: 4.2,
+      elevationsM: [10, 30, 18],
+    });
+    expect(climbed?.descentM).toBe(70);
+    expect(climbed?.maxGradientPct).toBe(12);
+    expect(climbed?.averageGradientPct).toBe(4.2);
+    expect(routeElevations(climbed ?? {})).toEqual([10, 30, 18]);
+    expect(routeSnapLines(climbed ?? walked)).toEqual([
+      '3.2 km · Walk · 40 min',
+      'Climb 85 m',
+      'Descent 70 m',
+      'Max gradient 12% · average 4.2%',
+    ]);
+    expect(elevationProfileSamples([1, 2, 3, 4], 3)).toEqual([1, 3, 4]);
+    expect(parseRoutePlan({ ...walked, ok: true, elevationsM: [10] })?.elevationsM).toBeNull();
+    expect(parseRoutePlan({
+      ...walked,
+      ok: true,
+      points: [
+        { latitude: 51.45, longitude: -2.59, elevation: 12 },
+        { latitude: 51.46, longitude: -2.58 },
+      ],
+    })?.elevationsM).toBeNull();
   });
 
   it('starts from the nearest path inside the same route request', () => {

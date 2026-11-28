@@ -22,6 +22,7 @@ import {
 } from '@/domain/profileSharing';
 import { PROGRESS_SHARE_WARNING, progressPhotoLabel } from '@/domain/progressPhotos';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
+import { Explain, MoreInfo } from '@/ui/MoreInfo';
 import { NutritionShareSwitch } from '@/ui/NutritionShare';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { GratitudeSectionShare, PhotoSectionShare, ReviewSectionShare, VisionSectionShare } from '@/ui/SectionShare';
@@ -40,11 +41,14 @@ export default function WhatIShare() {
     <Screen
       eyebrow="Profile"
       title="What I share"
-      intro="Each switch here is for Community members, and only while Community is on. It does not change what a buddy sees. On Buddies, each person has their own switches. Only that person can see those."
+      intro="Each switch here is for Community members, and only while Community is on."
     >
+      <MoreInfo title="About these switches" about="these switches">
+        <T variant="muted">It does not change what a buddy sees. On Buddies, each person has their own switches. Only that person can see those.</T>
+      </MoreInfo>
       <ReviewSectionShare />
-      <T variant="muted">{communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>
-      <T>{COMMUNITY_CONSENT_BODY}</T>
+      <Explain title="About who can see this" about="who can see this" text={communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE} />
+      <Explain title="About Community" about="Community" text={COMMUNITY_CONSENT_BODY} />
       <T>Name and interests stay on your profile while Community is on.</T>
       <ShareAnchor id="bio" title="Bio">
         <ShareOnProfile

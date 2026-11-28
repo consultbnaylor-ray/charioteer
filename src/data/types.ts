@@ -224,6 +224,8 @@ export type AppSnapshot = {
   ready: boolean;
   mode: 'demo' | 'supabase';
   error: string | null;
+  /** Set when a saved sign-in cannot be used yet. Catalogue calls wait. */
+  accountGate?: 'reconnecting' | 'sign-in' | null;
   session: Session | null;
   profile: Profile | null;
   reasons: Reason[];
@@ -411,7 +413,14 @@ export type FoodLogUpdate = {
   portion: number;
 };
 
-export type MealEstimate = { items: FoodItem[]; source: 'model' | 'local' };
+export type MealEstimate = {
+  items: FoodItem[];
+  source: 'model' | 'local';
+  /** The text figures are the on-device estimate because the model could not be called. */
+  providerUnavailable?: boolean;
+  /** The model was not called because our AI provider refused for billing. Not the person's fault; no credit used. */
+  billing?: boolean;
+};
 
 export interface Repository {
   subscribe(listener: () => void): () => void;
@@ -493,7 +502,8 @@ export interface Repository {
   addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void>;
   saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void>;
   deleteGoalProgressPhoto(id: string): Promise<void>;
-  reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
+  /** notice is set when our AI provider refused for billing and a built-in reflection was returned. */
+  reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect & { notice?: string }>;
   saveVisionStatement(statement: string): Promise<void>;
   addVisionItem(bytes: Uint8Array): Promise<void>;
   updateVisionItem(id: string, patch: { caption?: string; area?: VisionArea | null; size?: VisionSize }): Promise<void>;
@@ -543,12 +553,17 @@ export interface Repository {
   /** A caught screen error. Screen name, short message, and build only. */
   /** True when the row was stored. False leaves a local copy for a later launch. */
   logClientError(screen: string, message: string, appBuild: string): Promise<boolean>;
+  /** Stores one saved refresh failure. The line is already safe to keep. */
+  logAuthRefresh(line: string): Promise<boolean>;
+  /** Uploads refresh failures saved on this phone, once a user token works. */
+  flushAuthRefreshLog(): Promise<void>;
   /** Writes the ticked actions and the limits. It does not call the model. */
   saveHealthPlan(plan: HealthPlan): Promise<void>;
   /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
-  refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void>;
+  /** A notice is returned when our AI provider refused for billing and the plan was drafted without the model. */
+  refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<{ notice?: string } | void>;
   /** Sends a sanitised stats summary for a verdict. Metered on the plan allowance. Nothing is sent until this is called. */
-  analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }>;
+  analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local'; notice?: string }>;
   /** Saves the usual gym week, or clears it when null. */
   saveTrainingSchedule(schedule: import('@/domain/healthPlan').TrainingSchedule | null): Promise<void>;
   /** Adds a planned workout. The row stays on this account. */
@@ -583,9 +598,14 @@ export interface Repository {
   loadGarmin(): Promise<import('@/domain/garminConnect').GarminReadings>;
   /** Signed-in link to Garmin. Returns the authorise URL. */
   startGarminConnect(): Promise<string>;
-  /** Asks Garmin to drop the registration, then deletes the summaries. */
+  /** Asks Garmin to drop the registration and clears the connection. Saved readings stay until the account is deleted. */
   disconnectGarmin(): Promise<void>;
-  /** Asks Garmin to resend recent summaries. The phone does not receive a route. */
+  /**
+   * One Garmin activity's downsampled route track, read when its workout screen opens.
+   * Owner rows only. Null track when Garmin sent no samples for it.
+   */
+  garminActivityTrack(summaryId: string): Promise<GarminActivityTrack | null>;
+  /** Asks Garmin to resend recent summaries, including activity tracks. */
   refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }>;
   /** Reads Garmin's export list. The server skips this when it already asked today, unless force is set. */
   checkGarminPermissions(force?: boolean): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }>;
@@ -598,3 +618,10 @@ export interface Repository {
   /** Sends the StoreKit 2 signed transaction to the server and returns the stored row. */
   verifyOwnSubscription(jws: string): Promise<import('@/domain/subscription').SubscriptionRecord>;
 }
+
+/** A Garmin activity's stored track and its recorded climb. */
+export type GarminActivityTrack = {
+  track: { startedAt: string; points: readonly unknown[] } | null;
+  elevationGainMetres: number | null;
+  elevationLossMetres: number | null;
+};

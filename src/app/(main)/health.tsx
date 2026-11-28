@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, Platform, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -34,14 +34,12 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { loadLastSynced } from '@/health/syncedAt';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
 import { appleDayValues } from '@/domain/dailyActivity';
-import { garminStoredMark } from '@/domain/healthRefresh';
+import { garminStoredMark, latestGarminDailyDay } from '@/domain/healthRefresh';
 import { londonDay } from '@/domain/healthInsights';
 import { activeMinutesByDay } from '@/domain/healthSources';
 import { useHealthSources } from '@/health/useHealthSources';
 import { GarminTip } from '@/ui/GarminTip';
 import { HealthVisibility } from '@/ui/HealthVisibility';
-import { GoalLine } from '@/ui/GoalLine';
-import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { HealthStatBoard } from '@/ui/HealthStatBoard';
 import { HealthSectionShare } from '@/ui/SectionShare';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
@@ -52,11 +50,6 @@ import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { WeightWaistLink } from '@/ui/WeightWaistLink';
 import { healthStatsOmittedTiles, SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
-import { buildStatsOverview, HEALTH_LIFE_TILE_IDS } from '@/domain/statsOverview';
-import { StatTile } from '@/ui/StatTile';
-import { YourFitness } from '@/ui/YourFitness';
-import { DailyTargets } from '@/ui/DailyTargets';
-import { YourGoal } from '@/ui/YourGoal';
 import { WorkoutsLink } from '@/ui/WorkoutsLink';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
@@ -92,35 +85,30 @@ export default function Health() {
   const [period] = useStatPeriod();
   const { readings, samples: mergedHealth, workouts } = useHealthSources();
   const manual = useManualHealthRefresh(readings.connected);
-  const healthSamples = withPlannedMinutes(mergedHealth, snap.plannedSessions);
-  const activeSeries = readings.activities.length > 0 || readings.dailies.some((day) => day.moderateMinutes != null || day.vigorousMinutes != null)
-    ? activeMinutesByDay(healthSamples, readings.dailies)
-    : [];
-  const activeMinutes = activeSeries.length > 0 ? activeSeries : undefined;
+  const healthSamples = useMemo(
+    () => withPlannedMinutes(mergedHealth, snap.plannedSessions),
+    [mergedHealth, snap.plannedSessions],
+  );
+  const activeMinutes = useMemo(() => {
+    const activeSeries = readings.activities.length > 0 || readings.dailies.some((day) => day.moderateMinutes != null || day.vigorousMinutes != null)
+      ? activeMinutesByDay(healthSamples, readings.dailies)
+      : [];
+    return activeSeries.length > 0 ? activeSeries : undefined;
+  }, [healthSamples, readings]);
+  const stepSeries = useMemo(() => appleDayValues(snap.health, 'steps'), [snap.health]);
+  const restingSeries = useMemo(() => appleDayValues(snap.health, 'resting_heart_rate'), [snap.health]);
+  const hrvSeries = useMemo(() => appleDayValues(snap.health, 'hrv_sdnn'), [snap.health]);
+  const garminActivity = useMemo(() => readings.dailies.map((day) => ({
+    day: day.calendarDate,
+    moderateMinutes: day.moderateMinutes,
+    vigorousMinutes: day.vigorousMinutes,
+  })), [readings]);
+  const chartDay = londonDay(new Date());
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [turnOnNote, setTurnOnNote] = useState<string | null>(null);
   const [seeRequest, setSeeRequest] = useState(0);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
-  const profile = snap.profile;
-  const lifeTiles = profile ? buildStatsOverview({
-    now: new Date(),
-    period,
-    stage: profile.stage,
-    sobrietyStartedAt: profile.sobrietyStartedAt,
-    plannedQuitAt: profile.plannedQuitAt,
-    drinkFreeOn: profile.drinkFreeOn,
-    drinkFreeDaysGoal: profile.drinkFreeDaysGoal,
-    checkIns: snap.checkIns,
-    health: healthSamples,
-    heightCm: profile.heightCm,
-    nutrition: snap.nutrition,
-    foodLogs: snap.foodLogs,
-    waterDays: snap.waterDays,
-    bodyComposition: snap.bodyComposition,
-    gratitude: snap.gratitude,
-  }).filter((tile) => (HEALTH_LIFE_TILE_IDS as readonly string[]).includes(tile.id)) : [];
-
   const refreshLink = useCallback(() => {
     if (!ios) return;
     void readAppleHealthAccess().then(setAccess).catch(() => setAccess('prompt'));
@@ -330,6 +318,7 @@ export default function Health() {
         appleCheckedAt={manual.appleCheckedAt}
         garminConnected={readings.connected}
         garminReceivedAt={readings.lastPushAt}
+        latestDailyDay={latestGarminDailyDay(readings.dailies.map((day) => day.calendarDate))}
         garminMark={garminStoredMark(readings)}
         error={manual.error}
         permission={manual.permission}
@@ -359,15 +348,15 @@ export default function Health() {
       />
       <GarminTip />
       <MovementCharts
-        endDay={londonDay(new Date())}
-        steps={appleDayValues(snap.health, 'steps')}
-        restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
+        endDay={chartDay}
+        steps={stepSeries}
+        restingHeart={restingSeries}
         dailies={readings.dailies}
         sleep={readings.sleep}
         respiration={readings.respiration}
         pulseOx={readings.pulseOx}
         hrv={readings.hrv}
-        appleHrvSdnn={appleDayValues(snap.health, 'hrv_sdnn')}
+        appleHrvSdnn={hrvSeries}
         userMetrics={readings.userMetrics}
         bloodPressure={readings.bloodPressure}
         bodyComp={readings.bodyComp}
@@ -381,6 +370,7 @@ export default function Health() {
         sex={snap.nutrition.goalSex}
         goal={snap.nutrition.goal}
         showVo2Chart={false}
+        showIntensity={false}
       />
       <HealthVisibility
         report={visibility}
@@ -390,15 +380,6 @@ export default function Health() {
         onCheck={loadVisibility}
         onAsk={askUnasked}
       />
-      <Card>
-        <StatPeriodToggle />
-      </Card>
-      <Card>
-        <GoalLine />
-      </Card>
-      <YourGoal place="stats" />
-      <DailyTargets />
-      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
       <WorkoutsLink workouts={workouts} />
       <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
@@ -407,25 +388,25 @@ export default function Health() {
       <MoreInfo about="these figures">
         <T variant="muted">A plain look at the figures you already keep. The words say what the colour means.</T>
       </MoreInfo>
-      <View style={{ gap: 10, alignSelf: 'stretch' }}>
-        {lifeTiles.map((item) => (
-          <View key={item.id} style={{ alignSelf: 'stretch' }}>
-            <StatTile tile={item} plain />
-          </View>
-        ))}
-      </View>
       <HealthSectionShare />
       {SHOW_WEIGHT_SECTION ? <WeightWaistLink samples={healthSamples} /> : null}
       <HealthStatBoard
-        omitTiles={healthStatsOmittedTiles()}
+        omitTiles={[
+          ...healthStatsOmittedTiles(),
+          'vo2_max',
+          'mix',
+          'workouts',
+          'weekly_active_minutes',
+          'active_energy',
+        ]}
+        skipChartIds={['steps', 'resting_heart_rate', 'hrv_sdnn']}
         today={isoDay(new Date())}
         samples={healthSamples}
         activeMinutes={activeMinutes}
-        garminActivity={readings.dailies.map((day) => ({
-          day: day.calendarDate,
-          moderateMinutes: day.moderateMinutes,
-          vigorousMinutes: day.vigorousMinutes,
-        }))}
+        garminActivity={garminActivity}
+        userMetrics={readings.userMetrics}
+        garminHrv={readings.hrv}
+        garminResting={readings.dailies}
         body={snap.bodyComposition}
         activityEnergyKcal={snap.nutrition.activityEnergyKcal}
         heightCm={snap.profile?.heightCm ?? null}
@@ -438,7 +419,6 @@ export default function Health() {
         period={period}
         onTurnOn={turnOnMissing}
         onSaveBody={SHOW_WEIGHT_SECTION ? saveBodyGap : undefined}
-        onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)}
         onSetWorkoutBucket={setWorkoutBucket}
       />
       <HealthBoard
@@ -450,6 +430,7 @@ export default function Health() {
         adult={snap.profile?.ageConfirmed18 !== false}
         canSaveHeight={consent}
         omitKinds={['weight_kg']}
+        showMetrics={false}
       />
       <Card>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Or add a reading yourself</T>

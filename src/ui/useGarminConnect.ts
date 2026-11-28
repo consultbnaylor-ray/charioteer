@@ -123,6 +123,7 @@ export function useGarminConnect() {
 
   return {
     connected,
+    readings,
     needsPermissions: readings.needsPermissions,
     missingPermissions: readings.missingPermissions,
     pending,

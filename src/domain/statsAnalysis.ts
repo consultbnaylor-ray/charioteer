@@ -2,6 +2,7 @@ import type { GarminReadings } from '@/domain/garminConnect';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine } from '@/domain/fitnessGoal';
 import { COMPETITION_CUT_RULES, competitionCutActive } from '@/domain/targetWeight';
 import { athleticVo2Target, publishedCardioBand, vo2ForFitnessGoal } from '@/domain/fitnessSnapshot';
+import { currentRestingHeartRate, currentRestingLine } from '@/domain/currentResting';
 import { currentVo2Line, currentVo2Max } from '@/domain/currentVo2';
 import { vo2TargetReason } from '@/domain/goalProgress';
 import { heartRateMaxFrom } from '@/domain/trainingGuidance';
@@ -59,7 +60,7 @@ type BuildInput = {
   sex: NutritionSex | null;
   goal: NutritionGoal | null;
   heightCm: number | null;
-  samples: readonly { kind: string; value: number; recordedOn: string }[];
+  samples: readonly { id?: string; kind: string; value: number; recordedOn: string }[];
   readings: GarminReadings;
   targetWeightKg?: number | null;
   targetOn?: string | null;
@@ -321,7 +322,13 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
   });
   const latestVo2 = currentVo2?.value ?? null;
   const vo2Reading = currentVo2 ? currentVo2Line(currentVo2) : null;
-  const latestRest = [...dailies].filter((row) => row.restingHeartRateBpm != null).sort((a, b) => a.calendarDate.localeCompare(b.calendarDate)).at(-1)?.restingHeartRateBpm ?? null;
+  const currentRest = currentRestingHeartRate({
+    today: input.today,
+    garmin: dailies.map((row) => ({ day: row.calendarDate, value: row.restingHeartRateBpm })),
+    samples: input.samples,
+  });
+  const restingReading = currentRest ? currentRestingLine(currentRest) : null;
+  const latestRest = currentRest?.value ?? null;
   const latestComp = [...(readings.bodyComp ?? [])].sort((a, b) => a.calendarDate.localeCompare(b.calendarDate)).at(-1);
   const ctx: MetricContext = {
     age: input.age,
@@ -376,6 +383,23 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
   for (const [id, points, mode] of groups) {
     const made = statFrom(id, points, ctx, input.today, mode);
     if (!made) continue;
+    if (id === 'resting_heart_rate' && currentRest != null) {
+      const shown = currentRest.value;
+      const mark = goalMark(id, shown, ctx);
+      const reading = readingFor(id, shown, ctx);
+      const lever = reading.label === 'Fair' || reading.label === 'Poor' || (mark.goalGap != null && mark.goalGap > 0);
+      built.push({
+        ...made,
+        value: shown,
+        latest: shown,
+        rating: reading.pending ? 'No rating yet' as const : reading.label,
+        range: restingReading ?? made.range,
+        tip: lever ? (reading.tips[0] ?? '').slice(0, 180) || null : null,
+        goalTarget: mark.goalTarget,
+        goalGap: mark.goalGap,
+      });
+      continue;
+    }
     if (id !== 'vo2' || currentVo2 == null) {
       built.push(id === 'vo2' ? { ...made, value: null, goalTarget: null, goalGap: null } : made);
       continue;
@@ -448,10 +472,10 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     today: input.today,
     logs: input.logs ?? [],
     weightKg: currentKg,
-    calorieTarget: input.hideCalories ? null : (plan?.targetKcal ?? input.kcalTarget ?? null),
+    calorieTarget: plan?.targetKcal ?? input.kcalTarget ?? null,
     proteinTargetG: input.proteinTarget ?? null,
     goalProteinG: input.goal && currentKg != null ? proteinGramsFor(input.goal, currentKg, input.build ?? null, input.phase ?? null) : null,
-    hideCalories: input.hideCalories === true,
+    hideCalories: false,
   });
   return sanitizeStatsAnalysis({
     age: input.age,
@@ -461,6 +485,7 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     fitnessGoal: fitnessLabel,
     vo2Goal,
     vo2Reading,
+    restingReading,
     fuelNote: cutOn ? COMPETITION_CUT_RULES : fuelTradeOffLine(losing, input.fitnessGoal ?? 'normal'),
     competitionCut: cutOn,
     maxHeartRate,

@@ -1,9 +1,18 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { visionContextFrom } from '../_shared/visionBoard.ts';
-import { gateAiUse } from '../_shared/aiAllowance.ts';
+import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { xaiErrorText } from '../_shared/aiBilling.ts';
+import {
+  AI_UNAVAILABLE_CODE,
+  AI_UNAVAILABLE_MESSAGES,
+  classifyXaiFailure,
+  logAiUnavailable,
+  xaiFailureFromError,
+} from '../_shared/aiUnavailable.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
+import { coachRestingNote, garminRestingDays, healthWithRestingNote } from '../_shared/currentResting.ts';
 import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
 import {
   buildVoiceBriefing,
@@ -70,6 +79,8 @@ Deno.serve(async (req) => {
     kind: 'coach',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once xAI hands back a voice session.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes] = await Promise.all([
@@ -193,6 +204,11 @@ Deno.serve(async (req) => {
         consentHealth: profile.consent_health,
       })
     : [];
+  const garmin = await garminLinesFor(userClient, userId, {
+    consentAi: profile.consent_ai === true,
+    consentHealth: shareHealth,
+    personalDataEnabled,
+  }, healthToday, healthRows);
   const briefing = buildVoiceBriefing({
     requestedMode: body.mode,
     historyRows: (historyRes.data ?? []).map((row) => ({
@@ -208,7 +224,7 @@ Deno.serve(async (req) => {
       weeklySpendGbp: profile.weekly_spend_gbp == null ? null : Number(profile.weekly_spend_gbp),
       weeklyUnits: profile.weekly_units == null ? null : Number(profile.weekly_units),
       checkIns,
-      health,
+      health: healthWithRestingNote(health, garmin.restingNote),
       healthInsights,
       mode: 'steady',
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
@@ -222,11 +238,7 @@ Deno.serve(async (req) => {
       interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
       pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
       nutritionLines,
-      garminLines: await garminLinesFor(userClient, userId, {
-        consentAi: profile.consent_ai === true,
-        consentHealth: shareHealth,
-        personalDataEnabled,
-      }),
+      garminLines: garmin.lines,
       workoutReflections: await loadWorkoutReflections(userClient, userId, healthToday, garminAllowedForCoach({
         consentAi: profile.consent_ai === true,
         consentHealth: shareHealth,
@@ -235,19 +247,35 @@ Deno.serve(async (req) => {
     },
   });
 
-  const response = await fetch(GROK_VOICE.clientSecretUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ expires_after: { seconds: 300 } }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(GROK_VOICE.clientSecretUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ expires_after: { seconds: 300 } }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    const failure = xaiFailureFromError(error);
+    logAiUnavailable('thumos-voice-token', failure, failure);
+    return json({ ok: false, code: AI_UNAVAILABLE_CODE, reason: failure, message: AI_UNAVAILABLE_MESSAGES.voice }, 503);
+  }
   if (!response.ok) {
+    const reason = classifyXaiFailure(response.status, response.status === 402 ? null : await xaiErrorText(response));
+    if (reason) {
+      logAiUnavailable('thumos-voice-token', reason, response.status);
+      return json({ ok: false, code: AI_UNAVAILABLE_CODE, reason, message: AI_UNAVAILABLE_MESSAGES.voice }, 503);
+    }
     return json({ ok: false, code: 'upstream', message: 'Voice could not be started. Text chat is still here.' }, 502);
   }
   const payload = await response.json();
   if (!payload?.value) return json({ ok: false, code: 'upstream', message: 'Voice could not be started. Text chat is still here.' }, 502);
+  if (gate.ok) {
+    await countAiUse({ admin: createClient(url, service, { auth: { persistSession: false } }), userId, kind: 'coach', tier: gate.tier }).catch(() => false);
+  }
   return json({
     ok: true,
     token: payload.value,
@@ -264,8 +292,11 @@ async function garminLinesFor(
   userClient: SupabaseClient,
   userId: string,
   gate: { consentAi: boolean; consentHealth: boolean; personalDataEnabled: boolean },
-): Promise<string[]> {
-  if (!garminAllowedForCoach(gate)) return [];
+  today: string,
+  samples: readonly { kind: string; value: number; recordedOn: string }[],
+): Promise<{ lines: string[]; restingNote: string | null }> {
+  const appleOnly = () => coachRestingNote({ today, samples });
+  if (!garminAllowedForCoach(gate)) return { lines: [], restingNote: appleOnly() };
   const [dailies, activities, sleep] = await Promise.all([
     userClient.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').eq('user_id', userId).order('calendar_date'),
     userClient.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').eq('user_id', userId).order('started_at'),
@@ -276,16 +307,19 @@ async function garminLinesFor(
     || (activities.error && !missingRelation(activities.error.message))
     || (sleep.error && !missingRelation(sleep.error.message))
   ) {
-    return [];
+    return { lines: [], restingNote: appleOnly() };
   }
-  return garminCoachLines({
-    ...gate,
-    readings: readingsFromRows({
-      connected: true,
-      connectedAt: null,
-      dailies: dailies.data,
-      activities: activities.data,
-      sleep: sleep.data,
+  return {
+    lines: garminCoachLines({
+      ...gate,
+      readings: readingsFromRows({
+        connected: true,
+        connectedAt: null,
+        dailies: dailies.data,
+        activities: activities.data,
+        sleep: sleep.data,
+      }),
     }),
-  });
+    restingNote: coachRestingNote({ today, samples, garmin: garminRestingDays(dailies.data) }),
+  };
 }

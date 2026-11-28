@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Switch, useWindowDimensions, View } from 'react-native';
 
@@ -29,6 +29,7 @@ import {
   type WalkedPoint,
 } from '@/activity/walkedLine';
 import { useRepository, useSnapshot } from '@/data';
+import { SHOW_IN_APP_OUTING } from '@/domain/outsideSection';
 import {
   ACTIVITY_LOCATION_LINE,
   AUDIO_DUCK_LINE,
@@ -236,6 +237,18 @@ function oneParam(value: string | string[] | undefined): string | null {
 }
 
 export default function Activity() {
+  if (!SHOW_IN_APP_OUTING) return <ParkedOuting />;
+  return <ActivityScreen />;
+}
+
+function ParkedOuting() {
+  useEffect(() => {
+    stopRunningOuting();
+  }, []);
+  return <Redirect href="/outside" />;
+}
+
+function ActivityScreen() {
   const params = useLocalSearchParams<{ kind?: string; route?: string | string[]; made?: string | string[] }>();
   const opened = isActivityKind(params.kind) ? params.kind : 'walk';
   const askedRoute = oneParam(params.route);

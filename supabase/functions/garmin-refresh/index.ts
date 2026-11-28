@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
   }
 
   const decision = garminBackfillDecision(statuses);
-  if (garminAllHistoricalRefusal(statuses) && missing.length === 0) {
+  if (garminAllHistoricalRefusal(statuses, types) && missing.length === 0) {
     await rememberHistoryRefusal(admin, userId, now);
     return json(garminHistoryBody(), 200);
   }

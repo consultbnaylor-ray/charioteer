@@ -2,7 +2,7 @@
  * Subscription tiers and AI caps. One place to change the numbers.
  * Worst case assumes Apple's 30% and a max-length model call.
  * Day and month boundaries are Europe/London.
- * A free trial uses the limits of the plan being tried.
+ * A free trial or introductory offer has no AI credits (aiTierForSubscription) and the Standard route cap (storeTierForSubscription).
  */
 
 export const YEARLY_PRODUCT_ID = 'Sta';
@@ -43,6 +43,9 @@ export const CRISIS_STATIC_REPLY = [
   'If you might be in alcohol withdrawal, contact your GP or call NHS 111, and call 999 in an emergency.',
   'This note is the helpline signpost. It is not a reply from the coach.',
 ].join(' ');
+
+/** The calm note a free-trial user gets from every AI function. No model call is made and no credit is used. */
+export const TRIAL_AI_MESSAGE = 'AI features come with a subscription. They start when your free trial ends, and everything else in the app is yours to use now.';
 
 export function tierForProduct(productId: string | null | undefined): Tier | null {
   if (!productId) return null;
@@ -197,17 +200,40 @@ export function usageNearlyFull(used: number, limit: number): boolean {
   return used / limit > 0.8;
 }
 
+const CREDIT_NAME: Record<UsageKind, string> = {
+  coach: 'coach',
+  meal: 'meal-reading',
+  plan: 'health plan',
+};
+
+/** "at midnight" for a day cap. For a month cap the London date it resets, such as "on 1 Dec". */
+export function creditResetPhrase(window: 'day' | 'month', resetsAt: string): string {
+  if (window === 'day') return 'at midnight';
+  const when = new Date(resetsAt);
+  if (!resetsAt || Number.isNaN(when.getTime())) return 'at the start of next month';
+  const day = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' }).format(when);
+  return `on ${day}`;
+}
+
+/**
+ * The person used their own allowance. Says so plainly, names the next plan up,
+ * and when the credits come back. The top plan gets no upgrade line, only the reset.
+ * The "Upgrade to X for more." sentence is stripped on the phone for a comp.
+ */
 export function limitReachedMessage(input: {
   tier: Tier;
   window: 'day' | 'month';
   resetsAt: string;
+  kind?: UsageKind;
 }): string {
   const name = tierDisplayName(input.tier);
   const next = upgradeTier(input.tier);
-  const when = input.window === 'day' ? 'midnight' : 'the start of next month';
-  const period = input.window === 'day' ? "today's limit" : "this month's limit";
-  if (!next) return `You've reached ${period} on ${name}. It resets at ${when}.`;
-  return `You've reached ${period} on ${name}. It resets at ${when}. Upgrade to ${tierDisplayName(next)} for more.`;
+  const credits = input.kind ? `${CREDIT_NAME[input.kind]} credits` : 'AI credits';
+  const period = input.window === 'day' ? 'for today' : 'for this month';
+  const when = creditResetPhrase(input.window, input.resetsAt);
+  const used = `You've used all your ${credits} ${period} on ${name}.`;
+  if (!next) return `${used} ${name} is the top plan. Your credits reset ${when}.`;
+  return `${used} Upgrade to ${tierDisplayName(next)} for more. Your credits reset ${when}.`;
 }
 
 export function subscriptionRequiredMessage(): string {

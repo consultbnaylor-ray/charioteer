@@ -4,22 +4,20 @@ import type { HealthStatPeriod } from '@/domain/healthStatTiles';
 import { loadHealthStatPeriod, saveHealthStatPeriod } from '@/health/statPeriod';
 
 let current: HealthStatPeriod = '7';
-let loaded = false;
 const listeners = new Set<() => void>();
 
 function emit(): void {
   for (const listener of listeners) listener();
 }
 
+void loadHealthStatPeriod().then((saved) => {
+  if (saved === current) return;
+  current = saved;
+  emit();
+});
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  if (!loaded) {
-    loaded = true;
-    void loadHealthStatPeriod().then((saved) => {
-      current = saved;
-      emit();
-    });
-  }
   return () => {
     listeners.delete(listener);
   };

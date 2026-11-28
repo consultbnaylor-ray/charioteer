@@ -24,6 +24,8 @@ import { requestBadgeText } from '@/domain/connections';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { DismissKeyboard, dismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardDoneBar, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
+import { FaintGrid, HudCorners } from '@/ui/gridChrome';
+import { statsToneColors } from '@/ui/statsPalette';
 import { radius, stroke, useAppTheme, type Scheme } from '@/ui/theme';
 
 type Variant = 'hero' | 'display' | 'title' | 'body' | 'muted' | 'label';
@@ -35,6 +37,7 @@ export function T({
   numberOfLines,
   adjustsFontSizeToFit,
   minimumFontScale,
+  maxFontSizeMultiplier = 2,
 }: {
   variant?: Variant;
   style?: StyleProp<TextStyle>;
@@ -42,6 +45,8 @@ export function T({
   numberOfLines?: number;
   adjustsFontSizeToFit?: boolean;
   minimumFontScale?: number;
+  /** Caps the system text size. The sober ring passes 1 and applies Dynamic Type itself. */
+  maxFontSizeMultiplier?: number;
 }) {
   const theme = useAppTheme();
   const size = theme.scale;
@@ -61,7 +66,7 @@ export function T({
     },
   };
   return (
-    <Text maxFontSizeMultiplier={2} numberOfLines={numberOfLines} adjustsFontSizeToFit={adjustsFontSizeToFit} minimumFontScale={minimumFontScale} style={[styles[variant], style]}>
+    <Text maxFontSizeMultiplier={maxFontSizeMultiplier} numberOfLines={numberOfLines} adjustsFontSizeToFit={adjustsFontSizeToFit} minimumFontScale={minimumFontScale} style={[styles[variant], style]}>
       {children}
     </Text>
   );
@@ -165,7 +170,8 @@ export function Screen({
   const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0, offset: 0 });
   scrollHandle.current.setScrollEnabled = setPageScroll;
   return (
-    <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
+      <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
+      <FaintGrid />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -224,7 +230,7 @@ export function Screen({
       </View>
       </ScreenScrollContext.Provider>
       </KeyboardAvoidingView>
-    </View>
+      </View>
   );
 }
 
@@ -256,6 +262,7 @@ export function accentFrame(theme: AccentTheme, borderWidth: number, lift = true
     body: {
       borderRadius: Math.max(0, radius.md - borderWidth),
       overflow: 'hidden',
+      position: 'relative',
     },
   };
 }
@@ -266,6 +273,7 @@ export function Card({
   onPress,
   accessibilityLabel,
   featured = false,
+  compact = false,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -273,14 +281,29 @@ export function Card({
   accessibilityLabel?: string;
   /** A slightly heavier accent edge for a primary card, such as the sober card. */
   featured?: boolean;
+  /** Tighter padding for a tile that is mostly a number. */
+  compact?: boolean;
 }) {
   const theme = useAppTheme();
   const flat = StyleSheet.flatten(style) ?? {};
   const borderWidth = typeof flat.borderWidth === 'number' ? flat.borderWidth : featured ? stroke.featured : stroke.card;
+  const borderColor = typeof flat.borderColor === 'string' ? flat.borderColor : theme.colors.accent;
   const chrome = accentFrame(theme, borderWidth);
-  const box = [chrome.frame, style];
-  const inner = <View style={[styles.cardBody, chrome.body]}>{children}</View>;
-  if (!onPress) return <View style={box}>{inner}</View>;
+  const box = [chrome.frame, { position: 'relative' as const }, style];
+  const inner = (
+    <View style={[styles.cardBody, chrome.body, compact ? { padding: 12, gap: 6 } : null]}>
+      <FaintGrid />
+      {children}
+    </View>
+  );
+  if (!onPress) {
+    return (
+      <View style={box}>
+        <HudCorners color={borderColor} />
+        {inner}
+      </View>
+    );
+  }
   return (
     <Pressable
       accessibilityRole="button"
@@ -288,6 +311,7 @@ export function Card({
       onPress={onPress}
       style={({ pressed }) => [box, { opacity: pressed ? 0.86 : 1 }]}
     >
+      <HudCorners color={borderColor} />
       {inner}
     </Pressable>
   );
@@ -401,7 +425,7 @@ export function Button({
 }: {
   label: string;
   onPress: () => void;
-  tone?: 'primary' | 'quiet' | 'sos';
+  tone?: 'primary' | 'quiet' | 'sos' | 'success';
   disabled?: boolean;
   pending?: boolean;
   /** Shown beside the spinner while the press is in flight. */
@@ -413,13 +437,17 @@ export function Button({
   const theme = useAppTheme();
   const inactive = Boolean(disabled || pending);
   const reason = disabled && !pending ? disabledReason?.trim() : '';
+  const good = statsToneColors(theme.scheme).good;
   // Primary is a solid fill: light with dark text in the dark theme, dark with light text in the light theme.
   // Quiet is an outline on the card, so a secondary action is not mistaken for a switched-off control.
+  // Success stays full colour when it is holding a saved state, so it does not look switched off.
   const tones = {
     primary: { bg: theme.colors.ink, fg: theme.colors.bg, border: 'transparent' },
     quiet: { bg: 'transparent', fg: theme.colors.ink, border: theme.colors.ink },
     sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk, border: 'transparent' },
+    success: { bg: good.bg, fg: good.ink, border: 'transparent' },
   }[tone];
+  const lit = tone === 'success' && Boolean(disabled) && !pending;
   const textStyle = [styles.buttonText, { color: tones.fg, fontFamily: theme.font.bodyStrong, fontSize: 16 * theme.scale }];
   return (
     <View style={{ gap: 6 }}>
@@ -439,7 +467,7 @@ export function Button({
             backgroundColor: tones.bg,
             borderColor: tones.border,
             borderWidth: tone === 'quiet' ? stroke.control : 0,
-            opacity: inactive ? 0.45 : pressed ? 0.86 : 1,
+            opacity: lit ? 1 : inactive ? 0.45 : pressed ? 0.86 : 1,
           },
         ]}
       >
@@ -621,6 +649,14 @@ export function CountBadge({ count }: { count: number }) {
   );
 }
 
+function GoodCheck() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M5 12.5 9.2 16.7 19 7" stroke="#FFFFFF" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 export function Choice({
   label,
   selected,
@@ -632,8 +668,8 @@ export function Choice({
   label: string;
   selected: boolean;
   onPress: () => void;
-  /** `alert` is the danger red, used when something is waiting. The label or badge carries the number. */
-  tone?: 'default' | 'alert';
+  /** `alert` is the danger red, used when something is waiting. The label or badge carries the number. `good` is a filled green check when it is on. */
+  tone?: 'default' | 'alert' | 'good';
   /** Unread count drawn as a numbered danger pill beside the label. */
   badge?: number;
   /**
@@ -645,6 +681,7 @@ export function Choice({
 }) {
   const theme = useAppTheme();
   const alert = tone === 'alert';
+  const goodOn = tone === 'good' && selected;
   const choose = () => {
     onPress();
     dismissKeyboard();
@@ -653,7 +690,7 @@ export function Choice({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected }}
+      accessibilityState={tone === 'good' ? { selected, checked: selected } : { selected }}
       onPressIn={selectOnPressIn ? choose : undefined}
       onPress={() => {
         if (selectOnPressIn) {
@@ -666,15 +703,21 @@ export function Choice({
       style={[
         styles.choice,
         {
-          borderColor: alert ? theme.colors.danger : selected ? theme.colors.ink : theme.colors.line,
-          backgroundColor: selected ? theme.colors.emphasisSoft : theme.colors.surface,
+          borderColor: alert ? theme.colors.danger : goodOn ? '#047857' : selected ? theme.colors.ink : theme.colors.line,
+          backgroundColor: goodOn ? '#047857' : selected ? theme.colors.emphasisSoft : theme.colors.surface,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 8,
         },
       ]}
     >
-      <Text style={{ fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      {/*
+        The words stay at their own width. flex:1 sets flexBasis to 0, so a
+        shrink-wrapped pill clips the label and the row opens into a blank gap.
+      */}
+      <Text style={{ fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : goodOn ? '#FFFFFF' : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      {goodOn || badge > 0 ? <View style={styles.choiceSpacer} /> : null}
+      {goodOn ? <GoodCheck /> : null}
       <CountBadge count={badge} />
     </Pressable>
   );
@@ -726,6 +769,7 @@ const styles = StyleSheet.create({
   passwordRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 0, paddingRight: 4, paddingLeft: 0 },
   passwordInput: { flex: 1, borderWidth: 0, backgroundColor: 'transparent', paddingLeft: 16, paddingRight: 4, paddingVertical: 12 },
   passwordToggle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  choice: { borderWidth: stroke.control, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 10, minHeight: 44, justifyContent: 'center', overflow: 'hidden' },
+  choice: { borderWidth: stroke.control, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 10, minHeight: 44, justifyContent: 'center', overflow: 'hidden', flexGrow: 0 },
+  choiceSpacer: { flexGrow: 1, flexShrink: 0 },
   note: { borderRadius: radius.sm, borderLeftWidth: 3, padding: 14 },
 });

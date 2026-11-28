@@ -49,7 +49,8 @@ describe('saved routes in build 75', () => {
     expect(ADJUST_SENDS).toBe('Adjusting sends the start, the destination, and any points you add. It does not send the whole saved line.');
     expect(DELETE_THIS_ROUTE).toBe('Delete this route?');
     expect(DELETE_REMOVES).toBe('This removes the saved route from your account.');
-    expect(LINE_NOT_KEPT).toBe('The line is not kept. The name, distance, and time stay on your account.');
+    // Ben, 27 November 2026 (t1135u): saved routes keep the line; older ones say so.
+    expect(LINE_NOT_KEPT).toBe('Line not saved for this older route.');
     expect(openLabel('Canal loop')).toBe('Open Canal loop');
     expect(SAVED_ROUTE_MAP_LABEL).toBe('Map with the saved route');
     expect(ROUTE_NAME_FIELD).toBe('Route name');
@@ -199,10 +200,12 @@ describe('saved routes in build 75', () => {
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const card = maker.slice(maker.indexOf("variant=\"title\">{craving"));
-    expect(card.indexOf('formatClimb(plan.ascentM)')).toBeLessThan(card.indexOf("startLabel('walk')"));
+    expect(card.indexOf('<RouteSnapSummary plan={plan} />')).toBeLessThan(card.indexOf("startLabel('walk')"));
     expect(card.indexOf("startLabel('walk')")).toBeLessThan(card.indexOf("startLabel('run')"));
     expect(card.indexOf("startLabel('run')")).toBeLessThan(card.indexOf("startLabel('cycle')"));
-    expect(card.indexOf("startLabel('cycle')")).toBeLessThan(card.indexOf('{ADJUST_THE_ROUTE}'));
+    // The made-route card has no Adjust the route panel since Add a point was removed; the map follows the start buttons.
+    expect(card.indexOf("startLabel('cycle')")).toBeLessThan(card.indexOf('accessibilityLabel="Route line"'));
+    expect(card).not.toContain('ADJUST_THE_ROUTE');
     expect(maker).toContain('!craving && plan.points.length >= 2');
     expect(maker).toContain("holdMadeRoute({ title: title.trim() || 'My route', kind, points: line.points })");
     expect(maker).toContain('`/activity?kind=${kind}&made=${Date.now()}`');

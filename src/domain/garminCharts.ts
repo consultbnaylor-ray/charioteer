@@ -877,7 +877,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
   epochs.note = GARMIN_EPOCH_EXPLAIN;
   add(epochs);
   add(metricChart(input, 'move_iq', 'Move IQ', 'min', dailyNumber(input.moveIq ?? [], (row) => (row.durationSeconds == null ? null : row.durationSeconds / 60)), 'Move IQ is movement Garmin noticed without a started activity, in minutes. Not medical advice.'));
-  add(metricChart(input, 'activity_detail', 'Activity detail', 'min', dailyNumber(input.activityDetails ?? [], (row) => (row.durationSeconds == null ? null : row.durationSeconds / 60)), 'Activity detail is the length Garmin stored for a recorded activity, in minutes. The sample trace is not kept. Not medical advice.'));
+  add(metricChart(input, 'activity_detail', 'Activity detail', 'min', dailyNumber(input.activityDetails ?? [], (row) => (row.durationSeconds == null ? null : row.durationSeconds / 60)), 'Activity detail is the length Garmin stored for a recorded activity, in minutes. The route track is used only for the route map of that workout. Not medical advice.'));
   return charts;
 }
 
@@ -946,7 +946,7 @@ export const GARMIN_CARD_CATALOGUE: readonly { id: string; title: string; unit: 
   { id: 'snapshot_heart', title: 'Health snapshot', unit: 'bpm', line: 'Health snapshot is a short Garmin check of heart rate, oxygen, and breathing.' },
   { id: 'epoch_minutes', title: 'Epochs', unit: 'min', line: GARMIN_EPOCH_EXPLAIN },
   { id: 'move_iq', title: 'Move IQ', unit: 'min', line: 'Move IQ is movement Garmin noticed without a started activity.' },
-  { id: 'activity_detail', title: 'Activity detail', unit: 'min', line: 'Activity detail is the length Garmin stored for a recorded activity. The sample trace is not kept.' },
+  { id: 'activity_detail', title: 'Activity detail', unit: 'min', line: 'Activity detail is the length Garmin stored for a recorded activity. The route track is used only for the route map of that workout.' },
 ];
 
 /** Empty cards for Garmin metrics that have not arrived. Each one is a real chart, rated from the registry. */

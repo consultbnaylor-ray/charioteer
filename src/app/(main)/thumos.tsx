@@ -28,6 +28,7 @@ import { VOICE_ENABLED } from '@/domain/voiceFlag';
 import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domain/voiceSession';
 import { briefingFromSnapshot } from '@/voice/briefing';
 import { VoiceCall } from '@/voice/call';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { PausedCoachingLink } from '@/ui/PausedCoachingLink';
 import { markThumosIntroSeen, thumosIntroSeen } from '@/ui/thumosIntroMemory';
@@ -463,20 +464,15 @@ function Bubble({ mine, text }: { mine: boolean; text: string }) {
 }
 
 function EarlierDay({ heading, messages }: { heading: string; messages: ThumosMessage[] }) {
-  const theme = useAppTheme();
   const [open, setOpen] = useState(false);
   return (
     <View style={{ width: '100%', gap: 4 }}>
-      <Pressable
-        accessibilityRole="button"
+      <ExpandableRow
+        label={heading}
         accessibilityLabel={heading}
-        accessibilityState={{ expanded: open }}
-        aria-expanded={open}
+        expanded={open}
         onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, justifyContent: 'center' }}
-      >
-        <T style={{ fontFamily: theme.font.bodyStrong }}>{heading}</T>
-      </Pressable>
+      />
       {open ? messages.map((message) => (
         <Bubble key={message.id} mine={message.role === 'user'} text={message.content} />
       )) : null}

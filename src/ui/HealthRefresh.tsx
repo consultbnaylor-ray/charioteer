@@ -5,9 +5,11 @@ import { useRepository, useSnapshot } from '@/data';
 import {
   GARMIN_ASKED,
   GARMIN_CHECK_AGAIN,
+  GARMIN_PAST_REFUSED,
   GARMIN_RECENT,
   garminAlreadySentLine,
   garminHintLine,
+  garminWatchLinkDue,
   garminRefreshFace,
   REFRESH_FAILED,
   SYNC_REFRESH,
@@ -25,6 +27,7 @@ import {
 } from '@/domain/healthRefresh';
 import { noteGarminRefreshRefused } from '@/domain/garminPermission';
 import { GarminConnectNudge } from '@/ui/GarminConnectNudge';
+import { GarminWatchLinkNote } from '@/ui/GarminWatchLinkNote';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
 import { refreshAppleHealth } from '@/health/catchUp';
 import { reloadHealthSources } from '@/health/useHealthSources';
@@ -74,6 +77,7 @@ export function useManualHealthRefresh(garminConnected: boolean) {
         const garmin = await repo.refreshGarmin();
         if (garmin.code === 'history') {
           setHistory(true);
+          setGarminNote(GARMIN_PAST_REFUSED);
         } else if (!garmin.ok) {
           if (garmin.code === 'permission') {
             setPermission(true);
@@ -112,6 +116,7 @@ export function HealthRefreshBar({
   appleCheckedAt,
   garminConnected,
   garminReceivedAt,
+  latestDailyDay = null,
   garminMark,
   error,
   permission,
@@ -122,6 +127,7 @@ export function HealthRefreshBar({
   appleCheckedAt: string | null;
   garminConnected: boolean;
   garminReceivedAt: string | null;
+  latestDailyDay?: string | null;
   garminMark: string;
   error: string | null;
   permission?: boolean;
@@ -233,7 +239,15 @@ export function HealthRefreshBar({
           </Pressable>
         ) : null}
       </View>
-      {garminConnected ? <GarminConnectNudge receivedAt={receivedAt} now={Date.now()} /> : null}
+      {garminConnected ? (
+        <GarminWatchLinkNote connected lastPushAt={receivedAt} latestDailyDay={latestDailyDay ?? null} />
+      ) : null}
+      {garminConnected && !garminWatchLinkDue({
+        connected: true,
+        lastPushAt: receivedAt,
+        latestDailyDay: latestDailyDay ?? null,
+        now: Date.now(),
+      }) ? <GarminConnectNudge receivedAt={receivedAt} now={Date.now()} /> : null}
       {garminConnected ? (
         <MoreInfo about="how Garmin sends data">
           <T variant="muted">{garminHintLine(receivedAt, Date.now())}</T>

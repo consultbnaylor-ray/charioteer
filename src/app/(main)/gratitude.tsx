@@ -44,6 +44,8 @@ type ReflectState = {
   entryId: string;
   comment: string;
   suggestions: { text: string; added: boolean }[];
+  /** Our AI provider refused for billing, so the reflection is the built-in one. */
+  notice?: string;
 };
 
 type PendingPhoto = { entryId: string; bytes: Uint8Array; previewUri: string };
@@ -233,9 +235,10 @@ export default function GratitudeDiary() {
           text,
           added: entries.some((item) => sameGratitudeBody(item.body, text)),
         })),
+        ...(result.notice ? { notice: result.notice } : {}),
       });
     } catch (err) {
-      setError(shownError(err, 'Could not reflect just now.'));
+      setError(shownError(err, 'Could not reflect just now.') || null);
     } finally {
       setReflectingId(null);
     }
@@ -502,6 +505,7 @@ export default function GratitudeDiary() {
                 {reflect?.entryId === entry.id ? (
                   <View style={{ gap: 8 }}>
                     <T>{reflect.comment}</T>
+                    {reflect.notice ? <T variant="muted">{reflect.notice}</T> : null}
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                       {reflect.suggestions.map((suggestion) => (
                         <Choice

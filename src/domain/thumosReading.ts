@@ -1,5 +1,6 @@
 import { dedupeAdviceLines } from '@/domain/adviceDedupe';
 import { healthSampleChart } from '@/domain/chartSeries';
+import { currentRestingHeartRate, currentRestingLine } from '@/domain/currentResting';
 import { currentVo2Line, currentVo2Max } from '@/domain/currentVo2';
 import { buildFitnessSnapshot, periodActiveMinutes, publishedCardioBand, vo2AthleticShortfall, vo2JudgementLine } from '@/domain/fitnessSnapshot';
 import { stepResearchBand } from '@/domain/garminCharts';
@@ -172,6 +173,10 @@ export type ThumosReadingInput = {
   /** `latest VO2 max 44.0 (Garmin, 29 Oct)` when the selector has a reading. */
   vo2Reading?: string | null;
   restingBpm: number | null;
+  /** `latest resting heart rate 52 bpm (Garmin, 20 Nov)` when the selector has a reading. */
+  restingLine?: string | null;
+  /** ISO day of that reading, so the date in the line is not treated as an invented number. */
+  restingDay?: string | null;
   build: BodyBuild | null;
   /** Earlier stored reading, when a second one exists. Null when there is only one. */
   bodyFatEarlier?: number | null;
@@ -291,7 +296,8 @@ function factSentences(input: ThumosReadingInput): string[] {
   if (input.targetKg != null && input.targetKg > 0) lines.push(`The target chosen is ${shown(input.targetKg)} kg.`);
   if (input.vo2Reading) lines.push(`${input.vo2Reading}.`);
   else if (input.vo2 != null) lines.push(`VO2 max is ${shown(input.vo2)} ml/kg/min.`);
-  if (input.restingBpm != null) lines.push(`Resting heart rate is ${shown(input.restingBpm)} bpm.`);
+  if (input.restingLine) lines.push(input.restingLine.endsWith('.') ? input.restingLine : `${input.restingLine}.`);
+  else if (input.restingBpm != null) lines.push(`Resting heart rate is ${shown(input.restingBpm)} bpm.`);
   return lines;
 }
 
@@ -348,6 +354,8 @@ function allowedNumbers(input: ThumosReadingInput): Set<string> {
   add(input.targetKg);
   add(input.vo2);
   add(input.restingBpm);
+  const dayNumber = input.restingDay?.slice(8, 10);
+  if (dayNumber) allowed.add(String(Number(dayNumber)));
   return allowed;
 }
 
@@ -699,6 +707,8 @@ function windowMean(samples: readonly { kind: string; value: number; recordedOn:
 
 export type NoteFigures = {
   restingBpm: number | null;
+  restingLine: string | null;
+  restingDay: string | null;
   sleepHours: number | null;
   steps: number | null;
   stepsDaily: number | null;
@@ -719,7 +729,7 @@ export type NoteFigures = {
 
 /** Same window as Your Fitness, Heart, Sleep, and the steps tile. Cardio mix minutes are not used. */
 export function figuresForNote(input: {
-  samples: readonly { kind: string; value: number; recordedOn: string; source?: string }[];
+  samples: readonly { id?: string; kind: string; value: number; recordedOn: string; source?: string }[];
   today: string;
   period?: StatPeriod;
   goalAge?: number | null;
@@ -756,7 +766,7 @@ export function figuresForNote(input: {
     workoutBuckets: input.workoutBuckets ?? null,
     period,
   });
-  const restingMatch = fitness.resting?.reading?.match(/[\d.]+/);
+  const resting = currentRestingHeartRate({ today: input.today, samples: prepared });
   const sleep = windowMean(input.samples, 'sleep_hours', input.today, period);
   const steps = windowMean(input.samples, 'steps', input.today, period);
   const stepsDaily = steps.days ? Math.round(steps.total / steps.days) : null;
@@ -774,7 +784,9 @@ export function figuresForNote(input: {
   const weekly = input.scheduleWeekMinutes != null && input.scheduleWeekMinutes > 0 ? input.scheduleWeekMinutes : CMO_MODERATE_MINUTES_WEEK;
   const minutes = fitness.minutes?.centre != null ? Number(fitness.minutes.centre) : active.minutes;
   return {
-    restingBpm: restingMatch ? Math.round(Number(restingMatch[0])) : null,
+    restingBpm: resting?.value ?? null,
+    restingLine: resting ? currentRestingLine(resting) : null,
+    restingDay: resting?.day ?? null,
     sleepHours: sleep.mean == null ? null : Math.round(sleep.mean * 10) / 10,
     steps: steps.days ? Math.round(steps.total) : null,
     stepsDaily,

@@ -92,6 +92,7 @@ export function garminActiveKcal(value: number | null | undefined): number | nul
 /**
  * One value per day, oldest first.
  * `apple` uses Apple Health when that day is above zero, and Garmin only when Apple is missing.
+ * `garmin` uses Garmin when that day has a reading, and Apple Health only when Garmin is missing.
  * `higher` uses the larger daily total. The two sources are never added.
  */
 export function dailyActivitySeries(
@@ -100,7 +101,7 @@ export function dailyActivitySeries(
   apple: readonly AppleDayValue[],
   garmin: ReadonlyMap<string, number>,
   labelFor: (day: string, value: number, source: ActivitySource | null) => string,
-  pick: 'apple' | 'higher' = 'apple',
+  pick: 'apple' | 'higher' | 'garmin' = 'apple',
 ): DailyActivityPoint[] {
   const appleByDay = new Map<string, number>();
   for (const row of apple) {
@@ -112,7 +113,7 @@ export function dailyActivitySeries(
     const garminRaw = garmin.get(day);
     const appleValue = appleRaw != null && appleRaw > 0 ? Math.round(appleRaw) : null;
     const garminValue = garminRaw != null && garminRaw > 0 ? Math.round(garminRaw) : null;
-    const useGarmin = garminValue != null && (appleValue == null || (pick === 'higher' && garminValue > appleValue));
+    const useGarmin = garminValue != null && (appleValue == null || pick === 'garmin' || (pick === 'higher' && garminValue > appleValue));
     if (useGarmin && garminValue != null) {
       return { day, value: garminValue, source: 'garmin' as const, label: labelFor(day, garminValue, 'garmin') };
     }
@@ -389,6 +390,47 @@ export function distanceText(metres: number): string {
   return `${Math.round(metres)} m`;
 }
 
+export type WeekDistanceSummary = {
+  totalMetres: number;
+  total: string;
+  /** Null when every day in view is still an open part-day. */
+  average: string | null;
+  /** One line. "Today so far" appears only for an open today, never for a past day. */
+  line: string;
+};
+
+/**
+ * Week total uses every day that has a distance.
+ * The daily average uses full days only: a today that is still before 5pm London stays out.
+ */
+export function weekDistanceSummary(
+  points: readonly { day: string; value: number; empty?: boolean }[],
+  today: string,
+  now: Date = new Date(),
+): WeekDistanceSummary | null {
+  const valued = points.filter((point) => point.value > 0 && point.empty !== true);
+  if (!valued.length) return null;
+  const totalMetres = valued.reduce((sum, point) => sum + point.value, 0);
+  const full = valued.filter((point) => viewedDayHeading(point.day, today, now) !== 'Today so far');
+  const average = full.length
+    ? distanceText(full.reduce((sum, point) => sum + point.value, 0) / full.length)
+    : null;
+  const best = valued.reduce((top, point) => (point.value > top.value ? point : top));
+  const todayPoint = valued.find((point) => point.day === today) ?? null;
+  let line = `Best day ${distanceText(best.value)} on ${activityDayName(best.day)}.`;
+  if (todayPoint && todayPoint.day !== best.day) {
+    const heading = viewedDayHeading(todayPoint.day, today, now);
+    if (heading === 'Today so far') line += ` Today ${distanceText(todayPoint.value)} so far.`;
+    else if (heading === 'Today') line += ` Today ${distanceText(todayPoint.value)}.`;
+  }
+  return {
+    totalMetres,
+    total: distanceText(totalMetres),
+    average: average ? `${average}/day avg` : null,
+    line,
+  };
+}
+
 export function distanceSeries(
   endDay: string,
   span: number,
@@ -419,7 +461,7 @@ export function restingSeries(
 ): DailyActivityPoint[] {
   return dailyActivitySeries(endDay, span, apple, garminNumber(dailies, (daily) => daily.restingHeartRateBpm), (day, value, source) => (
     sourced('Resting heart rate', day, String(value), 'bpm', source)
-  ));
+  ), 'garmin');
 }
 
 export function seriesHasValue(points: readonly { value: number }[]): boolean {
@@ -492,6 +534,82 @@ export function activityAxisPlan(days: readonly string[]): ActivityAxisMark[] {
   });
   const visible = new Set(dropOverlappingAxisMarks(marks, count).map((mark) => mark.index));
   return marks.map((mark) => (visible.has(mark.index) ? mark : { ...mark, label: '' }));
+}
+
+export type ActivityBarAxis = {
+  /** One slot per day. Blank when that day is thinned off a long axis. */
+  labels: string[];
+  /** Monday on a month chart, or the 1st on a longer chart. */
+  dividers: number[];
+};
+
+/**
+ * Labels under one bar per day.
+ * A week uses weekday initials. Longer ranges use the thinned dates from `activityAxisPlan`.
+ */
+export function activityBarAxis(days: readonly string[]): ActivityBarAxis {
+  if (days.length <= 7) {
+    return { labels: days.map((day) => weekdayShort(day).slice(0, 1)), dividers: [] };
+  }
+  const plan = activityAxisPlan(days);
+  const labels = days.map(() => '');
+  const dividers: number[] = [];
+  for (const mark of plan) {
+    if (mark.index < 0 || mark.index >= days.length) continue;
+    if (mark.label) labels[mark.index] = mark.label;
+    if (mark.divider) dividers.push(mark.index);
+  }
+  return { labels, dividers };
+}
+
+export type ActivityFullDayStats = {
+  /** Total of the finished days that count. Null when none do. */
+  sum: number | null;
+  /** Mean of those days. A stored zero counts. Today does not. */
+  average: number | null;
+  days: number;
+};
+
+function activityReadingStarted(point: { value: number; empty?: boolean; source?: ActivitySource | null }): boolean {
+  if (point.empty) return false;
+  if (point.value > 0) return true;
+  return point.source != null;
+}
+
+/**
+ * Finished days for a range average.
+ * Today is still open, so it stays out.
+ * Days before the first stored reading stay out too: a 90-day chart must not treat
+ * unloaded history as a run of zeros. After that first reading, a quiet day counts as zero
+ * for a daily total (steps, minutes, distance). A rate such as resting heart rate skips
+ * those quiet days: a missing bpm is not zero.
+ */
+export function activityFullDayStats(
+  points: readonly { day: string; value: number; empty?: boolean; source?: ActivitySource | null }[],
+  today: string,
+  quietDays: 'zero' | 'skip' = 'zero',
+): ActivityFullDayStats {
+  let earliest = '';
+  for (const point of points) {
+    if (!activityReadingStarted(point)) continue;
+    if (!earliest || point.day < earliest) earliest = point.day;
+  }
+  if (!earliest) return { sum: null, average: null, days: 0 };
+  const finished = points.filter((point) => {
+    if (!(point.day < today) || point.day < earliest || !Number.isFinite(point.value)) return false;
+    if (quietDays === 'skip') return activityReadingStarted(point) && point.value > 0;
+    return true;
+  });
+  if (finished.length === 0) return { sum: null, average: null, days: 0 };
+  const sum = finished.reduce((total, point) => total + (point.empty || !(point.value > 0) ? 0 : point.value), 0);
+  return { sum, average: sum / finished.length, days: finished.length };
+}
+
+/** "Average 8 min a day over 6 full days." Today is not named. */
+export function activityAverageLine(average: number | null, days: number, amount: string): string {
+  if (average == null || days <= 0) return 'Not enough finished days for an average yet.';
+  const noun = days === 1 ? 'day' : 'days';
+  return `Average ${amount} a day over ${days} full ${noun}.`;
 }
 
 function axisDayParts(day: string): { month: number; date: number; weekday: number } | null {

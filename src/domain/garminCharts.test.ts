@@ -80,7 +80,8 @@ describe('garmin charts follow the shared period', () => {
     }
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('showVo2Chart={false}');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).not.toContain('<MovementCharts');
-    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<Vo2MaxChart');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).not.toContain('YourFitness');
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).not.toContain('function Vo2MaxChart');
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain("chart.id !== 'vo2'");
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('span={span}');
     expect(readFileSync('src/domain/garminCharts.ts', 'utf8')).not.toMatch(/latitude|longitude|maxStress/);
@@ -356,7 +357,7 @@ describe('garmin chart bands', () => {
     }
     const activity = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     const careAt = activity.indexOf('<CareLine text={guide.care}');
-    const moreAt = activity.indexOf('<MoreInfo about={title}');
+    const moreAt = activity.indexOf('<DataMeaning about={title}');
     const warningAt = activity.indexOf('guide?.warning');
     expect(careAt).toBeGreaterThan(moreAt);
     expect(warningAt).toBeGreaterThan(-1);

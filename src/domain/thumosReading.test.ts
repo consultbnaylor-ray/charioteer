@@ -237,7 +237,7 @@ describe('on-phone Thumos reading note', () => {
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('authorize: false');
     expect(THUMOS_ANALYSE_AGAIN).toBe('Have Thumos analyse your data again');
     expect(readFileSync('src/domain/scaleReading.ts', 'utf8')).toContain("export const SCALE_FROM_SCALES = 'From your smart scales';");
-    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).not.toContain('ThumosReadingComment');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).not.toContain('ThumosReadingComment');
     expect(APPLE_HEALTH_READ_TYPES).not.toContain('HKQuantityTypeIdentifierBodyMassIndex');
     expect(readFileSync('app.json', 'utf8')).not.toContain('metabolic age');
     expect(THUMOS_READING_LABEL).toBe('Thumos');
@@ -294,7 +294,19 @@ describe('on-phone Thumos reading note', () => {
     expect(figures.workoutMinutes7).toBe(40);
     expect(figures.cardioMinutes7).toBeNull();
     expect(figures.strengthRecorded).toBe(false);
-    expect(figures.restingBpm).not.toBe(59);
+    expect(figures.restingBpm).toBe(59);
+    expect(figures.restingLine).toBe('latest resting heart rate 59 bpm (Apple Health, 27 Oct)');
+    const garminLatest = figuresForNote({
+      samples: [
+        { id: 'merged:resting_heart_rate:2026-10-27', kind: 'resting_heart_rate', value: 52, recordedOn: today },
+        { kind: 'resting_heart_rate', value: 59, recordedOn: `${today}T08:00:00Z` },
+        { kind: 'resting_heart_rate', value: 64, recordedOn: '2026-10-26' },
+      ],
+      today,
+      period: '7',
+    });
+    expect(garminLatest.restingBpm).toBe(52);
+    expect(garminLatest.restingLine).toBe('latest resting heart rate 52 bpm (Garmin, 27 Oct)');
     const note = thumosReadingComment(sample({
       ...figures,
       storedDayCount: 7,

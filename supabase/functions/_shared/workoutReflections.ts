@@ -108,7 +108,7 @@ export function buildWorkoutReflections(input: {
     .slice()
     .sort((left, right) => rank(right).localeCompare(rank(left)))
     .slice(0, WORKOUT_REFLECTION_LIMIT)
-    .map((row) => sessionLine(row, sleepByDay.get(row.day) ?? null, mealsBefore(input.meals, row), input.hideCalories === true));
+    .map((row) => sessionLine(row, sleepByDay.get(row.day) ?? null, mealsBefore(input.meals, row)));
   return trend ? [trend, ...lines] : lines;
 }
 
@@ -176,7 +176,7 @@ function effortTrend(rows: readonly Draft[], sleepByDay: ReadonlyMap<string, num
   return `Average effort ${mean(rested)} after 7h or more of sleep (${rested.length} sessions), and ${mean(short)} after less (${short.length}).`;
 }
 
-function sessionLine(row: Draft, sleepHours: number | null, meals: { count: number; kcal: number }, hideCalories: boolean): string {
+function sessionLine(row: Draft, sleepHours: number | null, meals: { count: number; kcal: number }): string {
   const head = [formatUkCompactDay(row.day)];
   const detail = [row.type, row.durationMinutes != null ? `${row.durationMinutes} min` : ''].filter(Boolean);
   if (detail.length) head.push(detail.join(', '));
@@ -186,7 +186,7 @@ function sessionLine(row: Draft, sleepHours: number | null, meals: { count: numb
   if (sleepHours != null) bits.push(`Sleep the night before ${formatHours(sleepHours)} h`);
   if (meals.count > 0) {
     const noun = meals.count === 1 ? '1 meal' : `${meals.count} meals`;
-    bits.push(hideCalories ? `Before the session: ${noun}` : `Before the session: ${noun}, ${meals.kcal} kcal`);
+    bits.push(`Before the session: ${noun}, ${meals.kcal} kcal`);
   }
   if (row.note) bits.push(`Note: ${row.note}`);
   return bits.join('. ');

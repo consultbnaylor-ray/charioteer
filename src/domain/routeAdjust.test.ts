@@ -1,13 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-import { pageScrollForMapTouch } from '@/ui/mapCamera';
-import type { OutdoorPoint } from '@/domain/outdoorRoute';
+import {
+  fullScreenModalVisible,
+  fullScreenShowsNativeMap,
+  inlineMapMounted,
+  nextFullScreenPhase,
+  pageScrollForMapTouch,
+} from '@/ui/mapCamera';
+import { appendSketchPoint, type OutdoorPoint } from '@/domain/outdoorRoute';
 import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
+  DRAW_NO_PATH,
+  DRAW_PEN_HINT,
   VIA_POINT_CAP,
   REDRAW_PAUSE_MS,
-  adjustControlsOn,
   MIN_LIFT_METRES,
   SAME_POINT_METRES,
   TAP_TO_MOVE,
@@ -152,7 +159,7 @@ describe('route adjusting', () => {
     const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
     const search = fn.slice(fn.indexOf("body.action === 'search'"), fn.indexOf('const mode = readMode'));
     expect(search).not.toMatch(/latitude|longitude|via/);
-    expect(fn).toContain('.insert({ user_id: userId })');
+    expect(fn).toContain('.insert({ user_id: userId, kind })');
     expect(fn).not.toMatch(/insert\(\{[^}]*latitude/);
     expect(fn).toContain("console.error('outdoor-route request failed')");
     expect(fn).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);
@@ -162,42 +169,31 @@ describe('route adjusting', () => {
     expect(save).not.toContain('via');
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const places = repo.slice(repo.indexOf('async searchRoutePlaces'), repo.indexOf('async deleteOutdoorRoute'));
-    expect(places).toContain("body: { action: 'search', query }");
+    expect(places).toContain("body: { action: 'search', query, requestId }");
     expect(places).not.toMatch(/latitude|longitude|via/);
   });
 
-  it('counts one phone request after the call, and shows adjust controls after the button', () => {
+  it('counts one phone request after the call; the route maker has no via-point Adjust panel', () => {
     expect(countsPhoneRouteRequest(null)).toBe(true);
     expect(countsPhoneRouteRequest('Choose a start point.')).toBe(true);
     expect(countsPhoneRouteRequest(ROUTE_OFFLINE)).toBe(false);
 
-    let adjusting = false;
-    const tapAdjust = () => { adjusting = !adjusting; };
-    const planOn = { craving: false, hasPlan: true };
-    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(false);
-    tapAdjust();
-    expect(adjusting).toBe(true);
-    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(true);
-    expect(adjustControlsOn({ craving: true, adjusting, hasPlan: true })).toBe(false);
     expect(viaCountLine(0)).toBe('0 of 5 points');
-    tapAdjust();
-    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(false);
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const make = maker.slice(maker.indexOf('async function make'), maker.indexOf('async function save'));
-    const redraw = maker.slice(maker.indexOf('sendRef.current = async'), maker.indexOf('function onMapTap'));
     expect(make.indexOf('planOutdoorRoute')).toBeGreaterThan(-1);
     expect(make.indexOf('planOutdoorRoute')).toBeLessThan(make.indexOf('noteRouteRequest'));
-    expect(redraw.indexOf('planOutdoorRoute')).toBeLessThan(redraw.indexOf('noteRouteRequest'));
     expect(make.split('noteRouteRequest').length - 1).toBe(2);
+    // Add a point did not work well and was removed (Ben, 27 Nov). Without it there are no
+    // via points to move, undo, reset or remove, so the whole Adjust panel went with it.
+    // Nothing can now redraw the route as a fresh loop once the points run out (the #140 caveat).
     const card = maker.slice(maker.indexOf('label={startLabel'), maker.indexOf('label="Route name"'));
-    expect(card.indexOf('label={ADJUST_THE_ROUTE}')).toBeLessThan(card.indexOf('{adjustActions}'));
-    expect(card.indexOf('{adjustActions}')).toBeLessThan(card.indexOf('<FootpathMap'));
-    expect(maker).toContain('label={UNDO_ADJUST}');
-    expect(maker).toContain('label={RESET_ADJUST}');
-    expect(maker).toContain('label={ADD_A_POINT}');
-    expect(maker).toContain('viaCountLine');
-    expect(maker).toContain('vias: shownVias');
+    expect(card).not.toContain('ADJUST_THE_ROUTE');
+    for (const gone of ['ADD_A_POINT', 'addPoint', 'UNDO_ADJUST', 'RESET_ADJUST', 'REMOVE_POINT', 'viaCountLine', 'shownVias', 'sendRef', 'onMapTap', 'armPlacement', 'TAP_TO_PLACE']) {
+      expect(maker, gone).not.toContain(gone);
+    }
+    expect(maker).not.toMatch(/\badjust=\{/);
     expect(maker).toContain('holdMadeRoute');
     expect(maker).toContain('startLabel');
     expect(maker).not.toMatch(/latitude|longitude/);
@@ -295,10 +291,30 @@ describe('route adjusting', () => {
     expect(native).toContain('flyWhenReady');
     expect(native).toContain('viaPointCollection(adjust?.vias ?? [])');
     const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
-    expect(chrome).toContain('<Modal visible={open}');
-    expect(chrome).toContain("pointerEvents={open ? 'none' : 'auto'}");
+    expect(chrome).toContain('animationType="none"');
+    expect(chrome).toContain('nextFullScreenPhase');
+    expect(chrome).toContain('fullScreenShowsNativeMap');
+    expect(chrome).toContain('inlineMapMounted');
+    expect(chrome).toContain('requestAnimationFrame');
+    expect(chrome).not.toContain('<Modal visible={open}');
+    expect(chrome).not.toContain("pointerEvents={open ? 'none' : 'auto'}");
     expect(chrome).not.toContain('pointerEvents="box-only"');
     expect(chrome).not.toContain('pointerEvents="none"');
+    expect(nextFullScreenPhase('closed', 'expand')).toBe('opening');
+    expect(nextFullScreenPhase('opening', 'mount-map')).toBe('open');
+    expect(nextFullScreenPhase('open', 'unmount-map')).toBe('closing');
+    expect(nextFullScreenPhase('opening', 'unmount-map')).toBe('closing');
+    expect(nextFullScreenPhase('closing', 'hide-modal')).toBe('closed');
+    expect(nextFullScreenPhase('open', 'expand')).toBe('open');
+    expect(fullScreenModalVisible('opening')).toBe(true);
+    expect(fullScreenModalVisible('closing')).toBe(true);
+    expect(fullScreenModalVisible('closed')).toBe(false);
+    expect(fullScreenShowsNativeMap('open')).toBe(true);
+    expect(fullScreenShowsNativeMap('opening')).toBe(false);
+    expect(fullScreenShowsNativeMap('closing')).toBe(false);
+    expect(inlineMapMounted('closed')).toBe(true);
+    expect(inlineMapMounted('open')).toBe(false);
+    expect(inlineMapMounted('closing')).toBe(false);
     expect(pageScrollForMapTouch(false, true)).toBe(false);
     expect(pageScrollForMapTouch(false, false)).toBe(true);
     expect(pageScrollForMapTouch(true, true)).toBeNull();
@@ -311,9 +327,8 @@ describe('route adjusting', () => {
     expect(web).toContain('current.onTap(point)');
     expect(web).not.toContain('mousedown');
     expect(web).not.toContain('dragPan');
-    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const saved = readFileSync('src/ui/SavedRouteAdjust.tsx', 'utf8');
-    for (const source of [maker, saved]) {
+    for (const source of [saved]) {
       expect(source).toContain('armPlacement');
       expect(source).toContain('tapPoint');
       expect(source).toContain(`<T>{TAP_TO_PLACE}</T>`);
@@ -325,5 +340,126 @@ describe('route adjusting', () => {
     }
     expect(TAP_TO_PLACE).toBe('Tap the map to place this point.');
     expect(TAP_TO_MOVE).toBe('Tap the map to move this point.');
+  });
+
+  it('keeps a short finger step and draws it on the map in place', () => {
+    const step = { latitude: start.latitude + 5 / 111_320, longitude: start.longitude };
+    expect(metresBetween(start, step)).toBeGreaterThan(2);
+    expect(metresBetween(start, step)).toBeLessThan(12);
+    expect(appendSketchPoint([start], step, 2)).toHaveLength(2);
+    expect(appendSketchPoint([start], step, 12)).toHaveLength(1);
+    expect(DRAW_NO_PATH).toBe('No path matched that line.');
+
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    expect(maker).not.toContain('label="Start here"');
+    expect(maker).not.toContain('label="Go here"');
+    expect(maker).toContain("void whereIAm('start')");
+    expect(maker).toContain("void whereIAm('end')");
+    const placeSearch = maker.slice(maker.indexOf('async function search'), maker.indexOf('async function make'));
+    expect(placeSearch).toContain('repo.searchRoutePlaces(query)');
+    expect(placeSearch).not.toContain('noteRouteRequest');
+    expect(maker).toContain('onToggleDraw={craving ? undefined : toggleDraw}');
+    expect(maker).toContain('DRAW_NO_PATH');
+    expect(maker).not.toContain('Search sets the start');
+    expect(maker).not.toContain('label="Search"');
+    expect(maker).not.toContain("position: 'absolute'");
+
+    const map = readFileSync('src/app/(main)/outside-map.tsx', 'utf8');
+    expect(map).not.toContain('/find-route?draw=1');
+    expect(map).not.toContain("position: 'absolute'");
+    expect(map).toContain('label="Start here"');
+    expect(map).toContain('label="Go here"');
+    expect(map).not.toContain('planOutdoorRoute');
+
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
+    for (const source of [native, web]) {
+      expect(source).toContain('setScrollEnabled?.(false)');
+      expect(source).toContain('pencilColour');
+      expect(source).toContain("'line-width': 7");
+      expect(source).toContain("'line-width': 6");
+      const quoted = source.slice(source.indexOf("id: 'guide-line'"), source.indexOf("id: 'gap-line'"));
+      const jsx = source.slice(source.indexOf('id="guide-line"'), source.indexOf('id="gap-line"'));
+      const guide = quoted.length > 0 ? quoted : jsx;
+      expect(guide.length).toBeGreaterThan(0);
+      expect(guide).not.toContain('line-dasharray');
+      expect(source).toContain('line-dasharray');
+    }
+    expect(native).toContain('attribution={false}');
+    expect(web).toContain('attributionControl: false');
+    expect(web).toContain('holdMapGestures');
+    const capture = readFileSync('src/ui/DrawCapture.tsx', 'utf8');
+    expect(capture).toContain('applyDrawPointers');
+    expect(capture).toContain('twoFingerView');
+    expect(capture).toContain('onStartShouldSetResponderCapture={() => true}');
+    expect(capture).toContain('onMoveShouldSetResponderCapture={() => true}');
+    const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
+    expect(chrome).toContain('MAP_CREDIT');
+    expect(chrome).toContain('OSM_CONTRIBUTORS');
+    expect(chrome).not.toContain('ORS_CREDIT');
+    // No drawing banner over the map: the instructions live above the map only.
+    expect(chrome).not.toContain('DRAW_FINGER_HINT');
+    expect(chrome).not.toContain('Tap X to stop drawing');
+    expect(chrome).not.toContain('top: 112');
+    expect(chrome).toContain('CONFIRM_DRAW');
+    expect(chrome).toContain('DRAW_TICK_GREEN');
+    expect(chrome).toContain('DRAW_SNAPPED');
+    expect(chrome).toContain('canConfirmDraw');
+    expect(chrome.match(/<T[^>]*>\{MAP_CREDIT\}/g)).toBeNull();
+  });
+
+  it('snaps when the green tick is tapped and leaves drawing on until then', () => {
+    expect(DRAW_PEN_HINT).toBe('Use the optional settings above to create a route, or use the pen symbol on the map to draw one. Tap the green tick to snap it to the nearest paths. Use the rubber to wipe out bits you don\'t want, then tap Recalculate route. Tap X to stop drawing.');
+    expect(DRAW_PEN_HINT).toContain('rubber');
+    expect(DRAW_PEN_HINT).toContain('green tick');
+    expect(DRAW_PEN_HINT).toContain('Tap X to stop drawing');
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
+    expect(maker).toContain('function holdStroke');
+    expect(maker).toContain('commitDrawStroke');
+    expect(maker).toContain('onEnd: (points) => { holdStroke(points); }');
+    expect(snap).toContain('combineDrawStrokes');
+    expect(snap).not.toContain('setDrawing(false)');
+    expect(snap).not.toContain('commitDrawStroke');
+    const confirm = maker.slice(maker.indexOf('async function confirmDraw'), maker.indexOf('const mapHeight'));
+    expect(confirm).toContain('holdStroke(pencilRef.current)');
+    expect(confirm).toContain('await snapDrawn()');
+    expect(confirm).toContain('if (snapped) setDrawing(false)');
+    expect(snap).toContain('setDrawNote(DRAW_SNAP_FAILED)');
+    expect(snap).toContain('setSnapMiss(line)');
+    const failedSnap = snap.slice(snap.indexOf('} catch'));
+    expect(failedSnap).toContain('return false');
+    expect(failedSnap).not.toContain('setSnappedCount');
+    expect(failedSnap).not.toContain('noteRouteRequest');
+    expect(snap).toContain('DRAW_SNAP_LIMIT');
+    expect(maker).toContain('DRAW_SNAP_FAILED');
+    expect(maker).toContain('DRAW_SNAP_TRY_AGAIN');
+    expect(maker).toContain('RouteSnapSummary');
+    expect(maker).toContain('sketchDistanceLabel(drawnMetres)');
+    expect(maker).toContain('pencilLines={strokeLines}');
+    expect(maker).toContain('statusNote={snapMiss ? DRAW_SNAP_FAILED : drawing ? null : drawNote}');
+    const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
+    expect(chrome).toContain('DRAW_SNAP_FAILED');
+    expect(chrome).toContain('theme.colors.danger');
+    expect(chrome).toContain('statusNote === DRAW_SNAPPED');
+    expect(chrome).toContain('DRAW_TICK_GREEN');
+    expect(maker).toContain('undoDrawStroke');
+    expect(maker).toContain('clearDrawStrokes');
+    expect(maker).toContain('snappedDrawLine');
+    expect(maker).toContain('rawStrokeLines');
+    expect(maker).toContain('onConfirmDraw');
+    expect(maker).toContain('DRAW_SNAPPED');
+    expect(maker).toContain('buildDrawSnapRequests');
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
+    for (const source of [native, web]) {
+      expect(source).toContain('useFootpathStyle(scheme, styleUrl)');
+      expect(source).toContain('openFreeMapStyle(scheme)');
+      const guide = source.slice(source.indexOf("id: 'guide-line'"), source.indexOf("id: 'gap-line'"));
+      const nativeGuide = source.slice(source.indexOf('id="guide-line"'), source.indexOf('id="gap-line"'));
+      const solid = guide.length > 0 ? guide : nativeGuide;
+      expect(solid).not.toContain('line-dasharray');
+      expect(source).toContain('line-dasharray');
+    }
   });
 });

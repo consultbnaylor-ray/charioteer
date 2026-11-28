@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearWalkedLinesForSignOut } from '@/activity/walkedLine';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
 import { signInWithApple as nativeApple } from '@/auth/appleSignIn';
@@ -16,6 +16,7 @@ import {
   WEAK_PASSWORD_MESSAGE,
   asUserFacing,
   isTransientNetworkError,
+  signInWithPasswordOnce,
 } from '@/domain/errors';
 import { omitSharedLocation } from '@/domain/sharedPayload';
 import { parseEntitlementOverride } from '@/domain/entitlementOverride';
@@ -24,8 +25,10 @@ import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
-import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, routeCoordinate, routeInvokeHeaders, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW, routeCoordinate, routeInvokeHeaders, SEARCH_SLOW, withDeadline, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { routePlanBody } from '@/domain/routeAdjust';
 import { buddyPhotoCaption, gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
+import { savedLineRejected, withSavedLine, withoutSavedLine } from '@/domain/savedRouteLine';
 import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
@@ -135,26 +138,39 @@ import { CoalescedSave, sameJson } from '@/domain/coalescedSave';
 import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
 import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
-import { fetchWithOneRetry } from '@/domain/retryFetch';
+import { fetchWithOneRetry, isAuthRequest, isRefreshTokenRequest } from '@/domain/retryFetch';
+import {
+  RECONNECTING_ACCOUNT,
+  authorizationHeader,
+  accountLinkForRefreshError,
+  shouldHoldAnonymousData,
+} from '@/domain/accountLink';
+import { rememberRefreshError, uploadStoredRefreshErrors } from '@/domain/refreshErrorLog';
 import { planReasons } from '@/domain/reasons';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView } from '@/domain/profileSharing';
+import { CHECK_IN_PAGE_SIZE, checkInHistorySince, checkInPageContinues } from '@/domain/checkInCharts';
 import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
 import {
+  COULD_NOT_CONNECT,
   ESTIMATE_CLIENT_TIMEOUT_MS,
   PLAN_NOT_SAVED,
   PLAN_UNREACHABLE,
   VOICE_UNREACHABLE,
   EdgeSessionError,
   aiCallMessage,
+  bindAiSession,
+  callWithinDeadline,
   classifyEdgeError,
   classifyEdgeStatus,
+  SIGN_IN_AGAIN,
   edgeFailureLog,
   postWithRetry,
   prepareAiSession,
+  tokenUsable,
   type AiFeature,
   type EdgeFailureKind,
   type EdgeSendState,
@@ -163,7 +179,7 @@ import {
 import { clientAppBuild, clientErrorRecord } from '@/domain/clientError';
 import { MealEstimateError, mealEstimateCategoryFromStatus } from '@/domain/mealEstimate';
 import { resolveSignedInSession } from '@/domain/liveSession';
-import { aiGateFromBody, publishAiGate } from '@/domain/aiGate';
+import { aiGateFromBody, isAiGateNotice, publishAiGate, type AiGateNotice } from '@/domain/aiGate';
 import { rememberCoachUsage } from '@/domain/coachUsage';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
@@ -203,7 +219,9 @@ import type {
   ThumosMessage,
   VoiceMint,
   VoiceTurnInput,
+  GarminActivityTrack,
 } from '@/data/types';
+import { garminDetailIds } from '@/domain/workoutTrace';
 
 type Row = Record<string, unknown>;
 
@@ -230,6 +248,7 @@ function emptySnapshot(): AppSnapshot {
     ready: false,
     mode: 'supabase',
     error: null,
+    accountGate: null,
     session: null,
     profile: null,
     reasons: [],
@@ -269,6 +288,18 @@ const FOOD_BUCKET = 'food-photos';
 
 type ProfileWrite = { column: Record<string, unknown>; interestIds?: string[] };
 
+/**
+ * The notice an edge function adds when our AI provider could not answer: out of credit, busy,
+ * down, or too slow. Short and safe to show. An older server sends provider_billing for the first case.
+ */
+function billingNotice(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const body = data as { code?: unknown; notice?: unknown };
+  if ((body.code !== 'ai_unavailable' && body.code !== 'provider_billing') || typeof body.notice !== 'string') return null;
+  const notice = body.notice.trim();
+  return notice.length > 0 && notice.length < 300 ? notice : null;
+}
+
 export class SupabaseRepository implements Repository {
   private client: SupabaseClient;
   private url: string;
@@ -299,8 +330,13 @@ export class SupabaseRepository implements Repository {
   private ownerPhotoResignFollowUp: Promise<void> | null = null;
   /** One in-flight sign per object, so a second error does not sign that picture again. */
   private photoSignInflight = new Map<string, Promise<string | null>>();
-  /** One shared session refresh for AI calls that start together. */
-  private aiSession: Promise<string> | null = null;
+  /** One shared session refresh for AI calls that start together. Cleared when it fails or times out. */
+  private aiSessions = bindAiSession();
+  /** Session from the auth listener. Data loads use this instead of getSession(), which refreshes any token inside the expiry margin. */
+  private authSession: Session | null = null;
+  /** Bumps on every reload so a slower, older reload cannot wipe a newer sign-in. */
+  private refreshEpoch = 0;
+  private net = fetchWithOneRetry();
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -313,7 +349,21 @@ export class SupabaseRepository implements Repository {
         detectSessionInUrl: Platform.OS === 'web' && !staticWebRender,
         flowType: 'implicit',
       },
-      global: { fetch: fetchWithOneRetry() },
+      global: {
+        fetch: (input, init) => {
+          if (isAuthRequest(input)) {
+            return this.net(input, init).catch((error: unknown) => {
+              if (isRefreshTokenRequest(input, init)) void this.rememberAuthRefreshError(error);
+              throw error;
+            });
+          }
+          if (this.anonymousDataBlocked(init)) {
+            this.holdAccount('reconnecting');
+            return Promise.reject(new UserFacingError(RECONNECTING_ACCOUNT, 'generic'));
+          }
+          return this.net(input, init);
+        },
+      },
     });
     if (!staticWebRender) void this.start();
   }
@@ -402,15 +452,20 @@ export class SupabaseRepository implements Repository {
     if (this.started) return;
     this.started = true;
     this.client.auth.onAuthStateChange((event, session) => {
+      this.authSession = session;
       if (event === 'SIGNED_OUT') void clearWalkedLinesForSignOut();
       void this.client.realtime.setAuth(session?.access_token ?? null);
       this.listenForMessages(Boolean(session));
-      void this.refresh();
+      // TOKEN_REFRESHED has already stored the new token. Reading it again here
+      // would refresh it whenever that token is inside the 90 second margin.
+      if (event === 'TOKEN_REFRESHED') {
+        void this.flushAuthRefreshLog();
+        return;
+      }
+      setTimeout(() => {
+        void this.refresh();
+      }, 0);
     });
-    const { data } = await this.client.auth.getSession();
-    await this.client.realtime.setAuth(data.session?.access_token ?? null);
-    this.listenForMessages(Boolean(data.session));
-    await this.refresh();
   }
 
   /** One insert stream for every chat this account can read. Realtime applies the select policy. */
@@ -440,171 +495,211 @@ export class SupabaseRepository implements Repository {
     this.emit({ ...this.snapshot, messages: [...next] });
   }
 
-  private async refresh() {
-    const { data: sessionData } = await this.client.auth.getSession();
-    const session = sessionData.session;
-    const [interestsRes, resourcesRes] = await Promise.all([
-      this.client.from('interests').select('id, slug, label, created_by').order('label'),
-      this.client.from('resources').select('*').order('sort_order'),
-    ]);
-    const interests = ((interestsRes.data ?? []) as Row[]).map(mapInterest);
-    const resources = ((resourcesRes.data ?? []) as Row[]).map(mapResource);
-
-    if (!session) {
-      this.ownerPhotosSignedAt = null;
-      this.emit({ ...emptySnapshot(), ready: true, interests, resources });
-      return;
-    }
-
-    const userId = session.user.id;
-    const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
-      await Promise.all([
-        this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
-        this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
-        this.client.from('check_ins').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        this.client.from('relapses').select('*').eq('user_id', userId).order('occurred_at', { ascending: false }),
-        this.client.from('health_samples').select('*').eq('user_id', userId).order('recorded_on', { ascending: false }),
-        this.client.from('profile_interests').select('user_id, interest_id'),
-        this.client.from('thumos_messages').select('*').eq('user_id', userId).order('created_at'),
-        this.client.from('directory').select('*'),
-        this.client.from('profile_interests').select('user_id, interest_id'),
-        this.client.from('connections').select('*').order('created_at', { ascending: false }),
-        this.client.from('reports').select('*').order('created_at', { ascending: false }),
-        this.client.from('consents').select('kind, granted, version, created_at').eq('user_id', userId),
-        this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
-        this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at, check_in_id').eq('user_id', userId).order('entry_date', { ascending: false }),
-        this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
-        this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
-        this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
-        this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
-        this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
-        this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
-        this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
-        this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').eq('user_id', userId).order('starts_at'),
-      ]);
-
-    const profileRow = profileRes.data as Row | null;
-    const serverInterestIds = ((mineRes.data ?? []) as Row[])
-      .filter((row) => row.user_id === userId)
-      .map((row) => String(row.interest_id));
-    this.settleInterestLanes(serverInterestIds);
-    const myInterestIds = this.applyPendingInterests(serverInterestIds);
-    const profile = this.withPendingProfile(profileRow ? mapProfile(profileRow, email, myInterestIds) : null);
-    const links = (interestLinks.data ?? []) as Row[];
-    const byUser = new Map<string, string[]>();
-    for (const link of links) {
-      const owner = String(link.user_id);
-      const list = byUser.get(owner) ?? [];
-      list.push(String(link.interest_id));
-      byUser.set(owner, list);
-    }
-    const mine = new Set(myInterestIds);
-    const directoryRows = ((directoryRes.data ?? []) as Row[]).filter((row) => String(row.user_id) !== userId);
-    const avatarById = await this.profilePhotoUrlMap(
-      directoryRows.map((row) => (typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '')).filter(Boolean),
-    );
-    const directory: DirectoryCard[] = directoryRows
-      .map((row) => {
-        const interestIds = byUser.get(String(row.user_id)) ?? [];
-        const avatarId = typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '';
-        return {
-          id: String(row.user_id),
-          displayName: String(row.display_name ?? ''),
-          town: (row.town as string | null) ?? null,
-          interestIds,
-          sharedInterestIds: interestIds.filter((id) => mine.has(id)),
-          avatarUrl: avatarById.get(avatarId) ?? null,
-          avatarPhotoId: avatarId || null,
-        };
-      })
-      .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName));
-
-    const connections = ((connectionsRes.data ?? []) as Row[]).map(mapConnection);
-    const connectionCards = await this.loadConnectionCards();
-    const connectionIds = connections.map((connection) => connection.id);
-    const allowedConnections = new Set(connectionIds);
-    const sameAccount = this.snapshot.session?.userId === userId;
-    let messages: AppSnapshot['messages'] = sameAccount
-      ? this.snapshot.messages.filter((message) => allowedConnections.has(message.connectionId))
-      : [];
-    if (connectionIds.length) {
-      const messageRes = await this.client
-        .from('direct_messages')
+  /** Newest first. Pages past the 1,000-row cap until a page is older than 12 months. */
+  private async loadCheckIns(userId: string): Promise<Row[]> {
+    const since = checkInHistorySince(new Date());
+    const rows: Row[] = [];
+    for (let from = 0; from < CHECK_IN_PAGE_SIZE * 20; from += CHECK_IN_PAGE_SIZE) {
+      const { data, error } = await this.client
+        .from('check_ins')
         .select('*')
-        .in('connection_id', connectionIds)
-        .order('created_at');
-      if (!messageRes.error) {
-        messages = mergeFetchedMessages(
-          sameAccount ? this.snapshot.messages : [],
-          ((messageRes.data ?? []) as Row[]).map(mapDirectMessage),
-          allowedConnections,
-        );
-      }
-    }
-
-    let gratitudeRows: unknown = gratitudeRes.data;
-    let gratitudeMessage = gratitudeRes.error?.message ?? null;
-    if (gratitudeMessage && /check_in_id/i.test(gratitudeMessage)) {
-      const again = await this.client
-        .from('gratitude_entries')
-        .select('id, body, category, is_favourite, entry_date, created_at, updated_at')
         .eq('user_id', userId)
-        .order('entry_date', { ascending: false });
-      gratitudeRows = again.data;
-      gratitudeMessage = again.error?.message ?? null;
+        .order('created_at', { ascending: false })
+        .range(from, from + CHECK_IN_PAGE_SIZE - 1);
+      if (error) return rows;
+      const batch = (data ?? []) as Row[];
+      rows.push(...batch);
+      const stamped = batch.map((row) => ({ createdAt: String(row.created_at ?? '') }));
+      if (!checkInPageContinues({ batch: stamped, pageSize: CHECK_IN_PAGE_SIZE, sinceIso: since })) break;
     }
+    return rows;
+  }
 
-    this.ownerPhotosSignedAt = Date.now();
-    this.emit({
-      ready: true,
-      mode: 'supabase',
-      error: profileRes.error?.message ?? null,
-      session: { userId, email },
-      profile,
-      reasons: ((reasonsRes.data ?? []) as Row[]).map(mapReason),
-      checkIns: ((checkRes.data ?? []) as Row[]).map(mapCheckIn),
-      relapses: ((relapseRes.data ?? []) as Row[]).map(mapRelapse),
-      health: ((healthRes.data ?? []) as Row[]).map(mapHealth),
-      interests,
-      resources,
-      directory,
-      connectionCards,
-      connections,
-      messages,
-      reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
-      thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
-      consents: this.overlayConsentRows(((consentsRes.data ?? []) as Row[]).map(mapConsent)),
-      progressPhotos: this.overlayProgress(await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId)),
-      communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
-      profilePhotos: await this.signedProfilePhotos(profilePhotoRes.error ? null : ((profilePhotoRes.data ?? []) as Row[]), profilePhotoRes.error?.message, userId),
-      gratitude: withGratitudePhotos(
-        gratitudeMessage ? loggedEmptyGratitude(gratitudeMessage) : gratitudeFromRows(gratitudeRows),
-        await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
-      ),
-      visionItems: this.overlayVision(await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message)),
-      ...(await this.nutritionSnapshot(userId)),
-      sharing: this.prefer('sharing', sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings)),
-      savedQuotes: quotesRes.error
-        ? []
-        : ((quotesRes.data ?? []) as Row[]).flatMap((row) => {
-            const quoteId = String(row.quote_id ?? '');
-            if (!quoteById(quoteId)) return [];
-            return [{ quoteId, createdAt: String(row.created_at ?? '') }];
+  private async refresh() {
+    const epoch = ++this.refreshEpoch;
+    const session = this.authSession;
+    try {
+      if (session?.user?.id) {
+        void this.flushAuthRefreshLog();
+        const gate = await this.ensureFreshSession(session);
+        if (epoch !== this.refreshEpoch) return;
+        if (gate !== 'ok') {
+          this.holdAccount(gate);
+          return;
+        }
+      }
+      const [interestsRes, resourcesRes] = await Promise.all([
+        session?.access_token
+          ? this.client.from('interests').select('id, slug, label, created_by').order('label')
+          : Promise.resolve({ data: [], error: null }),
+        this.client.from('resources').select('*').order('sort_order'),
+      ]);
+      if (interestsRes.error) console.error(interestsRes.error.message);
+      const interests = ((interestsRes.data ?? []) as Row[]).map(mapInterest);
+      const resources = ((resourcesRes.data ?? []) as Row[]).map(mapResource);
+      if (epoch !== this.refreshEpoch) return;
+
+      if (!session) {
+        this.ownerPhotosSignedAt = null;
+        this.emit({ ...emptySnapshot(), ready: true, interests, resources });
+        return;
+      }
+
+      const userId = session.user.id;
+      const email = session.user.email ?? '';
+      const [profileRes, reasonsRes, checkRows, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
+        await Promise.all([
+          this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
+          this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
+          this.loadCheckIns(userId),
+          this.client.from('relapses').select('*').eq('user_id', userId).order('occurred_at', { ascending: false }),
+          this.client.from('health_samples').select('*').eq('user_id', userId).order('recorded_on', { ascending: false }),
+          this.client.from('profile_interests').select('user_id, interest_id'),
+          this.client.from('thumos_messages').select('*').eq('user_id', userId).order('created_at'),
+          this.client.from('directory').select('*'),
+          this.client.from('profile_interests').select('user_id, interest_id'),
+          this.client.from('connections').select('*').order('created_at', { ascending: false }),
+          this.client.from('reports').select('*').order('created_at', { ascending: false }),
+          this.client.from('consents').select('kind, granted, version, created_at').eq('user_id', userId),
+          this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
+          this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at, check_in_id').eq('user_id', userId).order('entry_date', { ascending: false }),
+          this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
+          this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
+          this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
+          this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
+          this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
+          this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
+          this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
+          this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').eq('user_id', userId).order('starts_at'),
+        ]);
+
+      const profileRow = profileRes.data as Row | null;
+      const serverInterestIds = ((mineRes.data ?? []) as Row[])
+        .filter((row) => row.user_id === userId)
+        .map((row) => String(row.interest_id));
+      this.settleInterestLanes(serverInterestIds);
+      const myInterestIds = this.applyPendingInterests(serverInterestIds);
+      const profile = this.withPendingProfile(profileRow ? mapProfile(profileRow, email, myInterestIds) : null);
+      const links = (interestLinks.data ?? []) as Row[];
+      const byUser = new Map<string, string[]>();
+      for (const link of links) {
+        const owner = String(link.user_id);
+        const list = byUser.get(owner) ?? [];
+        list.push(String(link.interest_id));
+        byUser.set(owner, list);
+      }
+      const mine = new Set(myInterestIds);
+      const directoryRows = ((directoryRes.data ?? []) as Row[]).filter((row) => String(row.user_id) !== userId);
+      const avatarById = await this.profilePhotoUrlMap(
+        directoryRows.map((row) => (typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '')).filter(Boolean),
+      );
+      const directory: DirectoryCard[] = directoryRows
+        .map((row) => {
+          const interestIds = byUser.get(String(row.user_id)) ?? [];
+          const avatarId = typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '';
+          return {
+            id: String(row.user_id),
+            displayName: String(row.display_name ?? ''),
+            town: (row.town as string | null) ?? null,
+            interestIds,
+            sharedInterestIds: interestIds.filter((id) => mine.has(id)),
+            avatarUrl: avatarById.get(avatarId) ?? null,
+            avatarPhotoId: avatarId || null,
+          };
+        })
+        .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName));
+
+      const connections = ((connectionsRes.data ?? []) as Row[]).map(mapConnection);
+      const connectionCards = await this.loadConnectionCards();
+      const connectionIds = connections.map((connection) => connection.id);
+      const allowedConnections = new Set(connectionIds);
+      const sameAccount = this.snapshot.session?.userId === userId;
+      let messages: AppSnapshot['messages'] = sameAccount
+        ? this.snapshot.messages.filter((message) => allowedConnections.has(message.connectionId))
+        : [];
+      if (connectionIds.length) {
+        const messageRes = await this.client
+          .from('direct_messages')
+          .select('*')
+          .in('connection_id', connectionIds)
+          .order('created_at');
+        if (!messageRes.error) {
+          messages = mergeFetchedMessages(
+            sameAccount ? this.snapshot.messages : [],
+            ((messageRes.data ?? []) as Row[]).map(mapDirectMessage),
+            allowedConnections,
+          );
+        }
+      }
+
+      let gratitudeRows: unknown = gratitudeRes.data;
+      let gratitudeMessage = gratitudeRes.error?.message ?? null;
+      if (gratitudeMessage && /check_in_id/i.test(gratitudeMessage)) {
+        const again = await this.client
+          .from('gratitude_entries')
+          .select('id, body, category, is_favourite, entry_date, created_at, updated_at')
+          .eq('user_id', userId)
+          .order('entry_date', { ascending: false });
+        gratitudeRows = again.data;
+        gratitudeMessage = again.error?.message ?? null;
+      }
+
+      if (epoch !== this.refreshEpoch) return;
+      this.ownerPhotosSignedAt = Date.now();
+      this.emit({
+        ready: true,
+        mode: 'supabase',
+        error: profileRes.error?.message ?? null,
+        accountGate: null,
+        session: { userId, email },
+        profile,
+        reasons: ((reasonsRes.data ?? []) as Row[]).map(mapReason),
+        checkIns: checkRows.map(mapCheckIn),
+        relapses: ((relapseRes.data ?? []) as Row[]).map(mapRelapse),
+        health: ((healthRes.data ?? []) as Row[]).map(mapHealth),
+        interests,
+        resources,
+        directory,
+        connectionCards,
+        connections,
+        messages,
+        reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
+        thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
+        consents: this.overlayConsentRows(((consentsRes.data ?? []) as Row[]).map(mapConsent)),
+        progressPhotos: this.overlayProgress(await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId)),
+        communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
+        profilePhotos: await this.signedProfilePhotos(profilePhotoRes.error ? null : ((profilePhotoRes.data ?? []) as Row[]), profilePhotoRes.error?.message, userId),
+        gratitude: withGratitudePhotos(
+          gratitudeMessage ? loggedEmptyGratitude(gratitudeMessage) : gratitudeFromRows(gratitudeRows),
+          await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
+        ),
+        visionItems: this.overlayVision(await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message)),
+        ...(await this.nutritionSnapshot(userId)),
+        sharing: this.prefer('sharing', sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings)),
+        savedQuotes: quotesRes.error
+          ? []
+          : ((quotesRes.data ?? []) as Row[]).flatMap((row) => {
+              const quoteId = String(row.quote_id ?? '');
+              if (!quoteById(quoteId)) return [];
+              return [{ quoteId, createdAt: String(row.created_at ?? '') }];
+            }),
+        healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
+        trainingSchedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
+        plannedSessions: plannedRes.error
+          ? []
+          : ((plannedRes.data ?? []) as Row[]).flatMap((row) => {
+            const session = plannedSessionFromRow(row);
+            return session ? [session] : [];
           }),
-      healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
-      trainingSchedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
-      plannedSessions: plannedRes.error
-        ? []
-        : ((plannedRes.data ?? []) as Row[]).flatMap((row) => {
-          const session = plannedSessionFromRow(row);
-          return session ? [session] : [];
-        }),
-      outdoorRoutes: await this.loadOutdoorRoutes(userId),
-      goalProgressPhotos: await this.loadGoalProgressPhotos(userId),
-      workoutFeelings: await this.loadWorkoutFeelings(userId),
-    });
-    noteServerReached();
+        outdoorRoutes: await this.loadOutdoorRoutes(userId),
+        goalProgressPhotos: await this.loadGoalProgressPhotos(userId),
+        workoutFeelings: await this.loadWorkoutFeelings(userId),
+      });
+      noteServerReached();
+    } catch (error) {
+      if (epoch === this.refreshEpoch && session?.user?.id) this.emitSignedIn(session);
+      throw error;
+    }
   }
 
   /** Signs the paths already on the snapshot and writes only the new preview URLs. */
@@ -961,13 +1056,43 @@ export class SupabaseRepository implements Repository {
   }
 
   async signIn(email: string, password: string): Promise<void> {
+    const trimmed = email.trim();
+    let result: { error: unknown };
     try {
-      const { error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
-      if (error) throw error;
-      await this.refresh();
+      result = await signInWithPasswordOnce(() => this.client.auth.signInWithPassword({ email: trimmed, password }));
     } catch (error) {
       throw asUserFacing(error, 'sign-in');
     }
+    if (result.error) throw asUserFacing(result.error, 'sign-in');
+    await this.finishSignIn();
+  }
+
+  /**
+   * The password grant already succeeded. A later catalogue or profile read
+   * must not be shown as a failed sign-in, and must not leave the session unpublished.
+   */
+  private async finishSignIn(): Promise<void> {
+    try {
+      await this.refresh();
+    } catch (error) {
+      console.error(error);
+      if (!this.authSession?.user?.id) throw asUserFacing(error, 'sign-in');
+      this.emitSignedIn(this.authSession);
+    }
+  }
+
+  private emitSignedIn(session: Session) {
+    const userId = session.user.id;
+    if (!userId) return;
+    const email = session.user.email ?? '';
+    if (this.snapshot.session?.userId === userId && this.snapshot.session.email === email && this.snapshot.ready) return;
+    this.emit({
+      ...this.snapshot,
+      ready: true,
+      mode: 'supabase',
+      error: null,
+      session: { userId, email },
+    });
   }
 
   async signUp(email: string, password: string, displayName: string): Promise<void> {
@@ -1069,10 +1194,10 @@ export class SupabaseRepository implements Repository {
   async signInWithApple(): Promise<void> {
     try {
       await nativeApple(this.client);
-      await this.refresh();
     } catch (error) {
       throw asUserFacing(error, 'sign-in');
     }
+    await this.finishSignIn();
   }
 
   async signOut(): Promise<void> {
@@ -1707,8 +1832,14 @@ export class SupabaseRepository implements Repository {
       return { ticket: this.sessionTicket(data.session), error };
     };
     const refreshSession = async () => {
-      const { data, error } = await this.client.auth.refreshSession();
-      return { ticket: this.sessionTicket(data.session), error };
+      try {
+        const { data, error } = await this.client.auth.refreshSession();
+        if (error) this.rememberAuthRefreshError(error);
+        return { ticket: this.sessionTicket(data.session), error };
+      } catch (error) {
+        this.rememberAuthRefreshError(error);
+        throw error;
+      }
     };
     const ask = () => resolveSignedInSession({
       read: readSession,
@@ -1721,11 +1852,94 @@ export class SupabaseRepository implements Repository {
       resolved = await ask();
     }
     if ('failure' in resolved) {
-      if (resolved.failure === 'connection') throw new UserFacingError(OFFLINE_MESSAGE, 'offline');
+      if (resolved.failure === 'connection') {
+        this.holdAccount('reconnecting');
+        throw new UserFacingError(RECONNECTING_ACCOUNT, 'generic');
+      }
+      if (this.snapshot.session?.userId || this.authSession?.user?.id) {
+        this.holdAccount('sign-in');
+        throw new UserFacingError(SIGN_IN_AGAIN, 'generic');
+      }
       throw new Error(SIGN_IN_FIRST);
     }
     noteServerReached();
     return resolved;
+  }
+
+  /**
+   * A usable access token is enough. An expired one is refreshed before any
+   * catalogue call, so a failed refresh cannot go out as the publishable key.
+   */
+  private async ensureFreshSession(session: Session): Promise<'ok' | 'reconnecting' | 'sign-in'> {
+    if (tokenUsable(this.sessionTicket(session), Date.now())) return 'ok';
+    let error: unknown = null;
+    try {
+      const refreshed = await this.client.auth.refreshSession();
+      error = refreshed.error;
+      const next = refreshed.data.session;
+      if (next?.access_token && tokenUsable(this.sessionTicket(next), Date.now())) {
+        this.authSession = next;
+        void this.flushAuthRefreshLog();
+        return 'ok';
+      }
+    } catch (caught) {
+      error = caught;
+    }
+    void this.rememberAuthRefreshError(error ?? new Error('Auth session missing'));
+    return accountLinkForRefreshError(error);
+  }
+
+  private anonymousDataBlocked(init?: RequestInit): boolean {
+    return shouldHoldAnonymousData({
+      hasUser: Boolean(this.authSession?.user?.id),
+      authorization: authorizationHeader(init?.headers),
+      anonKey: this.anonKey,
+    });
+  }
+
+  private holdAccount(gate: 'reconnecting' | 'sign-in') {
+    const session = this.authSession;
+    const userId = session?.user?.id ?? this.snapshot.session?.userId;
+    if (!userId) return;
+    const email = session?.user?.email ?? this.snapshot.session?.email ?? '';
+    if (this.snapshot.accountGate === gate && this.snapshot.ready && this.snapshot.session?.userId === userId) return;
+    this.emit({
+      ...this.snapshot,
+      ready: true,
+      mode: 'supabase',
+      accountGate: gate,
+      session: this.snapshot.session?.userId === userId ? this.snapshot.session : { userId, email },
+    });
+  }
+
+  private rememberAuthRefreshError(error: unknown) {
+    void rememberRefreshError(error);
+  }
+
+  async logAuthRefresh(line: string): Promise<boolean> {
+    const message = line.replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!message) return false;
+    try {
+      const userId = this.snapshot.session?.userId ?? this.authSession?.user?.id ?? null;
+      if (!userId) return false;
+      const { error } = await this.client.from('client_errors').insert({
+        user_id: userId,
+        screen: 'auth-refresh',
+        message,
+        app_build: clientAppBuild({
+          buildNumber: Constants.expoConfig?.ios?.buildNumber,
+          version: Constants.expoConfig?.version,
+        }) || 'unknown',
+      });
+      return !error;
+    } catch (error) {
+      console.error('auth refresh log', error);
+      return false;
+    }
+  }
+
+  async flushAuthRefreshLog(): Promise<void> {
+    await uploadStoredRefreshErrors(this);
   }
 
   private sessionTicket(session: { access_token?: string; expires_at?: number; user?: { id?: string } } | null): SessionTicket {
@@ -1736,21 +1950,29 @@ export class SupabaseRepository implements Repository {
     };
   }
 
-  /** Refresh the session once, then once more if that refresh does not return a token. */
+  /** One refresh for AI calls that start together. It gives up after AI_SESSION_TIMEOUT_MS. The token request itself is not aborted. */
   private sessionForAiCall(): Promise<string> {
-    if (this.aiSession) return this.aiSession;
-    this.aiSession = this.loadAiSession().finally(() => {
-      this.aiSession = null;
-    });
-    return this.aiSession;
+    return this.aiSessions.session((signal) => this.loadAiSession(signal));
   }
 
-  private async loadAiSession(): Promise<string> {
+  private async loadAiSession(signal: AbortSignal): Promise<string> {
     const ready = await prepareAiSession({
+      signal,
       read: async () => this.sessionTicket((await this.client.auth.getSession()).data.session),
       refresh: async () => {
-        const { data, error } = await this.client.auth.refreshSession();
-        return { ticket: this.sessionTicket(data.session), error };
+        if (signal.aborted) {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          throw error;
+        }
+        try {
+          const { data, error } = await this.client.auth.refreshSession();
+          if (error) this.rememberAuthRefreshError(error);
+          return { ticket: this.sessionTicket(data.session), error };
+        } catch (error) {
+          this.rememberAuthRefreshError(error);
+          throw error;
+        }
       },
     });
     if ('failure' in ready) throw new EdgeSessionError(ready.failure);
@@ -1767,8 +1989,10 @@ export class SupabaseRepository implements Repository {
     }));
   }
 
-  private aiFailure(feature: AiFeature, screen: string, error: unknown, status?: number): UserFacingError {
+  private aiFailure(feature: AiFeature, screen: string, error: unknown, status?: number): UserFacingError | AiGateNotice {
     if (error instanceof UserFacingError) return error;
+    // The person's own allowance is used up. The limit note is already showing, so this is not an outage.
+    if (isAiGateNotice(error)) return error;
     const kind: EdgeFailureKind = error instanceof EdgeSessionError
       ? error.kind
       : status != null
@@ -1787,38 +2011,38 @@ export class SupabaseRepository implements Repository {
     options?: { ai?: boolean; timeoutMs?: number; requestId?: string },
   ): Promise<{ status: number; data: unknown }> {
     rejectRouteCoordinates(body);
-    const token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
-    const controller = options?.timeoutMs ? new AbortController() : null;
-    const timer = controller && options?.timeoutMs
-      ? setTimeout(() => controller.abort(), options.timeoutMs)
-      : null;
-    try {
-      const response = await postWithRetry({
-        fetchImpl: (url, init) => fetch(url, init),
-        url: `${this.url}/functions/v1/${name}`,
-        init: {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            apikey: this.anonKey,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            ...(options?.requestId ? { 'X-Request-Id': options.requestId } : {}),
+    let token = '';
+    return callWithinDeadline({
+      timeoutMs: options?.timeoutMs,
+      prepare: async () => {
+        token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
+      },
+      send: async (signal) => {
+        const response = await postWithRetry({
+          fetchImpl: (url, init) => fetch(url, init),
+          url: `${this.url}/functions/v1/${name}`,
+          init: {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              apikey: this.anonKey,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              ...(options?.requestId ? { 'X-Request-Id': options.requestId } : {}),
+            },
+            body: JSON.stringify(body),
+            signal,
           },
-          body: JSON.stringify(body),
-          signal: controller?.signal,
-        },
-      });
-      const data = await response.json().catch(() => null);
-      const gate = response.status === 402 || response.status === 429 ? aiGateFromBody(data) : null;
-      if (gate) {
-        publishAiGate(gate);
-        throw gate;
-      }
-      return { status: response.status, data };
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+        });
+        const data = await response.json().catch(() => null);
+        const gate = response.status === 402 || response.status === 429 ? aiGateFromBody(data) : null;
+        if (gate) {
+          publishAiGate(gate);
+          throw gate;
+        }
+        return { status: response.status, data };
+      },
+    });
   }
 
   async mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint> {
@@ -1838,6 +2062,10 @@ export class SupabaseRepository implements Repository {
     try {
       const invoked = await this.callEdge('thumos-voice-token', { mode });
       data = invoked.data as VoicePayload | null;
+      if ((data?.code === 'ai_unavailable' || data?.code === 'provider_billing') && typeof data.message === 'string') {
+        this.rememberEdgeFailure('voice', new Error('Voice provider unavailable.'), invoked.status);
+        return { ok: false, code: 'unavailable', message: data.message };
+      }
       if (invoked.status >= 500) {
         this.rememberEdgeFailure('voice', new Error('Voice did not answer.'), invoked.status);
         return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
@@ -2515,13 +2743,13 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect> {
+  async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect & { notice?: string }> {
     if (!this.snapshot.profile?.consentAi) {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
     try {
       const invoked = await this.callEdge('gratitude-reflect', { body, category }, { ai: true });
-      const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown } | null;
+      const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown; notice?: unknown } | null;
       if (data?.code === 'consent') {
         throw new Error('Agree to the coach consent before sending a message to Thumos.');
       }
@@ -2530,10 +2758,12 @@ export class SupabaseRepository implements Repository {
       }
       if (invoked.status < 400 && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
         const suggestions = data.suggestions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-        if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3) };
+        const notice = billingNotice(data);
+        if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3), ...(notice ? { notice } : {}) };
       }
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
+      if (isAiGateNotice(error)) throw error;
       if (error instanceof Error && error.message.includes('Agree to the coach consent')) throw error;
       throw this.aiFailure('reflect', 'gratitude', error);
     }
@@ -2633,8 +2863,18 @@ export class SupabaseRepository implements Repository {
         timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
         requestId,
       });
-      const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
-      const category = mealEstimateCategoryFromStatus(invoked.status, data?.code);
+      const data = invoked.data as {
+        ok?: boolean;
+        items?: unknown;
+        source?: string;
+        code?: string;
+        message?: string;
+        providerUnavailable?: boolean;
+        billing?: boolean;
+      } | null;
+      const category = data?.billing === true && (invoked.status >= 500 || data?.ok !== true)
+        ? 'billing'
+        : mealEstimateCategoryFromStatus(invoked.status, data?.code);
       if (category === 'consent') {
         throw new MealEstimateError('consent', typeof data?.message === 'string' ? data.message : undefined);
       }
@@ -2648,21 +2888,29 @@ export class SupabaseRepository implements Repository {
       }
       const items = parseMealEstimate({ items: data?.items });
       const model = data?.source === 'model';
+      const rough = data?.providerUnavailable === true && !model;
       if (invoked.status < 400 && data?.ok === true && items && (!photo || model)) {
-        return { items, source: model ? 'model' : 'local' };
+        return { items, source: model ? 'model' : 'local', providerUnavailable: rough, ...(rough && data?.billing === true ? { billing: true } : {}) };
       }
       if (!photo) {
         const typed = estimateFromText(text);
-        if (typed.length) return { items: typed, source: 'local' };
+        if (typed.length) return { items: typed, source: 'local', providerUnavailable: rough, ...(rough && data?.billing === true ? { billing: true } : {}) };
       }
       this.noteMeal(photo ? 'unreadable' : 'provider');
       throw new MealEstimateError(photo ? 'unreadable' : 'provider');
     } catch (error) {
       if (error instanceof MealEstimateError) throw error;
       if (error instanceof UserFacingError) throw error;
-      const kind = error instanceof EdgeSessionError
-        ? (error.kind === 'signed-out' ? 'auth' : 'network')
-        : classifyEdgeError(error) === 'timeout' ? 'timeout' : 'network';
+      if (isAiGateNotice(error)) {
+        this.noteMeal('credits');
+        throw new MealEstimateError('credits');
+      }
+      if (error instanceof EdgeSessionError) {
+        const kind = error.kind === 'signed-out' ? 'auth' : 'network';
+        this.noteMeal(kind);
+        throw new MealEstimateError(kind, error.kind === 'connection' ? COULD_NOT_CONNECT : undefined);
+      }
+      const kind = classifyEdgeError(error) === 'timeout' ? 'timeout' : 'network';
       this.noteMeal(kind);
       throw new MealEstimateError(kind);
     }
@@ -3032,15 +3280,26 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  /** Missing table stays an empty list. A missing climb column still opens the route. */
+  /**
+   * Missing table stays an empty list. A missing climb column still opens the route.
+   * The line (geometry) is read only once its grant is applied; until then the routes open without it.
+   */
   private async loadOutdoorRoutes(userId: string) {
+    const lined = 'id, title, kind, distance_m, duration_minutes, ascent_m, geometry, created_at';
     const full = 'id, title, kind, distance_m, duration_minutes, ascent_m, created_at';
     const short = 'id, title, kind, distance_m, duration_minutes, created_at';
-    const first = await this.client
+    const withLine = await this.client
       .from('outdoor_routes')
-      .select(full)
+      .select(lined)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
+    const first = withLine.error && /geometry|permission denied|42501/i.test(withLine.error.message ?? '')
+      ? await this.client
+        .from('outdoor_routes')
+        .select(full)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+      : withLine;
     const result = first.error && /ascent_m/i.test(first.error.message ?? '')
       ? await this.client
         .from('outdoor_routes')
@@ -3058,12 +3317,21 @@ export class SupabaseRepository implements Repository {
   async saveOutdoorRoute(input: OutdoorRouteDraft): Promise<void> {
     const userId = this.snapshot.session?.userId ?? await this.userId();
     const id = input.id?.trim() || randomId();
-    const row = outdoorRouteInsert(userId, id, input);
-    if (!row) throw new UserFacingError('A route needs a name and at least two points.', 'generic');
+    const bare = outdoorRouteInsert(userId, id, input);
+    if (!bare) throw new UserFacingError('A route needs a name and at least two points.', 'generic');
+    const lined = withSavedLine(bare, input.points);
     const before = this.snapshot.outdoorRoutes;
-    const saved = outdoorRouteFromRow({ ...row, created_at: new Date().toISOString() });
+    const saved = outdoorRouteFromRow({ ...lined, created_at: new Date().toISOString() });
     if (saved) this.emit({ ...this.snapshot, outdoorRoutes: [saved, ...before.filter((item) => item.id !== id)] });
-    const { error } = await this.client.from('outdoor_routes').insert(row);
+    let row = lined;
+    let { error } = await this.client.from('outdoor_routes').insert(row);
+    if (error && savedLineRejected(error.message ?? '', row)) {
+      // The line grant is not applied yet. Save the route without its line, as before.
+      row = withoutSavedLine(row);
+      const unlined = outdoorRouteFromRow({ ...row, created_at: new Date().toISOString() });
+      if (unlined) this.emit({ ...this.snapshot, outdoorRoutes: [unlined, ...before.filter((item) => item.id !== id)] });
+      ({ error } = await this.client.from('outdoor_routes').insert(row));
+    }
     if (!error) return;
     if (routeGeometryStillRequired(error.message ?? '')) {
       this.emit({ ...this.snapshot, outdoorRoutes: before });
@@ -3100,19 +3368,18 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('That place could not be used.', 'generic');
     }
     try {
-      const invoked = await retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
-        body: {
-          action: 'route',
-          mode: input.mode,
-          shape: input.shape,
-          start,
-          end,
-          distanceM: input.distanceM ?? null,
-          minutes: input.minutes ?? null,
-          via: input.via ?? [],
+      const requestId = input.requestId ?? randomId();
+      // The functions client omits Authorization when getSession() has no token and the
+      // project key is a publishable key. The phone then refuses the call before fetch,
+      // so the edge function never sees it. The signed-in access token is sent explicitly.
+      const token = await this.accessToken();
+      const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
+        body: routePlanBody({ ...input, start, end, requestId }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(routeInvokeHeaders(attempt) ?? {}),
         },
-        headers: routeInvokeHeaders(attempt),
-      }));
+      })), ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW);
       const plan = parseRoutePlan(invoked.data);
       if (plan) return plan;
       throw new UserFacingError(await explainRouteFailure(invoked.error), 'generic');
@@ -3125,18 +3392,23 @@ export class SupabaseRepository implements Repository {
   async searchRoutePlaces(query: string): Promise<RoutePlace[]> {
     await assertRouteFindingAllowed();
     try {
-      const invoked = await retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
-        body: { action: 'search', query },
-        headers: routeInvokeHeaders(attempt),
-      }));
+      const requestId = randomId();
+      const token = await this.accessToken();
+      const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
+        body: { action: 'search', query, requestId },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(routeInvokeHeaders(attempt) ?? {}),
+        },
+      })), ROUTE_CLIENT_TIMEOUT_MS, SEARCH_SLOW);
       const places = parseRoutePlaces(invoked.data);
       if (places.length > 0 || (invoked.data && typeof invoked.data === 'object' && (invoked.data as { ok?: unknown }).ok === true)) {
         return places;
       }
-      throw new UserFacingError(calmRouteMessage(invoked.data), 'generic');
+      throw new UserFacingError(await explainRouteFailure(invoked.error), 'generic');
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
-      throw new UserFacingError(calmRouteMessage(null), 'generic');
+      throw new UserFacingError(await explainRouteFailure(error), 'generic');
     }
   }
 
@@ -3180,7 +3452,7 @@ export class SupabaseRepository implements Repository {
     const drafted = outdoorRouteFromDraft(id, { ...input, title: input.title || existing.title });
     if (!drafted) throw new UserFacingError('Could not save that route.', 'generic');
     const saved = { ...drafted, createdAt: existing.createdAt, ascentM: input.ascentM ?? null };
-    const patch = outdoorRouteReplace(saved, input.ascentM ?? null, new Date().toISOString());
+    const patch = withSavedLine(outdoorRouteReplace(saved, input.ascentM ?? null, new Date().toISOString()), saved.points);
     this.emit({
       ...this.snapshot,
       outdoorRoutes: before.map((item) => (item.id === id ? saved : item)),
@@ -3190,9 +3462,19 @@ export class SupabaseRepository implements Repository {
       .update(row)
       .eq('id', id)
       .eq('user_id', userId);
-    let { error } = await write(patch);
-    if (error && /ascent_m/i.test(error.message ?? '') && Object.prototype.hasOwnProperty.call(patch, 'ascent_m')) {
-      const { ascent_m: _ascent, ...rest } = patch;
+    let current = patch;
+    let { error } = await write(current);
+    if (error && savedLineRejected(error.message ?? '', current)) {
+      // Without the line grant the old line cannot be replaced. Clear it from the phone copy too.
+      current = withoutSavedLine(current);
+      this.emit({
+        ...this.snapshot,
+        outdoorRoutes: before.map((item) => (item.id === id ? { ...saved, points: [] } : item)),
+      });
+      ({ error } = await write(current));
+    }
+    if (error && /ascent_m/i.test(error.message ?? '') && Object.prototype.hasOwnProperty.call(current, 'ascent_m')) {
+      const { ascent_m: _ascent, ...rest } = current;
       ({ error } = await write(rest));
     }
     if (error) {
@@ -3240,7 +3522,7 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }> {
+  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local'; notice?: string }> {
     if (!this.snapshot.profile?.consentAi || !this.snapshot.profile?.consentHealth) {
       throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
     }
@@ -3260,10 +3542,16 @@ export class SupabaseRepository implements Repository {
     if (invoked.status === 401 || invoked.status >= 500 || data?.ok !== true || sections.length === 0) {
       throw this.aiFailure('plan', 'health-plan', new Error('Analysis did not answer.'), invoked.status);
     }
-    return { text: text || sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'), sections, source: data.source === 'model' ? 'model' : 'local' };
+    const notice = billingNotice(data);
+    return {
+      text: text || sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'),
+      sections,
+      source: data.source === 'model' ? 'model' : 'local',
+      ...(notice ? { notice } : {}),
+    };
   }
 
-  async refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void> {
+  async refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<{ notice?: string } | void> {
     const localOnly = options?.localOnly === true;
     if (!localOnly && !this.snapshot.profile?.consentAi) {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
@@ -3313,6 +3601,8 @@ export class SupabaseRepository implements Repository {
       }));
       throw new UserFacingError(PLAN_NOT_SAVED, 'generic');
     }
+    const notice = billingNotice(data);
+    return notice ? { notice } : undefined;
   }
 
   async sharedNutrition(userId: string) {
@@ -3421,7 +3711,7 @@ export class SupabaseRepository implements Repository {
       : statusFirst;
     const dailyFull = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, min_heart_rate_bpm, max_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories, steps, distance_metres, floors_climbed, average_stress_level, body_battery_charged, body_battery_drained, body_battery_highest, body_battery_lowest, step_goal, duration_seconds';
     const dailyWithKcal = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories';
-    const [dailiesFirst, activities, sleep, metrics, respiration, pulseOx, hrv, bloodPressure, bodyComp, skinTemp, stress, epochs, healthSnapshot, moveIq, activityDetails] = await Promise.all([
+    const [dailiesFirst, activities, sleep, metrics, respiration, pulseOx, hrv, bloodPressure, bodyComp, skinTemp, stress, epochs, healthSnapshot, moveIq, detailsFirst] = await Promise.all([
       this.client.from('garmin_dailies').select(dailyFull).order('calendar_date'),
       this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
       this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
@@ -3436,8 +3726,11 @@ export class SupabaseRepository implements Repository {
       this.client.from('garmin_epoch').select('summary_id, calendar_date, active_seconds, steps, distance_metres, mean_heart_rate_bpm').order('calendar_date'),
       this.client.from('garmin_health_snapshot').select('summary_id, calendar_date, heart_rate_bpm, resting_heart_rate_bpm, spo2, respiration, stress').order('calendar_date'),
       this.client.from('garmin_move_iq').select('summary_id, calendar_date, activity_type, duration_seconds, distance_metres').order('calendar_date'),
-      this.client.from('garmin_activity_detail').select('summary_id, calendar_date, duration_seconds, distance_metres, average_heart_rate_bpm, active_kilocalories').order('calendar_date'),
+      this.client.from('garmin_activity_detail').select('summary_id, calendar_date, duration_seconds, distance_metres, average_heart_rate_bpm, active_kilocalories, start_latitude, start_longitude, elevation_gain_metres, elevation_loss_metres').order('calendar_date'),
     ]);
+    const activityDetails = detailsFirst.error && missingColumn(detailsFirst.error.message, 'start_latitude')
+      ? await this.client.from('garmin_activity_detail').select('summary_id, calendar_date, duration_seconds, distance_metres, average_heart_rate_bpm, active_kilocalories').order('calendar_date')
+      : detailsFirst;
     const dailyNewMissing = dailiesFirst.error && ['steps', 'distance_metres', 'floors_climbed', 'min_heart_rate_bpm', 'max_heart_rate_bpm', 'average_stress_level', 'body_battery_charged', 'body_battery_drained', 'body_battery_highest', 'body_battery_lowest', 'step_goal', 'duration_seconds'].some((column) => missingColumn(dailiesFirst.error?.message ?? '', column));
     const dailiesWithKnown = dailyNewMissing
       ? await this.client.from('garmin_dailies').select(dailyWithKcal).order('calendar_date')
@@ -3485,6 +3778,24 @@ export class SupabaseRepository implements Repository {
       storedMissing: typeof statusRow?.missing_permissions === 'string' ? statusRow.missing_permissions : null,
     });
     return { ...readings, needsPermissions: permission.needs, missingPermissions: permission.missing };
+  }
+
+  async garminActivityTrack(summaryId: string): Promise<GarminActivityTrack | null> {
+    const ids = garminDetailIds(summaryId);
+    if (!ids.length) return null;
+    const [track, detail] = await Promise.all([
+      this.client.from('garmin_activity_samples').select('summary_id, started_at, points').in('summary_id', ids).limit(1).maybeSingle(),
+      this.client.from('garmin_activity_detail').select('summary_id, elevation_gain_metres, elevation_loss_metres').in('summary_id', ids).limit(1).maybeSingle(),
+    ]);
+    if (track.error && !missingRelation(track.error.message)) throw new Error('Garmin route could not be read.');
+    const row = track.data as { started_at?: unknown; points?: unknown } | null;
+    const climb = detail.error ? null : detail.data as { elevation_gain_metres?: unknown; elevation_loss_metres?: unknown } | null;
+    const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+    return {
+      track: row && typeof row.started_at === 'string' && Array.isArray(row.points) ? { startedAt: row.started_at, points: row.points } : null,
+      elevationGainMetres: number(climb?.elevation_gain_metres),
+      elevationLossMetres: number(climb?.elevation_loss_metres),
+    };
   }
 
   async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {
@@ -3545,7 +3856,8 @@ export class SupabaseRepository implements Repository {
   async loadAiUsageMonth(monthStart: string): Promise<{ coach: number; meal: number; plan: number }> {
     const totals = { coach: 0, meal: 0, plan: 0 };
     const { data, error } = await this.client.from('ai_usage').select('kind, count').gte('day', monthStart);
-    if (error || !Array.isArray(data)) return totals;
+    if (error) throw new UserFacingError('Couldn\'t check your credits. Try again.', 'generic');
+    if (!Array.isArray(data)) return totals;
     for (const row of data) {
       const kind = (row as { kind?: unknown }).kind;
       const count = Number((row as { count?: unknown }).count);
@@ -3556,7 +3868,8 @@ export class SupabaseRepository implements Repository {
 
   async loadEntitlementOverride(): Promise<import('@/domain/entitlementOverride').EntitlementOverride | null> {
     const { data, error } = await this.client.from('entitlement_overrides').select('tier, expires_at').maybeSingle();
-    if (error || !data) return null;
+    if (error) throw new UserFacingError('Couldn\'t check your plan. Try again.', 'generic');
+    if (!data) return null;
     return parseEntitlementOverride(data as Record<string, unknown>);
   }
 
@@ -4334,7 +4647,7 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
   return {
     ...base,
     kcalTarget: target == null ? null : Math.round(target),
-    hideCalories: row.hide_calories === true,
+    hideCalories: false,
     shareFoodDiary: row.share_food_diary === true,
     shareCalories: row.share_calories === true,
     shareQuality: row.share_quality === true,

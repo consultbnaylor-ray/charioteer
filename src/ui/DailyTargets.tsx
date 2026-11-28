@@ -5,6 +5,7 @@ import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
 import { useRepository, useSnapshot } from '@/data';
+import { dailyTargetChip, splitUrgentCopy } from '@/domain/compactLines';
 import { buildDailyTargets, DAILY_TARGETS_CAVEAT } from '@/domain/dailyTargets';
 import { formatUkCompactWhen, isoDay } from '@/domain/dates';
 import { formatAxisNumber, placeAxisLabels, progressDateTicks, yAxisTicks } from '@/domain/readingChart';
@@ -19,6 +20,7 @@ import { weightPointsFrom } from '@/domain/nutrition';
 import { weightReadingKg, weightWaistWrite, type WeightUnitMode } from '@/domain/weightEntry';
 import { useHealthSources } from '@/health/useHealthSources';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, Field, T, playSavedHaptic } from '@/ui/ui';
@@ -104,15 +106,27 @@ export function DailyTargets() {
       <T variant="label">Daily Targets</T>
       {plan ? (
         <>
-          <T>{plan.headline}</T>
-          <T>{plan.intake}</T>
-          <T>{plan.activity}</T>
-          <T>{plan.weigh}</T>
-          {plan.pace ? <T>{plan.pace}</T> : null}
-          {plan.fuelNote ? <T>{plan.fuelNote}</T> : null}
+          <T numberOfLines={1}>{dailyTargetChip(plan)}</T>
+          {plan.pace ? <UrgentPace text={plan.pace} /> : null}
+          <MoreInfo title="About these targets" about="these targets">
+            <T>{plan.headline}</T>
+            <T>{plan.intake}</T>
+            <T>{plan.activity}</T>
+            <T>{plan.weigh}</T>
+            {plan.pace && splitUrgentCopy(plan.pace).rest ? <T>{splitUrgentCopy(plan.pace).rest}</T> : null}
+            {plan.fuelNote ? <T>{plan.fuelNote}</T> : null}
+            <T variant="muted">{plan.caveat ?? DAILY_TARGETS_CAVEAT}</T>
+          </MoreInfo>
         </>
       ) : (
-        <T variant="muted">{targetOn ? `Target date ${targetOn}` : 'Set an optional target date on the goal if you want a path on the graph.'}</T>
+        <>
+          <T numberOfLines={1}>{targetOn ? `Target date ${targetOn}` : 'No target date yet'}</T>
+          {targetOn ? null : (
+            <MoreInfo title="About these targets" about="these targets">
+              <T>Set an optional target date on the goal if you want a path on the graph.</T>
+            </MoreInfo>
+          )}
+        </>
       )}
       <GoalProgressGraph
         series={series}
@@ -126,8 +140,7 @@ export function DailyTargets() {
       />
       <ProgressPhotoButton today={today} />
       {targetKg != null ? <WeightInline /> : null}
-      <T variant="muted">{plan?.caveat ?? DAILY_TARGETS_CAVEAT}</T>
-      {vo2Chart.sourceLabel ? <T variant="muted">{vo2Chart.sourceLabel}</T> : null}
+      {vo2Chart.sourceLabel ? <T numberOfLines={1} variant="muted">{vo2Chart.sourceLabel}</T> : null}
     </Card>
   );
 }
@@ -282,12 +295,12 @@ function MiniSeries({
   reason?: readonly string[];
   caption?: string | null;
 }) {
-  const why = (
-    <>
+  const why = reason.length > 0 || caption ? (
+    <MoreInfo title="About this chart" about={title}>
       {reason.map((line) => <T key={line} variant="muted">{line}</T>)}
       {caption ? <T variant="muted">{caption}</T> : null}
-    </>
-  );
+    </MoreInfo>
+  ) : null;
   if (actual.length === 0) {
     return (
       <View style={{ gap: 4, alignSelf: 'stretch' }}>
@@ -343,6 +356,12 @@ function MiniSeries({
       {shortUnit ? null : <T variant="muted">{unit}</T>}
     </View>
   );
+}
+
+function UrgentPace({ text }: { text: string }) {
+  const shown = splitUrgentCopy(text).shown;
+  if (!shown) return null;
+  return <T>{shown}</T>;
 }
 
 function ProgressPhotoFrame({ photo, stamp }: { photo: GoalProgressPhoto; stamp: string }) {

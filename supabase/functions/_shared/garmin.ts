@@ -5,6 +5,7 @@
  * the Health API push shape; the portal still hides the full field list.
  */
 
+import { currentRestingHeartRate } from './currentResting.ts';
 import { exerciseReadingLines } from './exerciseAnalysis.ts';
 import {
   parseGarminExtras,
@@ -55,7 +56,7 @@ export const PKCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 export const GARMIN_PRIVACY =
   'Garmin readings stay on your account, the same way Apple Health readings do. They are not sold, not shared for ads, and not used to train AI. Thumos sees them only when health data and the coach are on, and personal data is allowed. A path is not stored.';
 
-/** Every stored Garmin summary. Disconnect, account deletion, and a lost export all use this list. */
+/** Every stored Garmin summary. Account deletion removes these. Disconnect leaves them. */
 export const GARMIN_SUMMARY_TABLES = [
   'garmin_dailies',
   'garmin_activities',
@@ -73,12 +74,18 @@ export const GARMIN_SUMMARY_TABLES = [
   'garmin_move_iq',
   'garmin_activity_detail',
   'garmin_activity_file',
+  'garmin_activity_samples',
+] as const;
+
+/** Tokens, the sign-in state, and the Garmin user id. Disconnect removes only these. */
+export const GARMIN_CREDENTIAL_TABLES = [
+  'garmin_oauth_states',
+  'garmin_connections',
 ] as const;
 
 export const GARMIN_DATA_TABLES = [
   ...GARMIN_SUMMARY_TABLES,
-  'garmin_oauth_states',
-  'garmin_connections',
+  ...GARMIN_CREDENTIAL_TABLES,
 ] as const;
 
 /**
@@ -259,11 +266,33 @@ export type GarminPushPlan = {
   moveIq: GarminExtras['moveIq'];
   activityDetails: GarminExtras['activityDetails'];
   activityFiles: GarminExtras['activityFiles'];
+  activityTracks: GarminExtras['activityTracks'];
   /** Women's health and unrecognised push keys. Names only. */
   droppedTypes: string[];
   deregistered: string[];
   permissionChanges: { garminUserId: string; permissions: string }[];
 };
+
+function decodeBase64Url(value: string): string {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+  return atob(padded + pad);
+}
+
+/** True when Authorization carries a user access token, not the anon or publishable key. */
+export function hasUserJwt(authorization: string | null | undefined): boolean {
+  if (!authorization) return false;
+  const token = authorization.replace(/^Bearer\s+/i, '').trim();
+  if (!token || token.startsWith('sb_')) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts.some((part) => !part)) return false;
+  try {
+    const payload = JSON.parse(decodeBase64Url(parts[1])) as { role?: unknown };
+    return payload.role === 'authenticated';
+  } catch {
+    return false;
+  }
+}
 
 export function emptyGarminReadings(): GarminReadings {
   return {
@@ -532,6 +561,7 @@ export function mapGarminPush(body: unknown): GarminPushPlan {
     moveIq: extras.moveIq,
     activityDetails: extras.activityDetails,
     activityFiles: extras.activityFiles,
+    activityTracks: extras.activityTracks,
     droppedTypes: extras.droppedTypes,
     deregistered: unique(deregisteredIds(root)),
     permissionChanges: permissionChanges(root),
@@ -555,6 +585,41 @@ export function dedupeBy<T>(rows: readonly T[], keyFn: (row: T) => string, prefe
 /** The row that arrived later. */
 export function preferLast<T>(_current: T, incoming: T): T {
   return incoming;
+}
+
+function filledFields(row: Record<string, unknown>): number {
+  let count = 0;
+  for (const value of Object.values(row)) {
+    if (value == null || value === '') continue;
+    count += 1;
+  }
+  return count;
+}
+
+/**
+ * The row with more filled fields. A tie keeps the row that arrived later.
+ * Null and an empty string do not count. Zero does.
+ */
+export function preferLastComplete<T extends Record<string, unknown>>(current: T, incoming: T): T {
+  const left = filledFields(current);
+  const right = filledFields(incoming);
+  if (right > left) return incoming;
+  if (left > right) return current;
+  return incoming;
+}
+
+/**
+ * One row per conflict key inside a single upsert batch.
+ * Postgres 21000 rejects ON CONFLICT DO UPDATE when the same key appears twice.
+ * The kept row is the later one, unless an earlier row has more filled fields.
+ */
+export function dedupeUpsertRows<T extends Record<string, unknown>>(rows: readonly T[], onConflict: string): T[] {
+  const columns = onConflict.split(',').map((column) => column.trim()).filter(Boolean);
+  return dedupeBy(
+    rows,
+    (row) => columns.map((column) => String(row[column] ?? '')).join('\u0000'),
+    preferLastComplete,
+  );
 }
 
 /**
@@ -609,14 +674,41 @@ export type GarminStore = {
   states: { userId: string; state: string }[];
 };
 
-export function withoutGarminUser(store: GarminStore, userId: string): GarminStore {
+/** Drops tokens and the Garmin user id. Summaries keyed by the Charioteer user stay. */
+export function releaseGarminConnection(store: GarminStore, userId: string): GarminStore {
   return {
+    ...store,
     connections: store.connections.filter((row) => row.userId !== userId),
+    states: store.states.filter((row) => row.userId !== userId),
+  };
+}
+
+/**
+ * Puts the connection back for the same Charioteer user.
+ * A new Garmin user id replaces the old mapping and does not copy or drop summaries.
+ */
+export function reconnectGarminUser(
+  store: GarminStore,
+  connection: { userId: string; garminUserId: string; accessToken: string },
+): GarminStore {
+  return {
+    ...store,
+    connections: [
+      ...store.connections.filter((row) => row.userId !== connection.userId && row.garminUserId !== connection.garminUserId),
+      connection,
+    ],
+  };
+}
+
+/** Account deletion. Removes the connection and every summary for that Charioteer user. */
+export function withoutGarminUser(store: GarminStore, userId: string): GarminStore {
+  const released = releaseGarminConnection(store, userId);
+  return {
+    ...released,
     dailies: store.dailies.filter((row) => row.userId !== userId),
     activities: store.activities.filter((row) => row.userId !== userId),
     sleep: store.sleep.filter((row) => row.userId !== userId),
     userMetrics: store.userMetrics.filter((row) => row.userId !== userId),
-    states: store.states.filter((row) => row.userId !== userId),
   };
 }
 
@@ -668,7 +760,7 @@ export function applyGarminPush(
   );
   for (const garminUserId of plan.deregistered) {
     const userId = owned(garminUserId);
-    if (userId) next = withoutGarminUser(next, userId);
+    if (userId) next = releaseGarminConnection(next, userId);
   }
   return next;
 }
@@ -956,9 +1048,17 @@ export function garminHistoryCooling(refusedAt: string | null, nowMs: number): b
   return nowMs - at < GARMIN_HISTORY_WINDOW_MS;
 }
 
-/** Every requested summary came back 412. An empty list is not a refusal. */
-export function garminAllHistoricalRefusal(statuses: readonly number[]): boolean {
-  return statuses.length > 0 && statuses.every((status) => status === 412);
+/**
+ * Garmin refused past data with 412. True when every summary came back 412, or when
+ * activities or activity details came back 412 and nothing was accepted (other types
+ * may be 404 or 429). An empty list is not a refusal. Live refresh v18 runs the same rule.
+ */
+export function garminAllHistoricalRefusal(statuses: readonly number[], types?: readonly string[] | null): boolean {
+  if (statuses.length === 0) return false;
+  if (statuses.some((status) => status === 202 || status === 204 || status === 409)) return false;
+  if (statuses.every((status) => status === 412)) return true;
+  if (!types) return false;
+  return statuses.some((status, index) => status === 412 && (types[index] === 'activities' || types[index] === 'activityDetails'));
 }
 
 /**
@@ -998,14 +1098,12 @@ export function garminFigures(readings: GarminReadings): {
   const dailies = [...readings.dailies].sort((left, right) => left.calendarDate.localeCompare(right.calendarDate));
   const sleepNights = sleepByNight(readings.sleep);
   const activities = [...readings.activities].sort((left, right) => left.startedAt.localeCompare(right.startedAt));
-  const latestDay = dailies.length ? dailies[dailies.length - 1] : null;
-  const heartRate = latestDay
-    ? figure(
-      latestDay.restingHeartRateBpm != null ? 'Resting heart rate' : 'Average heart rate',
-      latestDay.restingHeartRateBpm ?? latestDay.averageHeartRateBpm,
-      'bpm',
-      `on ${ukDay(latestDay.calendarDate)}`,
-    )
+  const restingReading = currentRestingHeartRate({
+    today: dailies.length ? dailies[dailies.length - 1].calendarDate : '1970-01-01',
+    garmin: dailies.map((day) => ({ day: day.calendarDate, value: day.restingHeartRateBpm })),
+  });
+  const heartRate = restingReading
+    ? figure('Resting heart rate', restingReading.value, 'bpm', `latest on ${ukDay(restingReading.day)}`)
     : null;
   const latestNight = sleepNights.length ? sleepNights[sleepNights.length - 1] : null;
   const sleep = latestNight
@@ -1040,7 +1138,7 @@ export function garminFigures(readings: GarminReadings): {
     anaerobic,
     workouts,
     heartChart: dailies
-      .map((day) => day.restingHeartRateBpm ?? day.averageHeartRateBpm)
+      .map((day) => day.restingHeartRateBpm)
       .filter((value): value is number => value != null)
       .slice(-14),
     sleepChart: sleepNights.map((night) => Math.round((night.seconds / 3600) * 10) / 10).slice(-14),
@@ -1450,14 +1548,24 @@ async function storedAccessToken(db: GarminDb, userId: string, tokenKey: string,
   }, tokenKey, garminTokenAad(userId, 'access', version));
 }
 
-/** Removes one person's summary rows. The connection row stays. */
+/** Removes one person's summary rows. The connection row stays. Account deletion uses this. */
 export async function deleteGarminSummaries(db: GarminDb, userId: string): Promise<void> {
-  await deleteGarminTables(db, userId, GARMIN_SUMMARY_TABLES, 'garmin-webhook: delete');
+  await deleteGarminTables(db, userId, GARMIN_SUMMARY_TABLES, 'garmin-disconnect: delete');
 }
 
-/** Removes tokens and summaries for one account. Does not call Garmin. */
+/** Removes tokens, the Garmin user id, and every summary. Does not call Garmin. */
 export async function deleteGarminRows(db: GarminDb, userId: string): Promise<void> {
-  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-webhook: delete');
+  await deleteGarminSummaries(db, userId);
+  await clearGarminCredentials(db, userId);
+}
+
+/** Removes tokens and the connection. Stored summaries stay, still keyed by the Charioteer user. */
+export async function clearGarminCredentials(
+  db: GarminDb,
+  userId: string,
+  errorCode = 'garmin-disconnect: delete',
+): Promise<void> {
+  await deleteGarminTables(db, userId, GARMIN_CREDENTIAL_TABLES, errorCode);
 }
 
 async function deleteGarminTables(
@@ -1472,12 +1580,36 @@ async function deleteGarminTables(
   }
 }
 
+/**
+ * Asks Garmin to drop the registration, then removes tokens and the connection.
+ * Daily summaries, sleep, activities, and the other stored readings stay.
+ */
+export async function disconnectGarminAccount(
+  db: GarminDb,
+  userId: string,
+  credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await revokeStoredGarminRegistration(db, userId, credentials, fetchImpl);
+  await clearGarminCredentials(db, userId);
+}
+
 /** Calls Garmin, then removes this person's tokens and summaries. A missing table is ignored. */
 export async function forgetGarminAccount(
   db: GarminDb,
   userId: string,
   credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
   fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await revokeStoredGarminRegistration(db, userId, credentials, fetchImpl);
+  await deleteGarminRows(db, userId);
+}
+
+async function revokeStoredGarminRegistration(
+  db: GarminDb,
+  userId: string,
+  credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
+  fetchImpl: typeof fetch,
 ): Promise<void> {
   const selected = await db
     .from('garmin_connections')
@@ -1533,7 +1665,6 @@ export async function forgetGarminAccount(
     const remote = await deregisterRemote(bearer, fetchImpl);
     if (remote === 'failed') console.error('garmin-disconnect: remote');
   }
-  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-disconnect: delete');
 }
 
 function sealedText(value: unknown): string {

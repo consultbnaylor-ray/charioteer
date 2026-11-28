@@ -73,7 +73,7 @@ describe('goal led summary', () => {
     }
   });
 
-  it('says when protein is short, and leaves Save-style calorie talk out when calories are hidden', () => {
+  it('says when protein is short, and still shows calories when the old hide flag is set', () => {
     const short = buildGoalLed({ ...base, goal: 'lose_fat_build_muscle', todayProtein: 100, proteinTarget: 140 });
     expect(short.measures.find((item) => item.id === 'protein')).toMatchObject({
       centre: '100',
@@ -82,10 +82,10 @@ describe('goal led summary', () => {
       neutral: true,
     });
     expect(short.nudges.some((line) => line.includes('target hit'))).toBe(false);
-    const hidden = buildGoalLed({ ...base, goal: 'maintain', hideCalories: true, kcalTarget: 2000 });
-    const text = `${hidden.matters} ${hidden.progressWords} ${hidden.nudges.join(' ')} ${hidden.measures.map((item) => `${item.label} ${item.words} ${item.unit}`).join(' ')}`;
-    expect(text).not.toMatch(/kcal/i);
-    expect(goalProgressLine({ ...base, goal: 'maintain', hideCalories: true })).not.toMatch(/kcal/i);
+    const shown = buildGoalLed({ ...base, goal: 'maintain', hideCalories: true, kcalTarget: 2000 });
+    const text = `${shown.matters} ${shown.progressWords} ${shown.nudges.join(' ')} ${shown.measures.map((item) => `${item.label} ${item.words} ${item.unit}`).join(' ')}`;
+    expect(text).toMatch(/kcal/i);
+    expect(goalProgressLine({ ...base, goal: 'maintain', hideCalories: true })).toMatch(/kcal/i);
     const logged = buildGoalLed({
       ...base,
       goal: 'lose_fat_build_muscle',
@@ -313,12 +313,13 @@ describe('goal led summary', () => {
     expect(empty.matters).toMatch(/Pick a goal on You/);
   });
 
-  it('puts the same check on Today and Stats, and ties the plan and Thumos to the goal', () => {
+  it('keeps the goal check on Today and the plan, and leaves Health Stats to the body charts', () => {
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).toContain('<YourGoal place="today" />');
-    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<YourGoal place="stats" />');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).not.toContain('<YourGoal');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourGoal place="plan" />');
     expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('towardGoal(view.name)');
-    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<GoalLine />');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).not.toContain('<GoalLine />');
+    expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('<GoalLine />');
     const goalCard = readFileSync('src/ui/YourGoal.tsx', 'utf8');
     expect(goalCard).toContain('<ProgressRing');
     expect(goalCard).toContain('monochrome');

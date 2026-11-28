@@ -207,4 +207,23 @@ describe('protein intake review', () => {
     expect(screen).toContain('draftFigureNote');
     expect(screen).not.toContain('dangerous');
   });
+
+  it('leaves a triggered protein review on the card and folds the standing explanation', () => {
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const today = screen.slice(screen.indexOf('variant="label">Today'), screen.indexOf('<NutritionBoard'));
+    const suggest = screen.slice(screen.indexOf('variant="label">Suggest targets'), screen.indexOf('variant="label">Today'));
+    expect(today).toContain('{proteinReview.review ? <T>{proteinReview.review}</T> : null}');
+    expect(today.indexOf('{proteinReview.review}')).toBeLessThan(today.indexOf('title="About protein limits"'));
+    expect(today.indexOf('title="About protein limits"')).toBeLessThan(today.indexOf('{proteinReview.standing}'));
+    expect(today.slice(today.indexOf('title="About protein limits"'), today.indexOf('title="About fats"'))).toContain('proteinNotes.map');
+    expect(today.indexOf('{fats.line}')).toBeLessThan(today.indexOf('title="About fats"'));
+    expect(today.indexOf('title="About fats"')).toBeLessThan(today.indexOf('{FAT_SCIENCE}'));
+    expect(today).toContain('title="About processed food"');
+    expect(today).toContain('title="What this means"');
+    expect(today).toContain('processedLine(items)');
+    expect(today).not.toContain('HIDE_CALORIES_LINE');
+    expect(suggest).not.toContain('HIDE_CALORIES_LINE');
+    expect(suggest).toContain('{LOW_BMI_NOTE}');
+    expect(suggest).toContain('title="About this suggestion"');
+  });
 });

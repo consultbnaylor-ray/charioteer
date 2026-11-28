@@ -682,8 +682,9 @@ describe('health plan writer', () => {
     expect(page).toContain('<TrainingScheduleCard');
     const card = readFileSync('src/ui/TrainingSchedule.tsx', 'utf8');
     expect(card).toContain('My training schedule');
-    expect(card).toContain('aria-expanded={open}');
-    expect(card).toContain('accessibilityState={{ expanded: open }}');
+    expect(card).toContain('<ExpandableRow');
+    expect(card).toContain('expanded={open}');
+    expect(card).toContain("hint={open ? 'Hide' : 'Show'}");
     expect(card).toContain('Save schedule');
     expect(card).toContain('Walk day');
     const sql = readFileSync('supabase/migrations/20261015240000_training_schedules.sql', 'utf8');

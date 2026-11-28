@@ -6,6 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { formatUkCompactWhen } from '@/domain/dates';
 import { PLAN_NOT_SAVED } from '@/domain/edgeRetry';
 import { UserFacingError, shownError } from '@/domain/errors';
+import { dedupeFocusItems } from '@/domain/adviceDedupe';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
 import { planProgressFigure } from '@/domain/measureFigures';
 import { buildStatsOverview } from '@/domain/statsOverview';
@@ -54,6 +55,7 @@ export default function HealthPlanScreen() {
   const plan = snap.healthPlan;
   const [limits, setLimits] = useState(plan?.limits ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const { samples: mergedHealth, workouts } = useHealthSources();
   const limitsRef = useRef(limits);
   const planRef = useRef(plan);
@@ -85,9 +87,10 @@ export default function HealthPlanScreen() {
     bodyComposition: snap.bodyComposition,
     gratitude: snap.gratitude,
   }).filter((tile) => PROGRESS_IDS.includes(tile.id));
+  const focus = plan ? dedupeFocusItems(plan.focus) : [];
   const progress = plan
     ? planProgressFigure([
-      { key: 'focus', label: 'Focus', done: plan.focus.filter((item) => item.done).length, total: plan.focus.length },
+      { key: 'focus', label: 'Focus', done: focus.filter((item) => item.done).length, total: focus.length },
       { key: 'habits', label: 'Habits', done: plan.nutrition.habits.filter((item) => item.done).length, total: plan.nutrition.habits.length },
       { key: 'swaps', label: 'Swaps', done: plan.nutrition.swaps.filter((item) => item.done).length, total: plan.nutrition.swaps.length },
       { key: 'fitness', label: 'Fitness', done: plan.fitness.sessions.filter((item) => item.done).length, total: plan.fitness.sessions.length },
@@ -101,7 +104,7 @@ export default function HealthPlanScreen() {
     queue.current = queue.current.then(async () => {
       const current = planRef.current;
       if (!current) return;
-      const next = togglePlanAction({ ...current, limits: limitsRef.current.slice(0, 280) }, id);
+      const next = togglePlanAction({ ...current, focus: dedupeFocusItems(current.focus), limits: limitsRef.current.slice(0, 280) }, id);
       planRef.current = next;
       await repo.saveHealthPlan(next);
     }).catch((err: unknown) => {
@@ -114,12 +117,14 @@ export default function HealthPlanScreen() {
     run('refresh', async () => {
       try {
         await queue.current;
-        await repo.refreshHealthPlan(limitsRef.current);
+        const result = await repo.refreshHealthPlan(limitsRef.current);
+        setNotice(result && result.notice ? result.notice : null);
       } catch (err) {
+        setNotice(null);
         if (err instanceof UserFacingError && err.message === PLAN_NOT_SAVED) {
           setError(PLAN_NOT_SAVED);
         } else {
-          setError(shownError(err, 'Could not write a plan.'));
+          setError(shownError(err, 'Could not write a plan.') || null);
         }
       }
     });
@@ -140,12 +145,13 @@ export default function HealthPlanScreen() {
       <AiCreditLine kind="plan" />
       <ErrorNote>{error}</ErrorNote>
       {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
+      {notice && !error ? <T variant="muted">{notice}</T> : null}
       {plan ? (
         <>
           <Card>
             <T variant="label">This week's focus</T>
             <T variant="muted">Ticked automatically from your Garmin and Apple Health data where we can; tap to tick the rest.</T>
-            {plan.focus.map((action) => (
+            {focus.map((action) => (
               <ActionRow key={action.id} action={action} disabled={refreshing} onToggle={tick} />
             ))}
           </Card>

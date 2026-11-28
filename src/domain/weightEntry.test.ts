@@ -100,7 +100,7 @@ describe('weight entry', () => {
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     expect(health.match(/<WeightWaistLink/g)).toHaveLength(1);
     expect(health).toContain('SHOW_WEIGHT_SECTION ? <WeightWaistLink');
-    expect(health).toContain('omitTiles={healthStatsOmittedTiles()}');
+    expect(health).toContain('...healthStatsOmittedTiles()');
     expect(health).toContain('onSaveBody={SHOW_WEIGHT_SECTION ? saveBodyGap : undefined}');
     expect(health).toContain("omitKinds={['weight_kg']}");
     expect(health).toContain("router.replace('/weight-waist'");
@@ -259,7 +259,7 @@ describe('weight entry', () => {
     expect(home).toContain('buildHealthInsights');
     expect(home).toContain("router.push('/health'");
     const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
-    expect(checkIn).toContain('label="Save check-in"');
+    expect(checkIn).toContain('checkInSaveView');
     expect(checkIn).toContain('repo.addCheckIn');
     expect(checkIn).not.toContain('weightWaistWrite');
     expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('healthInsights');

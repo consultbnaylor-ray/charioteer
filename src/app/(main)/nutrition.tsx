@@ -10,7 +10,7 @@ import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
 import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
-import { isMealPickerCancel, MealEstimateError, mealEstimateLog, mealEstimateMessage, mealPhotoFailure } from '@/domain/mealEstimate';
+import { isMealPickerCancel, MealEstimateError, mealEstimateLog, mealEstimateMessage, mealPhotoFailure, ROUGH_ESTIMATE_BILLING_NOTE, ROUGH_ESTIMATE_NOTE } from '@/domain/mealEstimate';
 import { randomId } from '@/domain/id';
 import {
   APPLE_HEALTH_MEAL_NOTE,
@@ -25,7 +25,6 @@ import {
   PRO_BOXING_CLASSES,
   isClassBoxer,
   isTrainingGoal,
-  HIDE_CALORIES_LINE,
   LOW_BMI_NOTE,
   MEAL_LABEL,
   MEAL_SLOTS,
@@ -276,7 +275,6 @@ export default function Nutrition() {
   const today = londonDay(new Date());
   const logWindow = mealLogWindow(new Date());
   const settings = snap.nutrition;
-  const hide = settings.hideCalories;
   const items = dayItems(snap.foodLogs, today);
   const periodDays = nutritionTrendDays(snap.foodLogs, today, periodDayCount(period));
   const periodNotes = processedFoodNotes(snap.foodLogs, periodDays.map((day) => day.day));
@@ -289,7 +287,7 @@ export default function Nutrition() {
     ? savingsFromTypicalWeek(profile.weeklySpendGbp ?? 0, profile.weeklyUnits, elapsed.totalMs).units
     : 0;
   const sugar = sugarCravingNote(elapsed ? elapsed.days : null);
-  const saved = alcoholSavedLine(units, hide);
+  const saved = alcoholSavedLine(units, false);
   const patterns = nutritionPatternLines(snap.foodLogs, snap.checkIns);
   const water = snap.waterDays.find((day) => day.day === today)?.waterMl ?? 0;
   const earlierLogs = snap.foodLogs
@@ -315,7 +313,7 @@ export default function Nutrition() {
   const dayLine = settings.goal
     ? goalDayLine({
       goal: settings.goal,
-      hideCalories: hide,
+      hideCalories: false,
       kcal: totals.kcal,
       kcalTarget: settings.kcalTarget,
       proteinG: totals.proteinG,
@@ -327,6 +325,7 @@ export default function Nutrition() {
       fatTarget: settings.fatTarget,
     })
     : null;
+  const todayMeaning = [dayLine, sugar, saved].filter((line): line is string => Boolean(line));
 
   const [meal, setMeal] = useState<MealSlot>('breakfast');
   const [logDay, setLogDay] = useState(() => mealLogWindow(new Date()).today);
@@ -359,6 +358,7 @@ export default function Nutrition() {
   const [estimateErrorDay, setEstimateErrorDay] = useState<string | null>(null);
   const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
   const [estimateFlash, setEstimateFlash] = useState(false);
+  const [roughEstimate, setRoughEstimate] = useState<boolean | 'billing'>(false);
   const [mealWeeks, setMealWeeks] = useState(1);
   const savedRowRef = useRef<View>(null);
   const dayAnchorRef = useRef<View>(null);
@@ -559,14 +559,14 @@ export default function Nutrition() {
       setProtein(String(result.suggestion.proteinG));
       setCarbs(String(result.suggestion.carbG));
       setFat(String(result.suggestion.fatG));
-      if (!hide) setTarget(String(result.suggestion.kcal));
+      setTarget(String(result.suggestion.kcal));
       setGoalNote(result.suggestion.note);
       setSuggestNote(suggestedTargetsLine({
         kcal: result.suggestion.kcal,
         proteinG: result.suggestion.proteinG,
         carbG: result.suggestion.carbG,
         fatG: result.suggestion.fatG,
-        hideCalories: hide,
+        hideCalories: false,
       }));
       playSavedHaptic();
       keepSuggestedMeasures(body, healthDay);
@@ -579,10 +579,11 @@ export default function Nutrition() {
     setError(null);
   }
 
-  function showEstimate(next: Draft) {
+  function showEstimate(next: Draft, rough: boolean | 'billing' = false) {
     setEstimateError(null);
     setEstimateReady(true);
     setEstimateFlash(true);
+    setRoughEstimate(rough);
     openDraft(next);
   }
 
@@ -623,7 +624,7 @@ export default function Nutrition() {
           estimated: true,
           previewUri: null,
           photoBase64: null,
-        });
+        }, estimate.billing === true ? 'billing' : estimate.providerUnavailable === true);
       } catch (err) {
         const failure = mealPhotoFailure(err);
         if (!(err instanceof MealEstimateError)) {
@@ -801,12 +802,12 @@ export default function Nutrition() {
     });
   }
 
-  function estimateEdited(text: string): Promise<FoodItem[]> {
+  function estimateEdited(text: string): Promise<{ items: FoodItem[]; providerUnavailable?: boolean }> {
     return new Promise((resolve, reject) => {
       run('meal-estimate', async () => {
         try {
           const estimate = await repo.estimateMeal({ text });
-          resolve(estimate.items);
+          resolve({ items: estimate.items, providerUnavailable: estimate.providerUnavailable === true });
         } catch (err) {
           reject(err);
         }
@@ -862,7 +863,11 @@ export default function Nutrition() {
         {active && confirmId === log.id ? (
           <View style={{ gap: 8 }}>
             <T>Delete this meal?</T>
-            {health ? <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T> : null}
+            {health ? (
+              <MoreInfo about="Apple Health" title="About Apple Health">
+                <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T>
+              </MoreInfo>
+            ) : null}
             <Button label="Delete this meal" tone="quiet" pending={isPending(`remove:${log.id}`)} pendingLabel="Deleting..." onPress={() => removeLog(log.id)} />
             <Button label="Keep it" tone="quiet" disabled={isPending(`remove:${log.id}`)} onPress={() => setConfirmId(null)} />
           </View>
@@ -870,7 +875,6 @@ export default function Nutrition() {
         {active && editingId === log.id ? (
           <MealEdit
             log={log}
-            hideCalories={hide}
             saved={mealSavedAt != null}
             saving={isPending('meal-save')}
             estimating={isPending('meal-estimate')}
@@ -887,7 +891,7 @@ export default function Nutrition() {
 
   function renderLog(log: FoodLog, showDate: boolean) {
     const names = log.items.map((item) => item.name).join(', ');
-    const kcal = hide ? '' : ` · ${sumItems(log.items).kcal} kcal`;
+    const kcal = ` · ${sumItems(log.items).kcal} kcal`;
     const estimate = log.estimated ? ` · ${ESTIMATE_LABEL}` : '';
     const when = log.eatenAt ? ` · ${formatUkTime(log.eatenAt)}` : '';
     const dateBit = showDate ? `${formatUkCompact(log.eatenOn)} · ` : '';
@@ -898,7 +902,7 @@ export default function Nutrition() {
           <OwnerPhoto uri={log.previewUrl} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
         ) : null}
         <T>{`${dateBit}${MEAL_LABEL[log.meal]}${when}: ${names || log.note || 'Meal'}${portionBit}${kcal}${estimate}`}</T>
-        <MealBreakdown bars={mealNutrientBars(log.items)} startOpen={false} />
+        <MealBreakdown bars={mealNutrientBars(log.items, { proteinG: settings.proteinTarget, carbsG: settings.carbTarget })} startOpen={false} />
         {mealActions(log, 'list')}
       </View>
     );
@@ -947,20 +951,17 @@ export default function Nutrition() {
         return;
       }
       const current = repo.getSnapshot().nutrition;
-      let kcal = current.kcalTarget;
-      if (!hide) {
-        const next = kcalFromField();
-        if (next === 'bad') {
-          setError('A target sits between 800 and 6,000 kcal, or leave it blank.');
-          return;
-        }
-        const low = refuseLowKcal(next, age, current.goalSex);
-        if (low) {
-          setError(low);
-          return;
-        }
-        kcal = next;
+      const next = kcalFromField();
+      if (next === 'bad') {
+        setError('A target sits between 800 and 6,000 kcal, or leave it blank.');
+        return;
       }
+      const low = refuseLowKcal(next, age, current.goalSex);
+      if (low) {
+        setError(low);
+        return;
+      }
+      const kcal = next;
       try {
         await repo.setNutritionSettings({
           ...current,
@@ -1001,13 +1002,6 @@ export default function Nutrition() {
     });
   }
 
-  function setHide(value: boolean) {
-    setChoiceNote(null);
-    void repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, hideCalories: value }).catch((err: unknown) => {
-      setChoiceNote(shownError(err, 'Could not update that setting.'));
-    });
-  }
-
   function updateItem(index: number, patch: Partial<DraftItem>) {
     setDuplicateAsk(false);
     setDraft((current) => {
@@ -1018,10 +1012,12 @@ export default function Nutrition() {
   }
 
   const ownerId = profile?.id ?? '';
-  const mealRows = todayMealRows(snap.foodLogs, today, ownerId);
+  const mealRows = todayMealRows(snap.foodLogs, today, ownerId, {
+    proteinG: settings.proteinTarget,
+    carbsG: settings.carbTarget,
+  });
   const mealTotals = todayMealTotals(snap.foodLogs, today, ownerId);
   const dayGroups = mealDayGroups(snap.foodLogs, today, ownerId, {
-    hideCalories: hide,
     kcalTarget: settings.kcalTarget,
     proteinTarget: settings.proteinTarget,
   });
@@ -1030,7 +1026,7 @@ export default function Nutrition() {
   const mealWindow = visibleMealDays(dayGroups, today, weeksOpen);
   const todayGroup = mealWindow.visible.find((group) => group.isToday) ?? null;
   const earlierGroups = mealWindow.visible.filter((group) => !group.isToday);
-  const calorieRing = !hide && settings.kcalTarget != null && mealRows.length > 0
+  const calorieRing = settings.kcalTarget != null && mealRows.length > 0
     ? todayRing({
       hideCalories: false,
       kcal: mealTotals.kcal,
@@ -1062,7 +1058,7 @@ export default function Nutrition() {
     ? goalMealNote({
       goal: settings.goal,
       items: draft.items.map(itemFromDraft).filter((item): item is FoodItem => item != null),
-      hideCalories: hide,
+      hideCalories: false,
       blockedLoss: blocked,
     })
     : null;
@@ -1123,6 +1119,7 @@ export default function Nutrition() {
             setEstimateReady(false);
             setEstimateFlash(false);
             setEstimateError(null);
+            setRoughEstimate(false);
             openDraft({
               meal,
               source: 'manual',
@@ -1150,6 +1147,7 @@ export default function Nutrition() {
         <Card style={estimateFlash ? { borderColor: theme.colors.accent, borderWidth: stroke.featured } : undefined}>
           <T variant="label">{draft.source === 'photo' ? 'Confirm this photo' : 'Confirm this meal'}</T>
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
+          {draft.estimated && roughEstimate ? <T variant="muted">{roughEstimate === 'billing' ? ROUGH_ESTIMATE_BILLING_NOTE : ROUGH_ESTIMATE_NOTE}</T> : null}
           {photoNote ? <T>{photoNote}</T> : null}
           <T>{ESTIMATE_HINT}</T>
           {powderReadingNote(draft.note || text) ? <T variant="muted">{POWDER_NOT_PROTEIN}</T> : null}
@@ -1169,7 +1167,7 @@ export default function Nutrition() {
           {draft.items.map((item, index) => (
             <View key={index} style={{ gap: 8 }}>
               <Field label="Food" value={item.name} onChangeText={(name) => updateItem(index, { name })} />
-              {hide ? null : <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />}
+              <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />
               <Field label="Protein (g)" value={item.proteinG} onChangeText={(proteinG) => updateItem(index, { proteinG })} keyboardType="decimal-pad" />
               {draftFigureNote(item) ? <T variant="muted">{draftFigureNote(item)}</T> : null}
               <Field label="Carbohydrate (g)" value={item.carbsG} onChangeText={(carbsG) => updateItem(index, { carbsG })} keyboardType="decimal-pad" />
@@ -1215,7 +1213,6 @@ export default function Nutrition() {
                 bare
                 rows={mealRows}
                 totals={mealTotals}
-                hideCalories={hide}
                 ring={calorieRing}
                 protein={proteinRing}
                 activeId={summaryLog?.id ?? null}
@@ -1267,7 +1264,9 @@ export default function Nutrition() {
           goalPhase: settings.goalPhase,
         }).map((line) => <T key={line}>{line}</T>)}
         {!editingGoal && (settings.competitionCut || settings.goal === 'elite_middle_boxer' || (settings.goal != null && isClassBoxer(settings.goal))) ? (
-          <T variant="muted">{COMPETITION_NOTE}</T>
+          <MoreInfo about="competition cuts" title="About competition cuts">
+            <T variant="muted">{COMPETITION_NOTE}</T>
+          </MoreInfo>
         ) : null}
         <Button
           label={editingGoal ? 'Done' : 'Edit your goal'}
@@ -1278,6 +1277,7 @@ export default function Nutrition() {
           <>
         <GoalChoices
           framed={false}
+          plainCollapsed
           detail="Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers."
         />
         {settings.goal === 'body_builder' ? (
@@ -1291,15 +1291,15 @@ export default function Nutrition() {
           </>
         ) : null}
         {settings.goal === 'elite_heavy_boxer' ? (
-          <MoreInfo about="the heavyweight goal" summary="It will not plan a cut.">
+          <MoreInfo about="the heavyweight goal" title="About the heavyweight goal" summary="It will not plan a cut.">
             <T variant="muted">{`${GOAL_LABEL.elite_heavy_boxer} keeps size and power. The suggestion adds a little food. It will not plan a cut.`}</T>
           </MoreInfo>
         ) : null}
         {settings.goal === 'elite_middle_boxer' ? (
           <>
-            <T>{COMPETITION_NOTE}</T>
-            <MoreInfo about="the middleweight limit">
+            <MoreInfo about="the middleweight limit" title="About the middleweight limit">
               <T variant="muted">{`Leave this blank and the suggestion uses ${MIDDLEWEIGHT_LIMIT_KG} kg (160 lb), the professional middleweight limit. Type your own class if it is different. The change stays small. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.`}</T>
+              <T variant="muted">{COMPETITION_NOTE}</T>
             </MoreInfo>
             <Field label="Middleweight limit (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder={String(MIDDLEWEIGHT_LIMIT_KG)} />
             <UpdateWeightLink />
@@ -1307,8 +1307,7 @@ export default function Nutrition() {
         ) : null}
         {isClassBoxer(settings.goal) ? (
           <>
-            <T>{COMPETITION_NOTE}</T>
-            <MoreInfo about="this weight class" summary="It will not plan a cut.">
+            <MoreInfo about="this weight class" title="About this weight class" summary="It will not plan a cut.">
               <T variant="muted">{`${GOAL_LABEL[settings.goal]} stays near about ${PRO_BOXING_CLASSES[settings.goal].limitKg} kg (${PRO_BOXING_CLASSES[settings.goal].limitLb} lb). Any change is small. It will not plan a cut. Muscular boxers can sit above the BMI band. ${COMPETITION_NOTE}`}</T>
             </MoreInfo>
             <UpdateWeightLink />
@@ -1349,25 +1348,16 @@ export default function Nutrition() {
       <ScrollTarget id="calories">
       <Card>
         <T variant="label">Suggest targets</T>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <T style={{ flex: 1 }}>Hide calories</T>
-          <Switch
-            accessibilityLabel="Hide calories"
-            value={hide}
-            onValueChange={setHide}
-            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
-            thumbColor={theme.colors.surface}
-          />
-        </View>
-        <T variant="muted">{HIDE_CALORIES_LINE}</T>
         <QuietNote>{choiceNote}</QuietNote>
         <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
         {suggestNote ? <T>{suggestNote}</T> : null}
         {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
-        {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
-        {hide ? null : (
-          <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
-        )}
+        {goalNote && !blocked ? (
+          <MoreInfo about="this suggestion" title="About this suggestion">
+            <T variant="muted">{goalNote}</T>
+          </MoreInfo>
+        ) : null}
+        <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
         <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
         <Field label="Daily carbohydrate (g)" value={carbs} onChangeText={setCarbs} keyboardType="number-pad" placeholder="Leave blank for none" />
         <Field label="Daily fat (g)" value={fat} onChangeText={setFat} keyboardType="number-pad" placeholder="Leave blank for none" />
@@ -1383,34 +1373,40 @@ export default function Nutrition() {
       <ScrollTarget id="today">
       <Card>
         <T variant="label">Today</T>
-        {hide ? <T>{HIDE_CALORIES_LINE}</T> : <T>{`${totals.kcal.toLocaleString('en-GB')} kcal`}</T>}
-        {!hide && settings.kcalTarget != null ? <T variant="muted">{`Target ${settings.kcalTarget.toLocaleString('en-GB')} kcal`}</T> : null}
-        {!hide ? <T>{targetLine(totals.kcal, settings.kcalTarget, false)}</T> : null}
+        <T>{`${totals.kcal.toLocaleString('en-GB')} kcal`}</T>
+        {settings.kcalTarget != null ? <T variant="muted">{`Target ${settings.kcalTarget.toLocaleString('en-GB')} kcal`}</T> : null}
+        <T>{targetLine(totals.kcal, settings.kcalTarget, false)}</T>
         <T>{`Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · sugar ${totals.sugarG} g`}</T>
-        {proteinReview.review || totals.proteinG > 0 ? (
-          <>
-            {proteinReview.review ? <T>{proteinReview.review}</T> : null}
+        {proteinReview.review ? <T>{proteinReview.review}</T> : null}
+        {totals.proteinG > 0 || proteinReview.review || proteinNotes.length > 0 ? (
+          <MoreInfo about="protein limits" title="About protein limits">
             <T variant="muted">{proteinReview.standing}</T>
-          </>
+            {proteinNotes.map((line) => <T key={line} variant="muted">{line}</T>)}
+          </MoreInfo>
         ) : null}
-        {proteinNotes.map((line) => <T key={line} variant="muted">{line}</T>)}
         <T>{`Fibre ${totals.fibreG} g · sodium ${totals.sodiumMg.toLocaleString('en-GB')} mg`}</T>
         <T variant="label">Fats</T>
         <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
         <T variant="muted">{`Unsaturated ${fats.unsaturated} g · saturated and trans ${fats.other} g`}</T>
         <T>{fats.line}</T>
-        <T variant="muted">{FAT_SCIENCE}</T>
+        <MoreInfo about="fats" title="About fats">
+          <T variant="muted">{FAT_SCIENCE}</T>
+        </MoreInfo>
         {processedLine(items) ? <T>{processedLine(items)}</T> : null}
         <ProcessedFoodList
           notes={periodNotes}
           cue="more"
+          title="About processed food"
           heading={processedFoodHeading(periodWhole, periodNotes.length)}
           periodLine={periodHeading(period)}
         />
         {patterns.map((line) => <T key={line}>{line}</T>)}
-        {sugar ? <T>{sugar}</T> : null}
-        {saved ? <T>{saved}</T> : null}
-        {dayLine ? <T>{dayLine}</T> : macroLine ? <T>{macroLine}</T> : null}
+        {macroLine ? <T>{macroLine}</T> : null}
+        {todayMeaning.length > 0 ? (
+          <MoreInfo about="today" title="What this means">
+            {todayMeaning.map((line) => <T key={line} variant="muted">{line}</T>)}
+          </MoreInfo>
+        ) : null}
         <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
         <NutritionShareSwitch
           label="Share daily calories and macros"
@@ -1423,7 +1419,6 @@ export default function Nutrition() {
       <NutritionBoard
         logs={snap.foodLogs}
         today={today}
-        hideCalories={hide}
         kcalTarget={settings.kcalTarget}
         proteinTarget={settings.proteinTarget}
         checkIns={snap.checkIns}
@@ -1454,7 +1449,11 @@ export default function Nutrition() {
       </ScrollTarget>
       <WagonFlag />
       <NutritionShareSummary />
-      {healthNote ? <T variant="muted">{healthNote}</T> : null}
+      {healthNote === APPLE_HEALTH_MEAL_NOTE ? (
+        <MoreInfo about="Apple Health" title="About Apple Health">
+          <T variant="muted">{healthNote}</T>
+        </MoreInfo>
+      ) : healthNote ? <T variant="muted">{healthNote}</T> : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
     </Screen>
   );

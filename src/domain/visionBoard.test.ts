@@ -104,7 +104,8 @@ describe('vision words for Thumos', () => {
     expect(crisis).not.toContain('feels like mine');
     expect(crisis).toContain('vision board');
     const prompt = buildSystemPrompt(crisis, 'support', undefined, { selfHarm: true });
-    expect(prompt).not.toContain('Do not pretend you can see them');
+    // The vision instruction stays in the cached static prefix; the turn still forbids using the board.
+    expect(prompt).toContain('Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, Garmin readings, the gratitude diary, the vision board');
     expect(prompt).toContain('vision board');
   });
 });

@@ -6,7 +6,8 @@ import { ensureSafetyNotices } from '../_shared/safety.ts';
 import { pinnedStoicQuote } from '../_shared/stoicQuotes.ts';
 import {
   buildChatCompletionBody,
-  buildSystemPrompt,
+  buildThumosSystemParts,
+  XAI_PROMPT_CACHE_KEYS,
   buildThumosContext,
   completionDeltaText,
   conversationCues,
@@ -26,7 +27,6 @@ import {
   thumosModelChain,
   thumosRequestId,
   XAI_RETRY_BACKOFF_MS,
-  xaiCallShouldRetry,
   safetyFromText,
   THUMOS_CHAT,
   THUMOS_RETRY_NOTE,
@@ -36,7 +36,17 @@ import {
   type HealthTrend,
   type ThumosMode,
 } from '../_shared/thumos.ts';
-import { CRISIS_STATIC_REPLY, gateAiUse } from '../_shared/aiAllowance.ts';
+import { CRISIS_STATIC_REPLY, countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
+import { xaiErrorText } from '../_shared/aiBilling.ts';
+import {
+  AI_UNAVAILABLE_CODE,
+  COACH_AI_UNAVAILABLE,
+  classifyXaiFailure,
+  logAiUnavailable,
+  xaiFailureFromError,
+  type AiUnavailableReason,
+} from '../_shared/aiUnavailable.ts';
+import { parseXaiUsage, recordAiSpend, type XaiUsage } from '../_shared/aiSpend.ts';
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
@@ -48,6 +58,7 @@ import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
 import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
+import { coachRestingNote, garminRestingDays, healthWithRestingNote } from '../_shared/currentResting.ts';
 import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
 
 type Body = { content?: string; mode?: ThumosMode; request_id?: string };
@@ -109,8 +120,11 @@ async function garminLinesFor(
   userClient: SupabaseClient,
   userId: string,
   gate: { consentAi: boolean; consentHealth: boolean; personalDataEnabled: boolean },
-): Promise<string[]> {
-  if (!garminAllowedForCoach(gate)) return [];
+  today: string,
+  samples: readonly { kind: string; value: number; recordedOn: string }[],
+): Promise<{ lines: string[]; restingNote: string | null }> {
+  const appleOnly = () => coachRestingNote({ today, samples });
+  if (!garminAllowedForCoach(gate)) return { lines: [], restingNote: appleOnly() };
   const [dailies, activities, sleep] = await Promise.all([
     userClient.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').eq('user_id', userId).order('calendar_date'),
     userClient.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').eq('user_id', userId).order('started_at'),
@@ -121,18 +135,21 @@ async function garminLinesFor(
     || (activities.error && !missingRelation(activities.error.message))
     || (sleep.error && !missingRelation(sleep.error.message))
   ) {
-    return [];
+    return { lines: [], restingNote: appleOnly() };
   }
-  return garminCoachLines({
-    ...gate,
-    readings: readingsFromRows({
-      connected: true,
-      connectedAt: null,
-      dailies: dailies.data,
-      activities: activities.data,
-      sleep: sleep.data,
+  return {
+    lines: garminCoachLines({
+      ...gate,
+      readings: readingsFromRows({
+        connected: true,
+        connectedAt: null,
+        dailies: dailies.data,
+        activities: activities.data,
+        sleep: sleep.data,
+      }),
     }),
-  });
+    restingNote: coachRestingNote({ today, samples, garmin: garminRestingDays(dailies.data) }),
+  };
 }
 
 Deno.serve(async (req) => {
@@ -261,11 +278,11 @@ Deno.serve(async (req) => {
     consentHealth: shareHealth,
     personalDataEnabled,
   });
-  const garminLines = await garminLinesFor(userClient, userId, {
+  const garmin = await garminLinesFor(userClient, userId, {
     consentAi: profile.consent_ai === true,
     consentHealth: shareHealth,
     personalDataEnabled,
-  });
+  }, healthToday, healthRows);
   const workoutReflections = await loadWorkoutReflections(userClient, userId, healthToday, diaryAllowed);
 
   const context = buildThumosContext({
@@ -276,7 +293,7 @@ Deno.serve(async (req) => {
     weeklySpendGbp: profile.weekly_spend_gbp == null ? null : Number(profile.weekly_spend_gbp),
     weeklyUnits: profile.weekly_units == null ? null : Number(profile.weekly_units),
     checkIns,
-    health,
+    health: healthWithRestingNote(health, garmin.restingNote),
     healthInsights,
     mode,
     safety,
@@ -290,7 +307,7 @@ Deno.serve(async (req) => {
     interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
     pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
     nutritionLines,
-    garminLines,
+    garminLines: garmin.lines,
     workoutReflections,
   });
 
@@ -302,6 +319,8 @@ Deno.serve(async (req) => {
     crisis: safety.selfHarm || safety.withdrawal,
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
     allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+    // Counted below only once xAI gives a real answer. An outage or a billing refusal costs nothing.
+    countWhen: 'after',
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const crisisStatic = !gate.ok && 'crisis' in gate ? gate.reply || CRISIS_STATIC_REPLY : null;
@@ -349,7 +368,7 @@ Deno.serve(async (req) => {
     stoicQuote: pinned?.school === 'Stoic' ? pinned.text : null,
   });
   const earlierAssistant = history.filter((turn) => turn.role === 'assistant').map((turn) => turn.content);
-  const system = buildSystemPrompt(context, mode, ALCOHOL_FACTS, {
+  const promptParts = buildThumosSystemParts(context, mode, ALCOHOL_FACTS, {
     followUp: mode === 'support' && isThumosFollowUp(history),
     supportShape: detectRisk(content) === 'planning' ? 'planning' : 'acute',
     committedAction,
@@ -393,6 +412,8 @@ Deno.serve(async (req) => {
       let reply = OFFLINE_COACH_MESSAGE;
       let role: 'assistant' | 'offline' = 'offline';
       let fallbackKind: 'offline' | 'scripted' | null = null;
+      let modelAnswered = false;
+      let unavailableCode: string | null = null;
       try {
         if (requestId) {
           const saved = await admin
@@ -422,6 +443,13 @@ Deno.serve(async (req) => {
             send({ type: 'status', state: 'waiting' });
             const primaryStep = thumosModelChain({ crisis })[0];
             let streamed = '';
+            let unavailable: AiUnavailableReason | null = null;
+            const spend = (model: string, usage: XaiUsage | null) => recordAiSpend(admin, {
+              fn: 'thumos-chat',
+              tier: gate.ok ? gate.tier : null,
+              model,
+              usage,
+            });
             const attempt = await runThumosModelChain({
               crisis,
               backoffMs: XAI_RETRY_BACKOFF_MS,
@@ -434,9 +462,14 @@ Deno.serve(async (req) => {
                 apiKey,
                 model: step.model,
                 timeoutMs: step.timeoutMs,
-                system,
+                system: promptParts.staticInstructions,
+                systemAfter: promptParts.turnAndContext,
                 history,
                 user: content,
+                onFailure: (reason) => {
+                  unavailable = reason;
+                },
+                onUsage: (usage) => spend(step.model, usage),
                 onDelta: index > 0 && streamed
                   ? undefined
                   : (piece) => {
@@ -453,8 +486,17 @@ Deno.serve(async (req) => {
             if (attempt.from === 'scripted') {
               console.error('thumos xAI HTTP status', attempt.lastStatus);
             }
+            // 402, 429, 5xx, a timeout or a dropped call: the calm resting line, and no credit used.
+            const lastFailure = attempt.from === 'scripted' && attempt.lastStatus !== 'empty' ? attempt.lastStatus : null;
+            const resting: AiUnavailableReason | null = attempt.from === 'scripted'
+              ? unavailable ?? classifyXaiFailure(lastFailure)
+              : null;
+            if (resting) {
+              logAiUnavailable('thumos-chat', resting, lastFailure);
+              unavailableCode = AI_UNAVAILABLE_CODE;
+            }
             if (!modelText) {
-              reply = ensureSafetyNotices(COACH_REPLY_FAILED, safety);
+              reply = ensureSafetyNotices(resting ? COACH_AI_UNAVAILABLE : COACH_REPLY_FAILED, safety);
               fallbackKind = 'scripted';
               if (!streamed) send({ type: 'delta', text: reply });
               else send({ type: 'replace', reply });
@@ -464,17 +506,20 @@ Deno.serve(async (req) => {
                   apiKey,
                   model: primaryStep?.model ?? model,
                   timeoutMs: primaryStep?.timeoutMs ?? THUMOS_CHAT.firstTimeoutMs,
-                  system: `${system}\n\n${THUMOS_RETRY_NOTE}`,
+                  system: promptParts.staticInstructions,
+                  systemAfter: `${promptParts.turnAndContext}\n\n${THUMOS_RETRY_NOTE}`,
                   history,
                   user: content,
+                  onUsage: (usage) => spend(primaryStep?.model ?? model, usage),
                 });
-                modelText = second.ok && second.text && thumosReplyFaults(second.text, earlierAssistant).length === 0
-                  ? second.text
-                  : freshThumosFallback(earlierAssistant);
+                const secondGood = second.ok && second.text && thumosReplyFaults(second.text, earlierAssistant).length === 0;
+                modelText = secondGood ? second.text : freshThumosFallback(earlierAssistant);
+                modelAnswered = Boolean(secondGood);
                 reply = ensureSafetyNotices(modelText, safety);
                 role = 'assistant';
                 send({ type: 'replace', reply });
               } else {
+                modelAnswered = true;
                 reply = ensureSafetyNotices(modelText, safety);
                 role = 'assistant';
                 if (reply !== modelText) send({ type: 'replace', reply });
@@ -490,6 +535,10 @@ Deno.serve(async (req) => {
         }
 
         if (fallbackKind) await noteThumosFallback(admin, fallbackKind);
+        if (modelAnswered && gate.ok) {
+          const counted = await countAiUse({ admin, userId, kind: 'coach', tier: gate.tier, requestId: requestId ?? undefined }).catch(() => false);
+          if (counted && coachUsage) send({ type: 'usage', kind: 'coach', used: coachUsage.used + 1, limit: coachUsage.limit });
+        }
         const saved = await saveThumosPair(admin, { userId, content, reply, role, mode, requestId });
         if (!saved.ok) {
           send({ type: 'error', message: 'The message could not be saved.' });
@@ -502,7 +551,7 @@ Deno.serve(async (req) => {
             }, { onConflict: 'user_id' });
             if (memory.error) console.error('thumos motivation memory', memory.error.message);
           }
-          send({ type: 'done', reply, role, ok: role === 'assistant' });
+          send({ type: 'done', reply, role, ok: role === 'assistant', ...(unavailableCode ? { code: unavailableCode } : {}) });
         }
       } catch {
         send({ type: 'error', message: 'Thumos could not finish that reply.' });
@@ -536,16 +585,23 @@ async function completeThumos(input: {
   model: string;
   timeoutMs: number;
   system: string;
+  systemAfter?: string;
   history: ChatTurn[];
   user: string;
   onDelta?: (piece: string) => void;
+  /** Why this call gave no answer, when our provider was the cause. */
+  onFailure?: (reason: AiUnavailableReason) => void;
+  /** The usage xAI reported for an answered call. */
+  onUsage?: (usage: XaiUsage | null) => void | Promise<void>;
 }): Promise<{ ok: true; text: string } | { ok: false; status: number | 'timeout' | 'network' }> {
   const body = JSON.stringify(buildChatCompletionBody({
     model: input.model,
     system: input.system,
+    systemAfter: input.systemAfter,
     history: input.history,
     user: input.user,
     stream: true,
+    cacheKey: XAI_PROMPT_CACHE_KEYS.thumosChat,
   }));
   try {
     const response = await fetch(THUMOS_CHAT.completionsUrl, {
@@ -560,21 +616,23 @@ async function completeThumos(input: {
     });
     if (!response.ok || !response.body) {
       console.error('thumos xAI HTTP status', response.status);
-      if (xaiCallShouldRetry({ status: response.status, attempt: 0 })) {
-        return { ok: false, status: response.status };
-      }
+      // A billing refusal says so in the body. Only 403 and 429 need it read, and it is never logged.
+      const bodyText = !response.ok && (response.status === 403 || response.status === 429) ? await xaiErrorText(response) : null;
+      const reason = classifyXaiFailure(response.status, bodyText);
+      if (reason) input.onFailure?.(reason);
       return { ok: false, status: response.status };
     }
-    const text = (await readCompletionStream(response.body, input.onDelta)).trim();
+    let usage: XaiUsage | null = null;
+    const text = (await readCompletionStream(response.body, input.onDelta, (found) => {
+      usage = found;
+    })).trim();
+    if (text) await input.onUsage?.(usage);
     return { ok: true, text };
   } catch (error) {
-    const errorName = error instanceof Error ? error.name : '';
     console.error('thumos xAI HTTP status', xaiErrorStatus(error));
-    if (xaiCallShouldRetry({ status: null, errorName, attempt: 0 })) {
-      const status = xaiErrorStatus(error);
-      return { ok: false, status: status === 'timeout' ? 'timeout' : 'network' };
-    }
-    return { ok: false, status: 'network' };
+    const failure = xaiFailureFromError(error);
+    input.onFailure?.(classifyXaiFailure(failure) ?? 'network');
+    return { ok: false, status: failure };
   }
 }
 
@@ -627,12 +685,26 @@ async function saveThumosPair(admin: SupabaseClient, input: {
   return { ok: true };
 }
 
-async function readCompletionStream(body: ReadableStream<Uint8Array>, onDelta?: (piece: string) => void): Promise<string> {
+async function readCompletionStream(
+  body: ReadableStream<Uint8Array>,
+  onDelta?: (piece: string) => void,
+  onUsage?: (usage: XaiUsage) => void,
+): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let reply = '';
   const take = (lines: string[]) => {
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:') || !trimmed.includes('"usage"')) continue;
+      try {
+        const usage = parseXaiUsage(JSON.parse(trimmed.slice(5).trim()));
+        if (usage) onUsage?.(usage);
+      } catch {
+        // A partial JSON line is completed on the next chunk.
+      }
+    }
     const piece = textFromSseLines(lines);
     if (!piece) return;
     reply += piece;

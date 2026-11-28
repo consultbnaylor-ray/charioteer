@@ -6,6 +6,8 @@
  * An earlier forum note said 2–6 November 2026.
  */
 
+import { ORS_SKETCH_POINT_CAP } from './routeLengthLimit.ts';
+
 export const ORS_HOST = 'https://api.heigit.org';
 
 const PROFILES = {
@@ -20,12 +22,34 @@ export function directionsUrl(mode: Mode): string {
   return `${ORS_HOST}/openrouteservice/v2/directions/${PROFILES[mode]}/geojson`;
 }
 
+/** A UK postcode, with or without the space. "bs81ab" and "BS8 1AB" both match. */
+export function isUkPostcode(query: string): boolean {
+  const compact = query.replace(/\s+/g, '').toUpperCase();
+  return /^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(compact);
+}
+
+/** Uppercase a postcode and put one space before the inward code. Other text is only trimmed. */
+export function normalisePlaceQuery(query: string): string {
+  const trimmed = query.trim().replace(/\s+/g, ' ');
+  const compact = trimmed.replace(/\s+/g, '').toUpperCase();
+  if (!/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(compact)) return trimmed;
+  return `${compact.slice(0, -3)} ${compact.slice(-3)}`;
+}
+
 export function geocodeUrl(query: string): string {
   const text = encodeURIComponent(query.trim().slice(0, 80));
-  return `${ORS_HOST}/pelias/v1/search?text=${text}&size=5`;
+  const country = isUkPostcode(query) ? '&boundary.country=GB' : '';
+  return `${ORS_HOST}/pelias/v1/search?text=${text}&size=5${country}`;
 }
 
 const PACE_M_PER_MIN = { walk: 80, run: 150, cycle: 250 } as const;
+
+/** Round-trip length this app sends, in metres. A loop uses this as `round_trip.length`. */
+export const ROUTE_DISTANCE_MIN_M = 500;
+export const ROUTE_DISTANCE_MAX_M = 50_000;
+/** A time becomes a length only inside this window, then that length is clamped to the distance window. */
+export const ROUTE_MINUTES_MIN = 10;
+export const ROUTE_MINUTES_MAX = 180;
 
 export function readMode(value: unknown): Mode | null {
   return value === 'walk' || value === 'run' || value === 'cycle' ? value : null;
@@ -37,7 +61,7 @@ export function readShape(value: unknown): 'loop' | 'a_to_b' | null {
 
 export function cleanPlaceQuery(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const query = value.trim();
+  const query = normalisePlaceQuery(value);
   if (query.length < 2 || query.length > 80) return null;
   return query;
 }
@@ -56,11 +80,15 @@ export function readPlace(value: unknown): { latitude: number; longitude: number
 export function routeLengthM(input: { mode: Mode; distanceM?: unknown; minutes?: unknown }): number | null {
   const distance = typeof input.distanceM === 'number' ? input.distanceM : Number(input.distanceM);
   if (Number.isFinite(distance) && input.distanceM != null && input.distanceM !== '') {
-    return clamp(Math.round(distance), 500, 50_000);
+    return clamp(Math.round(distance), ROUTE_DISTANCE_MIN_M, ROUTE_DISTANCE_MAX_M);
   }
   const minutes = typeof input.minutes === 'number' ? input.minutes : Number(input.minutes);
   if (Number.isFinite(minutes) && input.minutes != null && input.minutes !== '') {
-    return clamp(clamp(Math.round(minutes), 10, 180) * PACE_M_PER_MIN[input.mode], 500, 50_000);
+    return clamp(
+      clamp(Math.round(minutes), ROUTE_MINUTES_MIN, ROUTE_MINUTES_MAX) * PACE_M_PER_MIN[input.mode],
+      ROUTE_DISTANCE_MIN_M,
+      ROUTE_DISTANCE_MAX_M,
+    );
   }
   return null;
 }
@@ -69,11 +97,39 @@ function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
 
-/** Twelve requests in ten minutes, or forty in a day, is enough for one person. */
+/** A route or snap. Twelve in ten minutes, or forty in a day. */
+export const ROUTE_TEN_MINUTE_CAP = 12;
+export const ROUTE_DAILY_CAP = 40;
+
+/** A place search. Thirty in ten minutes, or three hundred in a day. */
+export const SEARCH_TEN_MINUTE_CAP = 30;
+export const SEARCH_DAILY_CAP = 300;
+
+/** True when this account is named in a comma-separated exemption list. */
+export function listedUser(allowlist: string | undefined, userId: string): boolean {
+  if (!userId || !allowlist) return false;
+  const wanted = userId.trim().toLowerCase();
+  if (!wanted) return false;
+  return allowlist.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean).includes(wanted);
+}
+
 export function withinRouteLimit(stamps: readonly number[], now: number): { ok: boolean; next: number[] } {
+  return withinWindow(stamps, now, ROUTE_TEN_MINUTE_CAP, ROUTE_DAILY_CAP);
+}
+
+export function withinSearchLimit(stamps: readonly number[], now: number): { ok: boolean; next: number[] } {
+  return withinWindow(stamps, now, SEARCH_TEN_MINUTE_CAP, SEARCH_DAILY_CAP);
+}
+
+function withinWindow(
+  stamps: readonly number[],
+  now: number,
+  burst: number,
+  daily: number,
+): { ok: boolean; next: number[] } {
   const day = stamps.filter((stamp) => now - stamp < 86_400_000 && now >= stamp);
   const recent = day.filter((stamp) => now - stamp < 600_000);
-  if (recent.length >= 12 || day.length >= 40) return { ok: false, next: day };
+  if (recent.length >= burst || day.length >= daily) return { ok: false, next: day };
   return { ok: true, next: [...day, now] };
 }
 
@@ -81,11 +137,17 @@ export function withinRouteLimit(stamps: readonly number[], now: number): { ok: 
  * Free Standard plan, Directions V2: 2,000 a day and 40 a minute.
  * Geocoding on that plan is 3,000 a day.
  * https://account.heigit.org/info/plans
- * The whole app stays under the smaller of those daily figures.
+ * Directions stay under 2,000. Geocoding stays under 3,000.
+ * The two caps together stay under 3,000.
  */
 export const ORS_FREE_DIRECTIONS_PER_DAY = 2000;
 
+export const ORS_FREE_GEOCODING_PER_DAY = 3000;
+
 export const GLOBAL_ROUTE_DAILY_CAP = 1500;
+
+/** Place searches for the whole app. Kept apart from the directions cap. */
+export const GLOBAL_SEARCH_DAILY_CAP = 1200;
 
 export function withinGlobalRouteLimit(
   stamps: readonly number[],
@@ -104,6 +166,42 @@ export function orsRequestHeaders(key: string, accept: string): Record<string, s
 
 export const VIA_POINT_CAP = 5;
 
+/** Hosted directions accepts this many coordinates. A sketch is refused above it. */
+export const ORS_WAYPOINT_LIMIT = 50;
+
+/**
+ * HeiGIT refuses a foot or cycle route whose straight-line length is over 100 km.
+ * One leg over that cannot be split into a shorter call.
+ */
+export const ORS_MAX_LEG_M = 100_000;
+
+/** A sketch body larger than this is refused before it is parsed into points. */
+/** Raised so a long Pro or Max sketch can be sent in one request and then split. */
+export const ORS_MAX_SKETCH_BYTES = 256_000;
+
+/** A leg longer than this is a gap, not a corner. Forcing a straight exit refuses the turn. */
+export const STRAIGHT_CORNER_M = 400;
+
+export const ROUTE_LIMIT_MESSAGE = 'That snap is over the route limit. Draw a shorter section.';
+
+/**
+ * How far a sketch corner may snap to the path network, in metres.
+ * Wide enough for a finger that sits just off a path. Short of the next street.
+ */
+export const SKETCH_SNAP_RADIUS_M = 100;
+
+/** Walking and cycling weightings that prefer greener, quieter paths. */
+export const PREFER_PATH_WEIGHTINGS = { green: 1, quiet: 1 } as const;
+
+/**
+ * A walk that prefers footpaths uses the hiking profile, which prefers trails.
+ * Run already uses that profile. Cycling stays on the cycling profile.
+ */
+export function routingMode(mode: Mode, preferPaths: boolean): Mode {
+  if (preferPaths && mode === 'walk') return 'run';
+  return mode;
+}
+
 /** Missing means no via-points. More than five, or a bad point, is refused. The message must not echo a coordinate. */
 export function readViaPoints(value: unknown): { latitude: number; longitude: number }[] | null {
   if (value == null) return [];
@@ -117,38 +215,132 @@ export function readViaPoints(value: unknown): { latitude: number; longitude: nu
   return points;
 }
 
+type PlacePoint = { latitude: number; longitude: number };
+
+function routeOptions(
+  roundTrip: { length: number; points: number } | null,
+  preferPaths: boolean,
+): { options?: Record<string, unknown> } {
+  if (!roundTrip && !preferPaths) return {};
+  const options: Record<string, unknown> = {};
+  if (roundTrip) options.round_trip = roundTrip;
+  if (preferPaths) options.profile_params = { weightings: { ...PREFER_PATH_WEIGHTINGS } };
+  return { options };
+}
+
+function coordinateOf(point: PlacePoint): [number, number] {
+  return [round6(point.longitude), round6(point.latitude)];
+}
+
+function legsAreCorners(sketch: readonly PlacePoint[]): boolean {
+  for (let index = 1; index < sketch.length; index += 1) {
+    const previous = sketch[index - 1];
+    const point = sketch[index];
+    if (!previous || !point) continue;
+    if (haversineM(previous, point) > STRAIGHT_CORNER_M) return false;
+  }
+  return true;
+}
+
+/**
+ * A single leg over the provider's 100 km cap cannot be split. A long total is split
+ * into shorter calls, so it is not refused here. Null when the sketch can be sent.
+ */
+export function sketchLimitMessage(
+  points: readonly PlacePoint[] | null,
+  rawBytes = 0,
+): string | null {
+  if (rawBytes > ORS_MAX_SKETCH_BYTES) return ROUTE_LIMIT_MESSAGE;
+  if (!points) return null;
+  if (points.length > ORS_SKETCH_POINT_CAP) return ROUTE_LIMIT_MESSAGE;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const point = points[index];
+    if (!previous || !point) continue;
+    if (haversineM(previous, point) > ORS_MAX_LEG_M) return ROUTE_LIMIT_MESSAGE;
+  }
+  return null;
+}
+
+/** Missing means no sketch. More than the whole-sketch cap, or a bad point, is refused. */
+export function readSketchPoints(value: unknown): PlacePoint[] | null {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > ORS_SKETCH_POINT_CAP || value.length === 1) return null;
+  const points: PlacePoint[] = [];
+  for (const item of value) {
+    const point = readPlace(item);
+    if (!point) return null;
+    points.push(point);
+  }
+  return points;
+}
+
 export function buildDirectionsBody(input: {
   mode: Mode;
   shape: 'loop' | 'a_to_b';
-  start: { latitude: number; longitude: number };
-  end?: { latitude: number; longitude: number } | null;
+  start: PlacePoint;
+  end?: PlacePoint | null;
   lengthM: number;
-  via?: readonly { latitude: number; longitude: number }[] | null;
+  via?: readonly PlacePoint[] | null;
+  preferPaths?: boolean;
+  sketch?: readonly PlacePoint[] | null;
+  /** The sketch is a handful of intent points from a drawing. See `INTENT_SNAP_RADIUS_M`. */
+  intent?: boolean;
 }): Record<string, unknown> | null {
-  const start = [round6(input.start.longitude), round6(input.start.latitude)];
-  const vias = (input.via ?? []).slice(0, VIA_POINT_CAP).map((point) => [round6(point.longitude), round6(point.latitude)]);
+  const preferPaths = input.preferPaths === true;
+  const rawSketch = input.sketch ?? [];
+  // A long sketch is split by the caller. Dropping the leftover points here
+  // used to cut the snapped line short, so a body that is still too long is refused.
+  if (rawSketch.length > ORS_WAYPOINT_LIMIT) return null;
+  const sketch = rawSketch;
+  if (sketch.length >= 2 && input.intent === true) {
+    return {
+      coordinates: sketch.map(coordinateOf),
+      // A drawn turning point can sit in a field or on a river. The widest hosted radius
+      // lets it join the nearest path, and the route then finds its own way (over a bridge).
+      radiuses: sketch.map(() => INTENT_SNAP_RADIUS_M),
+      // The points are a few hundred metres apart, so a forced straight exit only adds loops.
+      continue_straight: false,
+      elevation: true,
+      instructions: false,
+      ...routeOptions(null, preferPaths),
+    };
+  }
+  if (sketch.length >= 2) {
+    return {
+      coordinates: sketch.map(coordinateOf),
+      // One radius per corner. continue_straight refuses a u-turn at a corner,
+      // which is the out-and-back a point on the wrong side of a junction causes.
+      radiuses: sketch.map(() => SKETCH_SNAP_RADIUS_M),
+      continue_straight: legsAreCorners(sketch),
+      elevation: true,
+      instructions: false,
+      ...routeOptions(null, preferPaths),
+    };
+  }
+  const start = coordinateOf(input.start);
+  const vias = (input.via ?? []).slice(0, VIA_POINT_CAP).map(coordinateOf);
   if (vias.length > 0) {
     if (input.shape === 'loop') {
-      return { coordinates: [start, ...vias, start], elevation: true, instructions: false };
+      return { coordinates: [start, ...vias, start], elevation: true, instructions: false, ...routeOptions(null, preferPaths) };
     }
     if (!input.end) return null;
-    const end = [round6(input.end.longitude), round6(input.end.latitude)];
-    return { coordinates: [start, ...vias, end], elevation: true, instructions: false };
+    return { coordinates: [start, ...vias, coordinateOf(input.end)], elevation: true, instructions: false, ...routeOptions(null, preferPaths) };
   }
   if (input.shape === 'loop') {
     return {
       coordinates: [start],
       elevation: true,
       instructions: false,
-      options: { round_trip: { length: input.lengthM, points: 5 } },
+      ...routeOptions({ length: input.lengthM, points: 5 }, preferPaths),
     };
   }
   if (!input.end) return null;
-  const end = [round6(input.end.longitude), round6(input.end.latitude)];
   return {
-    coordinates: [start, end],
+    coordinates: [start, coordinateOf(input.end)],
     elevation: true,
     instructions: false,
+    ...routeOptions(null, preferPaths),
   };
 }
 
@@ -158,6 +350,58 @@ function round6(value: number): number {
 
 /** Hosted snap search limit. A second lookup stays inside the one route request. */
 export const SNAP_RADIUS_M = 350;
+
+/** How far an intent point from a drawing may join the path network. The hosted maximum. */
+export const INTENT_SNAP_RADIUS_M = SNAP_RADIUS_M;
+
+/** True only for the drawn-route intent request. Anything else keeps the older sketch rules. */
+export function readIntent(value: unknown): boolean {
+  return value === true;
+}
+
+/** One snap call for every intent point. */
+export function buildSnapManyBody(points: readonly PlacePoint[]): Record<string, unknown> {
+  return {
+    locations: points.slice(0, ORS_WAYPOINT_LIMIT).map(coordinateOf),
+    radius: SNAP_RADIUS_M,
+  };
+}
+
+/**
+ * The snapped place for each point, in the order sent. Null where nothing was in reach.
+ * The geojson answer leaves out a point that did not snap and names the rest by `source_id`;
+ * the json answer keeps a null in its place. Both are read.
+ */
+export function parseSnapMany(payload: unknown, count: number): (PlacePoint | null)[] {
+  const out: (PlacePoint | null)[] = Array.from({ length: Math.max(0, count) }, () => null);
+  if (!payload || typeof payload !== 'object') return out;
+  const read = (pair: unknown): PlacePoint | null => {
+    if (!Array.isArray(pair) || pair.length < 2) return null;
+    const longitude = Number(pair[0]);
+    const latitude = Number(pair[1]);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || (latitude === 0 && longitude === 0)) return null;
+    return { latitude: round6(latitude), longitude: round6(longitude) };
+  };
+  const row = payload as { features?: unknown[]; locations?: unknown[] };
+  if (Array.isArray(row.features)) {
+    row.features.forEach((feature, position) => {
+      if (!feature || typeof feature !== 'object') return;
+      const item = feature as { geometry?: { coordinates?: unknown }; properties?: { source_id?: unknown } };
+      const source = Number(item.properties?.source_id);
+      const index = Number.isInteger(source) ? source : position;
+      if (index >= 0 && index < out.length) out[index] = read(item.geometry?.coordinates);
+    });
+    return out;
+  }
+  if (Array.isArray(row.locations)) {
+    row.locations.forEach((location, index) => {
+      if (index >= out.length || !location || typeof location !== 'object') return;
+      out[index] = read((location as { location?: unknown }).location);
+    });
+  }
+  return out;
+}
 
 export function snapUrl(mode: Mode): string {
   return `${ORS_HOST}/openrouteservice/v2/snap/${PROFILES[mode]}/geojson`;
@@ -227,7 +471,11 @@ export const BAD_REQUEST_MESSAGE = 'That route request could not be used.';
 export const UNAVAILABLE_MESSAGE =
   'The route service is not available right now. Nothing was saved.';
 
-export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request';
+/** The app's shared route allowance at the service is used up. It is not this person's limit. */
+export const SERVICE_QUOTA_MESSAGE =
+  'The route service has used up today\'s allowance for Charioteer. Try again later. Nothing was saved.';
+
+export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request' | 'limit';
 
 export type RouteFailure = {
   status: 422 | 503 | 429 | 400;
@@ -240,13 +488,26 @@ export function classifyOrsFailure(status: number, payload: unknown): RouteFailu
     return { status: 429, body: { ok: false, code: 'rate_limited', message: RATE_LIMITED_MESSAGE } };
   }
   if (status === 400) {
+    if (orsErrorCode(payload) === 2004) {
+      return { status: 400, body: { ok: false, code: 'limit', message: ROUTE_LIMIT_MESSAGE } };
+    }
     return { status: 400, body: { ok: false, code: 'bad_request', message: BAD_REQUEST_MESSAGE } };
+  }
+  if ((status === 403 || status === 401) && gatewaySaysQuota(payload)) {
+    return { status: 503, body: { ok: false, code: 'unavailable', message: SERVICE_QUOTA_MESSAGE } };
   }
   const code = orsErrorCode(payload);
   if (status === 404 && (code === 2009 || code === 2010)) {
     return { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } };
   }
   return { status: 503, body: { ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE } };
+}
+
+/** HeiGIT's gateway answers 403 {"error":"Quota exceeded"} when the app's daily allowance is used up. */
+function gatewaySaysQuota(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const error = (payload as { error?: unknown }).error;
+  return typeof error === 'string' && /quota/i.test(error);
 }
 
 function orsErrorCode(payload: unknown): number | null {
@@ -266,26 +527,34 @@ function asErrorCode(value: unknown): number | null {
   return null;
 }
 
-type LngLat = [number, number];
+type LngLat = number[];
 
 export function parseDirections(payload: unknown, mode: Mode, shape: 'loop' | 'a_to_b'): {
   profile: string;
   distanceM: number;
   durationMinutes: number;
   ascentM: number | null;
+  descentM: number | null;
+  elevationsM: number[] | null;
   points: { latitude: number; longitude: number }[];
 } | null {
   const feature = firstFeature(payload);
   if (!feature) return null;
   const coords = feature.geometry?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return null;
-  const points = coords.flatMap((pair) => {
-    if (!Array.isArray(pair) || pair.length < 2) return [];
+  const points: { latitude: number; longitude: number }[] = [];
+  const elevations: number[] = [];
+  let elevationsComplete = true;
+  for (const pair of coords) {
+    if (!Array.isArray(pair) || pair.length < 2) continue;
     const longitude = Number(pair[0]);
     const latitude = Number(pair[1]);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
-    return [{ latitude, longitude }];
-  }).slice(0, 2000);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    points.push({ latitude, longitude });
+    const elevation = pair.length >= 3 ? Number(pair[2]) : Number.NaN;
+    if (Number.isFinite(elevation) && elevation > -500 && elevation < 9000) elevations.push(elevation);
+    else elevationsComplete = false;
+  }
   if (points.length < 2) return null;
   const summary = feature.properties?.summary ?? {};
   const distance = Number(summary.distance);
@@ -296,6 +565,8 @@ export function parseDirections(payload: unknown, mode: Mode, shape: 'loop' | 'a
     distanceM: Math.round(distance),
     durationMinutes: Math.max(1, Math.round(duration / 60)),
     ascentM: readAscent(feature.properties),
+    descentM: readDescent(feature.properties),
+    elevationsM: elevationsComplete && elevations.length === points.length ? elevations : null,
     points,
   };
 }
@@ -306,6 +577,15 @@ function readAscent(properties: { ascent?: unknown; summary?: { ascent?: unknown
   if (Number.isFinite(direct)) return Math.round(direct);
   const summary = Number(properties?.summary?.ascent);
   if (Number.isFinite(summary)) return Math.round(summary);
+  return null;
+}
+
+/** ORS puts descent on `properties.descent`, and sometimes on `properties.summary.descent`. A missing field stays null. */
+function readDescent(properties: { descent?: unknown; summary?: { descent?: unknown } } | undefined): number | null {
+  const direct = Number(properties?.descent);
+  if (Number.isFinite(direct) && direct >= 0 && direct <= 20_000) return Math.round(direct);
+  const summary = Number(properties?.summary?.descent);
+  if (Number.isFinite(summary) && summary >= 0 && summary <= 20_000) return Math.round(summary);
   return null;
 }
 

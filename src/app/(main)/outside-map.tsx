@@ -1,21 +1,43 @@
-import { useState } from 'react';
-
-import { useSnapshot } from '@/data';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { useRepository, useSnapshot } from '@/data';
+import { shownError } from '@/domain/errors';
+import { SEARCH_EMPTY, SEARCH_FAILED, type RoutePlace } from '@/domain/findRoute';
 import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
 import { type OutdoorPoint } from '@/domain/outdoorRoute';
+import { PLACE_SEARCH_MIN_CHARS, createPlaceSearch, holdChosenPlace, placeQueryKey, placeSearchOnce } from '@/domain/routeAdjust';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
+import { useRouteCompletionHistory } from '@/health/useRouteCompletions';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { OutsideFooter } from '@/ui/OutsideFooter';
+import { RouteHistorySummary } from '@/ui/RouteHistory';
 import { SavedRouteCard } from '@/ui/SavedRouteCard';
-import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 export default function OutsideMap() {
   const snap = useSnapshot();
+  const repo = useRepository();
+  const router = useRouter();
   const [here, setHere] = useState<OutdoorPoint | null>(null);
   const [focus, setFocus] = useState(0);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<RoutePlace[]>([]);
+  const [pin, setPin] = useState<RoutePlace | null>(null);
+  const [lookAt, setLookAt] = useState<OutdoorPoint | null>(null);
+  const [lookFocus, setLookFocus] = useState(0);
+  const [searched, setSearched] = useState(false);
   const routes = snap.outdoorRoutes ?? [];
+  const { history, ready } = useRouteCompletionHistory(routes);
+  const queryRef = useRef('');
+  const searchRef = useRef<() => void>(() => undefined);
+  const placeSearchRef = useRef(createPlaceSearch(() => searchRef.current()));
+
+  useEffect(() => {
+    const places = placeSearchRef.current;
+    return () => places.dispose();
+  }, []);
 
   async function whereIAm() {
     setError(null);
@@ -34,17 +56,83 @@ export default function OutsideMap() {
     }
   }
 
+  async function search() {
+    const asked = queryRef.current.trim();
+    if (asked.length < PLACE_SEARCH_MIN_CHARS) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    setError(null);
+    try {
+      const found = await placeSearchOnce(asked, () => repo.searchRoutePlaces(asked));
+      if (placeQueryKey(queryRef.current) !== placeQueryKey(asked)) return;
+      setResults(found);
+      setSearched(true);
+    } catch (err) {
+      placeSearchRef.current.missed();
+      setSearched(false);
+      setError(shownError(err, SEARCH_FAILED));
+    }
+  }
+  searchRef.current = () => { void search(); };
+
+  function onSearchText(value: string) {
+    setQuery(value);
+    queryRef.current = value;
+    if (value.trim().length < PLACE_SEARCH_MIN_CHARS) {
+      setResults([]);
+      setSearched(false);
+    }
+    placeSearchRef.current.type(value);
+  }
+
+  function choose(place: RoutePlace) {
+    setPin(place);
+    setLookAt(place);
+    setLookFocus((value) => value + 1);
+    setResults([]);
+    setQuery(place.name);
+    queryRef.current = place.name;
+  }
+
+  function usePlace(role: 'start' | 'end') {
+    if (!pin) return;
+    holdChosenPlace(role, pin);
+    router.push('/find-route' as never);
+  }
+
   return (
     <Screen eyebrow={OUTSIDE_SECTION_LABEL} title="Saved routes" intro="Footpaths from OpenStreetMap. A saved line stays on your account.">
       <Card>
         <FootpathMap
           routes={routes}
           sketch={[]}
+          pin={pin}
           here={here}
+          lookAt={lookAt}
+          lookFocus={lookFocus}
           locationFocus={focus}
           locating={locating}
           onShowMyLocation={() => { void whereIAm(); }}
         />
+        <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
+        {results.map((place) => (
+          <Choice
+            key={place.id}
+            label={place.name}
+            selected={pin?.id === place.id}
+            selectOnPressIn
+            onPress={() => choose(place)}
+          />
+        ))}
+        {searched && results.length === 0 ? <T>{SEARCH_EMPTY}</T> : null}
+        {pin ? (
+          <>
+            <Choice label="Start here" selected={false} onPress={() => usePlace('start')} />
+            <Choice label="Go here" selected={false} onPress={() => usePlace('end')} />
+          </>
+        ) : null}
         {locating ? (
           <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
         ) : (
@@ -53,7 +141,15 @@ export default function OutsideMap() {
         <T variant="muted">Where I am stays on this page. It does not ask the route service for a line.</T>
       </Card>
       <ErrorNote>{error}</ErrorNote>
-      {routes.map((route) => <SavedRouteCard key={route.id} route={route} />)}
+      {routes.length > 0 ? <RouteHistorySummary completions={history.all} ready={ready} /> : null}
+      {routes.map((route) => (
+        <SavedRouteCard
+          key={route.id}
+          route={route}
+          completions={history.byRoute[route.id] ?? []}
+          ready={ready}
+        />
+      ))}
       <OutsideFooter kind="full" />
     </Screen>
   );

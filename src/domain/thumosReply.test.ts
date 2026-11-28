@@ -93,7 +93,7 @@ describe('thumos reply post-check', () => {
     expect(caught).toContain('COACH_REPLY_FAILED');
     expect(caught).toContain("console.error('thumos xAI HTTP status'");
     expect(caught).not.toContain('OFFLINE_COACH_MESSAGE');
-    expect(chat).toContain('xaiCallShouldRetry');
+    expect(chat).toContain('classifyXaiFailure');
     expect(chat).toContain('XAI_RETRY_BACKOFF_MS');
     expect(chat).toContain('AbortSignal.timeout');
     expect(chat).toContain("console.error('thumos XAI_API_KEY is not set')");

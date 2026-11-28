@@ -85,7 +85,9 @@ describe('health writes use the live session', () => {
     expect(signed).toContain('auth.getSession()');
     expect(signed).toContain('auth.refreshSession()');
     expect(signed).toContain('SIGN_IN_FIRST');
-    expect(signed).toContain('OFFLINE_MESSAGE');
+    expect(signed).toContain('RECONNECTING_ACCOUNT');
+    expect(signed).toContain('SIGN_IN_AGAIN');
+    expect(signed).not.toContain('OFFLINE_MESSAGE');
     expect(signed).not.toContain('getUser(');
     const save = repo.slice(repo.indexOf('async saveHealth'), repo.indexOf('async setInterestSelected'));
     expect(save).toContain('this.userId()');
@@ -94,5 +96,25 @@ describe('health writes use the live session', () => {
     const logged = repo.slice(repo.indexOf('async logClientError'), repo.indexOf('async saveDeviceToken'));
     expect(logged).not.toContain('this.userId()');
     expect(logged).not.toContain('getUser(');
+  });
+
+  it('reloads after sign-in without asking the auth client to refresh, and skips interests when signed out', () => {
+    const listener = repo.slice(repo.indexOf('onAuthStateChange'), repo.indexOf('private listenForMessages'));
+    expect(listener).toContain("event === 'TOKEN_REFRESHED'");
+    expect(listener).toContain('this.authSession = session');
+    expect(listener).not.toContain('getSession');
+    expect(listener).not.toContain('refreshSession');
+    const refresh = repo.slice(repo.indexOf('private async refresh'), repo.indexOf('private async resignOwnerPhotosNow'));
+    expect(refresh).toContain('session?.access_token');
+    expect(refresh).toContain("from('interests')");
+    expect(refresh).not.toContain('auth.getSession');
+    const signIn = repo.slice(repo.indexOf('async signIn('), repo.indexOf('private async finishSignIn'));
+    expect(signIn).toContain("throw asUserFacing(error, 'sign-in')");
+    expect(signIn).toContain('finishSignIn()');
+    expect(signIn).not.toContain('await this.refresh()');
+    const finish = repo.slice(repo.indexOf('private async finishSignIn'), repo.indexOf('private emitSignedIn'));
+    expect(finish).toContain('this.authSession');
+    expect(finish).toContain('emitSignedIn');
+    expect(finish).not.toContain('OFFLINE_MESSAGE');
   });
 });

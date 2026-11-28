@@ -20,15 +20,17 @@ import {
   waterProgress,
   weightTrendLine,
 } from '@/domain/nutrition';
-import { chartBucketForPeriod } from '@/domain/readingChart';
+import { CHART_DIRECTION_HINT, chartBucketForPeriod, chartPlot } from '@/domain/readingChart';
+import { formatReadingSpan, readingSpan } from '@/domain/readingSpan';
 import type { StatsTone } from '@/domain/statsOverview';
 import { chartFigureLabel, completedDayStats, londonToday, NUTRITION_CHART_PERIODS, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { ScrollTarget } from '@/ui/ScrollTarget';
-import { statsToneColors } from '@/ui/statsPalette';
+import { chartAccent, statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
 import { Card, T } from '@/ui/ui';
@@ -41,7 +43,6 @@ import { Card, T } from '@/ui/ui';
 export function NutritionBoard({
   logs,
   today,
-  hideCalories,
   kcalTarget,
   proteinTarget,
   checkIns,
@@ -50,7 +51,6 @@ export function NutritionBoard({
 }: {
   logs: readonly FoodLog[];
   today: string;
-  hideCalories: boolean;
   kcalTarget: number | null;
   proteinTarget: number | null;
   checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[];
@@ -78,7 +78,7 @@ export function NutritionBoard({
     const processed = notes.length;
     const whole = items.length - processed;
     const shared = {
-      hideCalories,
+      hideCalories: false,
       kcal: kcalAvg,
       kcalTarget,
       proteinG: proteinAvg,
@@ -90,7 +90,7 @@ export function NutritionBoard({
       proteinDays: proteinDays.length,
       proteinHits,
       proteinAvg,
-      kcal: hideCalories ? null : todayRing({ ...shared, hideCalories: false }),
+      kcal: todayRing({ ...shared, hideCalories: false }),
       protein: todayRing({ ...shared, hideCalories: true }),
       macros: macroSplit(items),
       fats: fatBalance(items),
@@ -110,11 +110,11 @@ export function NutritionBoard({
       dotsCaption: loggingCaption(logs, today),
       insights: eatingInsights(logs, checkIns),
     };
-  }, [logs, today, hideCalories, kcalTarget, proteinTarget, checkIns, span, period]);
+  }, [logs, today, kcalTarget, proteinTarget, checkIns, span, period]);
   const trend = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
-    return { days, caption: trendCaption(days, { hideCalories, span }) };
-  }, [logs, today, span, hideCalories]);
+    return { days, caption: trendCaption(days, { hideCalories: false, span }) };
+  }, [logs, today, span]);
   const loggedDays = trend.days.some((day) => day.logged);
 
   return (
@@ -150,7 +150,7 @@ export function NutritionBoard({
               <CompareBars layout="row" max={picture.quality.max} bars={picture.quality.bars} />
             </View>
             <T>{picture.quality.meaning}</T>
-            <ProcessedFoodList notes={picture.quality.notes} cue="more" />
+            <ProcessedFoodList notes={picture.quality.notes} cue="more" title="About processed food" />
           </ScrollTarget>
         ) : null}
         {qualitySwitch}
@@ -160,9 +160,7 @@ export function NutritionBoard({
         <T variant="label">{periodHeading(period)}</T>
         {loggedDays ? (
           <>
-            {hideCalories ? null : (
-              <LoggedSeries title="Calories" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
-            )}
+            <LoggedSeries title="Calories" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
             <LoggedSeries title="Protein" today={today} period={period} days={trend.days} pick={(day) => day.proteinG} target={proteinTarget} unit="g" />
             <T variant="muted">{trend.caption}</T>
           </>
@@ -251,25 +249,53 @@ export function WeightTrendChart({
   points: readonly { day: string; kg: number }[];
   goal: NutritionGoal | null;
 }) {
+  const theme = useAppTheme();
   const [period] = useStatPeriod();
   const today = londonToday();
   const window = rollingWindow(today, period);
-  const caption = weightTrendLine(points, goal);
-  const readings = overviewLineChart(points
-    .filter((point) => point.day >= window.start && point.day <= window.end)
-    .map((point) => ({ day: point.day, value: point.kg })));
+  const inRange = points.filter((point) => point.day >= window.start && point.day <= window.end);
+  const caption = weightTrendLine(inRange, goal);
+  const readings = overviewLineChart(inRange.map((point) => ({ day: point.day, value: point.kg })));
+  const plotted = chartPlot({
+    points: readings,
+    start: window.start,
+    end: window.end,
+    bucket: 'day',
+    aggregate: 'mean',
+  }).points;
+  const span = readingSpan(plotted);
+  const headlines = span ? formatReadingSpan(span, 'kg', today) : null;
   return (
-    <View accessibilityLabel={caption} style={{ gap: 8 }}>
+    <View accessibilityLabel={headlines ? `${headlines.latest}. ${headlines.lowest}. ${headlines.highest}` : caption} style={{ gap: 8 }}>
       <ReadingChart
         points={readings}
         start={window.start}
         end={window.end}
         unit="kg"
+        yTitle="kg"
         aggregate="mean"
-        bucket={chartBucketForPeriod(period)}
+        bucket="day"
+        accent={chartAccent('Weight', theme.scheme) ?? undefined}
         accessibilityLabel="Weight chart"
+        meaning="none"
+        markExtremes
+        hideSummary
+        spanWindow
+        today={today}
       />
-      <T variant="muted">{caption}</T>
+      {headlines ? (
+        <View style={{ gap: 2 }}>
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{headlines.latest}</T>
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{headlines.lowest}</T>
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{headlines.highest}</T>
+        </View>
+      ) : null}
+      {caption.trim() ? (
+        <MoreInfo about="weight chart" title="What this means">
+          <T variant="muted">{caption}</T>
+          <T variant="muted">{CHART_DIRECTION_HINT}</T>
+        </MoreInfo>
+      ) : null}
     </View>
   );
 }
@@ -359,6 +385,7 @@ function LoggedSeries({
   target: number | null;
   unit: string;
 }) {
+  const theme = useAppTheme();
   const window = rollingWindow(today, period);
   const points = loggedNutritionChart(days, pick);
   return (
@@ -371,6 +398,7 @@ function LoggedSeries({
         unit={unit}
         aggregate="mean"
         bucket={chartBucketForPeriod(period)}
+        accent={chartAccent(title, theme.scheme) ?? undefined}
         accessibilityLabel={`${title} chart`}
       />
       {target != null && target > 0 ? (

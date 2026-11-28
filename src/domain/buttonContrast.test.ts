@@ -48,7 +48,8 @@ describe('button contrast', () => {
     expect(button).toContain("quiet: { bg: 'transparent', fg: theme.colors.ink, border: theme.colors.ink }");
     expect(button).toContain('primary: { bg: theme.colors.ink, fg: theme.colors.bg, border: \'transparent\' }');
     expect(button).toContain("borderWidth: tone === 'quiet' ? stroke.control : 0");
-    expect(button).toContain('opacity: inactive ? 0.45 : pressed ? 0.86 : 1');
+    expect(button).toContain('opacity: lit ? 1 : inactive ? 0.45 : pressed ? 0.86 : 1');
+    expect(button).toContain("const lit = tone === 'success' && Boolean(disabled) && !pending");
     expect(button).toContain('accessibilityHint={reason || undefined}');
     expect(button).toContain('{reason ? <T variant="muted">{reason}</T> : null}');
     expect(button).not.toContain('sunken');
@@ -63,7 +64,8 @@ describe('button contrast', () => {
     expect(nutrition).toContain('label="Enter it myself"');
     const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
     const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
-    expect(checkIn).toContain("disabledReason={dirty ? undefined : 'Change the check-in to save.'}");
+    expect(checkIn).not.toContain('Change the check-in to save.');
+    expect(checkIn).not.toContain('disabledReason');
     expect(you).toContain("disabledReason={dirty ? undefined : 'Change a detail to save.'}");
     expect(you).toContain("disabledReason={confirm === 'DELETE' ? undefined : 'Type DELETE to remove the account.'}");
   });

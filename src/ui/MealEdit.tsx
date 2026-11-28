@@ -6,6 +6,7 @@ import type { FoodLogUpdate } from '@/data/types';
 import { isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
+import { ROUGH_ESTIMATE_NOTE } from '@/domain/mealEstimate';
 import {
   APPLE_HEALTH_MEAL_NOTE,
   ESTIMATE_HINT,
@@ -26,6 +27,7 @@ import {
 import { DateField } from '@/ui/DateField';
 import { dismissKeyboard } from '@/ui/keyboard';
 import { radius, stroke, useAppTheme } from '@/ui/theme';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Choice, Field, T } from '@/ui/ui';
 
 type DraftItem = {
@@ -44,7 +46,6 @@ type DraftItem = {
 
 export function MealEdit({
   log,
-  hideCalories,
   saved,
   saving,
   estimating,
@@ -55,13 +56,12 @@ export function MealEdit({
   onError,
 }: {
   log: FoodLog;
-  hideCalories: boolean;
   saved: boolean;
   saving: boolean;
   estimating: boolean;
   showHealthNote: boolean;
   onSave: (patch: FoodLogUpdate) => void;
-  onEstimate: (text: string) => Promise<FoodItem[]>;
+  onEstimate: (text: string) => Promise<{ items: FoodItem[]; providerUnavailable?: boolean }>;
   onCancel: () => void;
   onError: (message: string | null) => void;
 }) {
@@ -77,6 +77,7 @@ export function MealEdit({
   const [items, setItems] = useState<DraftItem[]>(() => log.items.map(draftFrom));
   const [fatText, setFatText] = useState(() => log.items.map((item) => String(fatGrams(draftFrom(item)))));
   const [estimated, setEstimated] = useState(log.estimated);
+  const [rough, setRough] = useState(false);
   const appliedRef = useRef(openedPortion);
   const draftRef = useRef(items);
 
@@ -178,7 +179,8 @@ export function MealEdit({
       return;
     }
     const factor = typedPortion ?? appliedPortion;
-    void onEstimate(description).then((foods) => {
+    void onEstimate(description).then((result) => {
+      const foods = result.items;
       if (!foods.length) {
         onError('Could not read that meal. You can still type the figures in.');
         return;
@@ -190,6 +192,7 @@ export function MealEdit({
         setAppliedPortion(typedPortion);
       }
       setEstimated(true);
+      setRough(result.providerUnavailable === true);
       onError(null);
     }).catch((err: unknown) => {
       onError(shownError(err, 'Could not read that meal. You can still type the figures in.'));
@@ -220,12 +223,11 @@ export function MealEdit({
       />
       <TimeField label="Time" value={time} onChange={setTime} />
       {estimated ? <T>{ESTIMATE_LABEL}</T> : null}
+      {estimated && rough ? <T variant="muted">{ROUGH_ESTIMATE_NOTE}</T> : null}
       {items.map((item, index) => (
         <View key={`${log.id}-${index}`} style={{ gap: 8 }}>
           <Field label="Food" value={item.name} onChangeText={(name) => updateItem(index, { name })} />
-          {hideCalories ? null : (
-            <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />
-          )}
+          <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />
           <Field label="Protein (g)" value={item.proteinG} onChangeText={(proteinG) => updateItem(index, { proteinG })} keyboardType="decimal-pad" />
           <Field label="Carbohydrate (g)" value={item.carbsG} onChangeText={(carbsG) => updateItem(index, { carbsG })} keyboardType="decimal-pad" />
           <Field label="Sugar (g)" value={item.sugarG} onChangeText={(sugarG) => updateItem(index, { sugarG })} keyboardType="decimal-pad" />
@@ -266,7 +268,11 @@ export function MealEdit({
           />
         </View>
       ) : null}
-      {showHealthNote ? <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T> : null}
+      {showHealthNote ? (
+        <MoreInfo about="Apple Health" title="About Apple Health">
+          <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T>
+        </MoreInfo>
+      ) : null}
       <Button
         label={saved && !saving ? 'Saved ✓' : 'Save meal'}
         pending={saving}

@@ -1,6 +1,9 @@
+import type { EntitlementOverride } from '@/domain/entitlementOverride';
 import { formatUkCompactDay } from '@/domain/healthInsights';
+import { entitlementActive, type SubscriptionRecord } from '@/domain/subscription';
 import {
   TIER_LIMITS,
+  tierForProduct,
   londonDayKey,
   nextLondonMonth,
   tierDisplayName,
@@ -20,6 +23,27 @@ const CREDIT_KINDS: readonly UsageKind[] = ['coach', 'meal', 'plan'];
 
 function left(used: number, limit: number): number {
   return Math.max(0, limit - used);
+}
+
+/**
+ * Which plan the AI credits line shows. A comp wins. Otherwise the store subscription row,
+ * read even while the paywall flag is off, so a Standard tester sees the Standard allowance.
+ * The row is not used while the comp lookup is still running, so a comp never flickers to the store plan.
+ */
+export function creditPlanState(input: {
+  comp: EntitlementOverride | null;
+  compLoading: boolean;
+  compFailed: boolean;
+  row: SubscriptionRecord | null;
+  rowLoading: boolean;
+  rowFailed: boolean;
+  now?: number;
+}): { tier: Tier | null; checking: boolean; planFailed: boolean } {
+  if (input.comp) return { tier: input.comp.tier, checking: false, planFailed: false };
+  if (input.compLoading) return { tier: null, checking: true, planFailed: false };
+  const storeTier = input.row && entitlementActive(input.row, input.now) ? tierForProduct(input.row.productId) : null;
+  if (storeTier) return { tier: storeTier, checking: false, planFailed: false };
+  return { tier: null, checking: input.rowLoading, planFailed: input.compFailed || input.rowFailed };
 }
 
 /** One line for the plan totals and what is left this London month. */
@@ -54,6 +78,19 @@ export function creditUpgradeLabel(tier: Tier | null): string | null {
   return `Upgrade to ${tierDisplayName(next)}`;
 }
 
+/**
+ * The button under a limit or subscription note. A comp, or a comp still loading, gets none.
+ * The top plan gets none either, because there is nothing to upgrade to; its note gives the reset day.
+ */
+export function aiLimitButtonLabel(
+  notice: { code: 'limit_reached' | 'subscription_required'; tier: Tier | null },
+  entitlement: { comp: boolean; compLoading: boolean },
+): string | null {
+  if (entitlement.comp || entitlement.compLoading) return null;
+  if (notice.code === 'subscription_required') return 'See plans';
+  return notice.tier ? creditUpgradeLabel(notice.tier) : 'Upgrade';
+}
+
 /** True when this feature's monthly allowance is used up. A missing plan is not a used-up allowance. */
 export function creditsExhausted(tier: Tier | null, usage: AiUsageCounts, kind?: UsageKind): boolean {
   if (!tier) return false;
@@ -72,6 +109,27 @@ export function creditNudge(tier: Tier | null, usage: AiUsageCounts, kind?: Usag
   });
   if (!low.length) return null;
   return `Running low: ${low.join(', ')} left this month.`;
+}
+
+export const AI_CREDITS_CHECKING = 'AI credits: checking your plan…';
+export const AI_CREDITS_UNAVAILABLE = 'Couldn\'t check your plan. Try again.';
+export const AI_USAGE_UNAVAILABLE = 'Couldn\'t check your credits. Try again.';
+
+/** What to show beside a credit-using button while the plan or the usage lookup is in flight or has failed. */
+export function aiCreditStatusLine(input: {
+  tier: Tier | null;
+  usage: AiUsageCounts;
+  kind?: UsageKind;
+  checking: boolean;
+  planFailed: boolean;
+  usageFailed: boolean;
+  now?: Date;
+}): string {
+  if (!input.tier && input.checking) return AI_CREDITS_CHECKING;
+  if (!input.tier && input.planFailed) return AI_CREDITS_UNAVAILABLE;
+  if (input.usageFailed) return AI_USAGE_UNAVAILABLE;
+  if (input.kind) return aiCreditKindLine(input.tier, input.usage, input.kind, input.now);
+  return aiCreditSummary(input.tier, input.usage, input.now);
 }
 
 /** The bucket next to one credit-using button. */

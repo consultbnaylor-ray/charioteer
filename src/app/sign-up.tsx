@@ -4,7 +4,7 @@ import { Linking, Pressable } from 'react-native';
 
 import { useRepository } from '@/data';
 import { APP_FULL_NAME } from '@/domain/appName';
-import { asUserFacing } from '@/domain/errors';
+import { asUserFacing, signInNetworkHint } from '@/domain/errors';
 import { PRIVACY_POLICY_URL } from '@/domain/privacyPolicy';
 import { Button, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
@@ -17,6 +17,7 @@ export default function SignUp() {
   const [error, setError] = useState<string | null>(null);
   const [offerSignIn, setOfferSignIn] = useState(false);
   const [pending, setPending] = useState(false);
+  const networkHint = signInNetworkHint(error);
 
   return (
     <Screen eyebrow="New account" title="Start where you are." intro={`You will choose a sober date, your reasons, and what ${APP_FULL_NAME} is allowed to keep. Nothing is shared until you say so.`}>
@@ -24,6 +25,7 @@ export default function SignUp() {
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="you@example.com" />
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry textContentType="newPassword" hint="At least 8 characters." />
       <ErrorNote>{error}</ErrorNote>
+      {networkHint ? <T variant="muted">{networkHint}</T> : null}
       {offerSignIn ? (
         <Button
           label="Sign in instead"

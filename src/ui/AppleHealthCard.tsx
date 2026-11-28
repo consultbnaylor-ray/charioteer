@@ -16,6 +16,7 @@ import {
   type AppleHealthAccess,
 } from '@/health/connection';
 import { HEALTH_MISSING_DETAIL, HEALTH_VISIBILITY_TITLE, type HealthMissingReading } from '@/domain/healthVisibility';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { PlanTick } from '@/ui/PlanTick';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, T } from '@/ui/ui';
@@ -88,16 +89,12 @@ export function AppleHealthCard({
         </Pressable>
       </View>
       {gaps.length ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={HEALTH_MISSING_DETAIL}
-          accessibilityState={{ expanded: missingOpen }}
+        <ExpandableRow
+          label={HEALTH_MISSING_DETAIL}
+          expanded={missingOpen}
           onPress={() => setMissingOpen((value) => !value)}
-          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-        >
-          <T style={{ fontFamily: theme.font.bodyStrong }}>{HEALTH_MISSING_DETAIL}</T>
-          <T variant="muted">{missingOpen ? 'Hide' : 'Show'}</T>
-        </Pressable>
+          hint={missingOpen ? 'Hide' : 'Show'}
+        />
       ) : null}
       {missingOpen && gaps.length ? (
         <View style={{ gap: 8 }}>
@@ -132,16 +129,12 @@ export function AppleHealthCard({
         </Pressable>
       </View>
       {turnOnNote ? <T>{turnOnNote}</T> : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={APPLE_HEALTH_DETAILS}
-        accessibilityState={{ expanded: details }}
+      <ExpandableRow
+        label={APPLE_HEALTH_DETAILS}
+        expanded={details}
         onPress={() => setDetails((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-      >
-        <T style={{ fontFamily: theme.font.bodyStrong }}>{APPLE_HEALTH_DETAILS}</T>
-        <T variant="muted">{details ? 'Hide' : 'Show'}</T>
-      </Pressable>
+        hint={details ? 'Hide' : 'Show'}
+      />
       {details ? (
         <View style={{ gap: 8 }}>
           {state.kind === 'consent' ? (

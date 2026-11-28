@@ -32,12 +32,27 @@ describe('more info disclosure', () => {
     expect(source).not.toContain('colors.accent');
   });
 
-  it('keeps the medical line on the chart, and the Garmin hint behind the same control', () => {
+  it('keeps the medical line inside the data toggle, and the Garmin hint behind the same control', () => {
     const charts = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     const refresh = readFileSync('src/ui/HealthRefresh.tsx', 'utf8');
-    expect(charts).toContain('summary="Not medical advice. Not a diagnosis."');
+    const meaning = charts.slice(charts.indexOf('<DataMeaning about={title}>'), charts.indexOf('</DataMeaning>'));
+    expect(meaning).toContain('Not medical advice. Not a diagnosis.');
+    expect(charts).toContain('<DataMeaning about={title}>');
+    expect(charts).not.toContain('summary="Not medical advice. Not a diagnosis."');
     expect(charts).toContain('guide?.outside');
     expect(charts).toContain('framed={framed}');
+    const history = charts.slice(charts.indexOf('Activity charts'), charts.indexOf('title="Exercise minutes"'));
+    expect(history).not.toContain('meaning="none"');
+    expect(history).not.toContain('DataMeaning');
+    expect(readFileSync('src/ui/MoreInfo.tsx', 'utf8')).toContain("export const DATA_MEANING_TITLE = 'What this Data means'");
+    const reading = readFileSync('src/ui/ReadingChart.tsx', 'utf8');
+    expect(reading).toContain("meaning === 'chart' ? 'What this means'");
+    for (const file of ['src/ui/TodayGlance.tsx']) {
+      const source = readFileSync(file, 'utf8');
+      expect(source, file).toContain('<DataMeaning');
+      expect(source, file).toContain('meaning="none"');
+      expect(source.indexOf('<DataMeaning'), file).toBeLessThan(source.indexOf('<ReadingChart'));
+    }
     expect(charts).toContain('framed={false}');
     expect(refresh).toContain('<Card>');
     expect(refresh.match(/garminHintLine\(/g)).toHaveLength(1);

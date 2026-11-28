@@ -2,13 +2,21 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { viaPointCollection } from '@/domain/routeAdjust';
+import { clampDrawZoom, freshOverlayMeasure, nextOverlayMeasure, pageScrollsWhileDrawing, panViewport, type PanDirection } from '@/domain/drawStroke';
+import { DrawCapture, DrawViewControls, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
+  DRAW_GAP_DASH,
+  DRAW_GAP_WIDTH,
   YOU_HERE_FILL,
   YOU_HERE_RING,
+  drawGapColour,
   mapLineColour,
   openFreeMapStyle,
+  pencilColour,
+  pinCollection,
   savedLineCollection,
   sketchLineCollection,
+  sketchLinesCollection,
   startCollection,
   trackLineCollection,
   trackLineColour,
@@ -17,9 +25,10 @@ import {
   type OutdoorPoint,
   type OutdoorRoute,
 } from '@/domain/outdoorRoute';
-import { useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
+import { holdMapGestures, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
-import { useMapScheme } from '@/ui/mapStyle';
+import { useFootpathStyle, useMapScheme } from '@/ui/mapStyle';
+import { useScreenScroller } from '@/ui/ui';
 
 type PaintInput = {
   scheme: MapScheme;
@@ -29,6 +38,8 @@ type PaintInput = {
   startJson: string;
   youJson: string;
   guideJson: string;
+  gapJson: string;
+  pinJson: string;
   viaJson: string;
   selectedJson: string;
 };
@@ -39,7 +50,7 @@ type LibreMap = {
   getZoom: () => number;
   jumpTo: (options: { center: [number, number]; zoom: number }) => void;
   resize: () => void;
-  setStyle: (url: string) => void;
+  setStyle: (style: string | object) => void;
   isStyleLoaded: () => boolean;
   getSource: (id: string) => { setData: (data: unknown) => void } | undefined;
   getLayer: (id: string) => unknown;
@@ -71,6 +82,26 @@ export function FootpathMap({
   adjust = null,
   bar = null,
   mapLabel,
+  pencil = [],
+  pencilLines = null,
+  gaps = [],
+  lookAt = null,
+  lookFocus = 0,
+  draw = null,
+  pin = null,
+  onToggleDraw,
+  onUndoDraw,
+  onClearDraw,
+  onConfirmDraw,
+  onKeepDrawing,
+  canKeepDrawing = false,
+  onExitDraw,
+  canUndoDraw = false,
+  canClearDraw = false,
+  canConfirmDraw = false,
+  confirmPending = false,
+  statusNote = null,
+  homeTick = 0,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -99,13 +130,119 @@ export function FootpathMap({
   bar?: ReactNode;
   /** Accessible name. Omitted maps keep "Map with footpaths". */
   mapLabel?: string;
+  /** The finger sketch, one line. `pencilLines` draws each stroke on its own. */
+  pencil?: readonly OutdoorPoint[];
+  /** Each stroke on its own. A gap between strokes is not part of these lines. */
+  pencilLines?: readonly (readonly OutdoorPoint[])[] | null;
+  /** Thin dashed hints between strokes. Not a finger stroke. */
+  gaps?: readonly (readonly OutdoorPoint[])[];
+  lookAt?: OutdoorPoint | null;
+  lookFocus?: number;
+  draw?: {
+    enabled: boolean;
+    onChange: (points: OutdoorPoint[]) => void;
+    onEnd: (points: OutdoorPoint[]) => void;
+  } | null;
+  pin?: OutdoorPoint | null;
+  onToggleDraw?: () => void;
+  onUndoDraw?: () => void;
+  onClearDraw?: () => void;
+  onConfirmDraw?: () => void;
+  onKeepDrawing?: () => void;
+  canKeepDrawing?: boolean;
+  /** Leaves draw mode and keeps the sketch, when the full-screen map closes. */
+  onExitDraw?: () => void;
+  canUndoDraw?: boolean;
+  canClearDraw?: boolean;
+  canConfirmDraw?: boolean;
+  confirmPending?: boolean;
+  statusNote?: string | null;
+  /** Increments to frame the map on the current location, or the default view. */
+  homeTick?: number;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track);
+  const styleUrl = openFreeMapStyle(scheme);
+  const mapStyle = useFootpathStyle(scheme, styleUrl);
+  const scroller = useScreenScroller();
+  const drawingOn = draw?.enabled === true;
+  // This map owns the page lock while drawing. Turning draw mode off (pen, X,
+  // closing full screen, a snapped route) or leaving the screen gives the scroll back.
+  useEffect(() => {
+    if (pageScrollsWhileDrawing(drawingOn)) return undefined;
+    scroller?.current?.setScrollEnabled?.(false);
+    return () => {
+      scroller?.current?.setScrollEnabled?.(true);
+    };
+  }, [drawingOn, scroller]);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus, homeTick);
+  const applyView = useRef<(next: HeldCamera) => void>(() => {});
+  const [drawnZoom, setDrawnZoom] = useState(camera.held.current.zoom);
+  useEffect(() => {
+    setDrawnZoom(camera.held.current.zoom);
+  }, [camera.frameTick, camera.restoreTick, camera.held]);
+  function showDrawnView(next: { centre: OutdoorPoint; zoom: number }) {
+    const place = {
+      longitude: next.centre.longitude,
+      latitude: next.centre.latitude,
+      zoom: clampDrawZoom(next.zoom),
+    };
+    camera.remember(place);
+    applyView.current(place);
+    setDrawnZoom(place.zoom);
+  }
+  function zoomTo(zoom: number) {
+    const current = camera.held.current;
+    showDrawnView({ centre: { latitude: current.latitude, longitude: current.longitude }, zoom });
+  }
+  function pan(direction: PanDirection) {
+    const current = camera.held.current;
+    const centre = panViewport({
+      centre: { latitude: current.latitude, longitude: current.longitude },
+      zoom: current.zoom,
+      width: frame.current.width,
+      height: frame.current.height,
+      direction,
+    });
+    if (!centre) return;
+    showDrawnView({ centre, zoom: current.zoom });
+  }
+  function zoomBy(delta: number) {
+    const current = camera.held.current;
+    showDrawnView({
+      centre: { latitude: current.latitude, longitude: current.longitude },
+      zoom: current.zoom + delta,
+    });
+  }
   const [problem, setProblem] = useState<string | null>(null);
+  const host = useRef<View>(null);
+  const laidOut = useRef({ width: 0, height: 0 });
+  const measureState = useRef(freshOverlayMeasure());
+  const confirmFrame = useRef(0);
+  const frame = useRef({ ready: false, originX: 0, originY: 0, width: 0, height: 0 });
+  function publishFrame(ready: { x: number; y: number; width: number; height: number } | null) {
+    frame.current = ready
+      ? { ready: true, originX: ready.x, originY: ready.y, width: ready.width, height: ready.height }
+      : { ready: false, originX: 0, originY: 0, width: 0, height: 0 };
+  }
+  function measureFrame() {
+    host.current?.measureInWindow((x, y, width, measuredHeight) => {
+      const outcome = nextOverlayMeasure(
+        measureState.current,
+        { x, y, width, height: measuredHeight },
+        laidOut.current,
+      );
+      measureState.current = outcome.state;
+      publishFrame(outcome.state.ready);
+      if (!outcome.again) return;
+      cancelAnimationFrame(confirmFrame.current);
+      confirmFrame.current = requestAnimationFrame(() => measureFrame());
+    });
+  }
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
-  const guideJson = JSON.stringify(sketchLineCollection([]));
+  const guideJson = JSON.stringify(pencilLines ? sketchLinesCollection(pencilLines) : sketchLineCollection(pencil));
+  const gapJson = JSON.stringify(sketchLinesCollection(gaps));
+  const pinJson = JSON.stringify(pinCollection(pin));
   const viaJson = JSON.stringify(viaPointCollection(adjust?.vias ?? []));
   const selectedVia = adjust?.selectedIndex != null ? adjust.vias[adjust.selectedIndex] ?? null : null;
   const selectedJson = JSON.stringify(viaPointCollection(selectedVia ? [selectedVia] : []));
@@ -126,26 +263,81 @@ export function FootpathMap({
       problem={problem}
       bar={bar}
       mapLabel={mapLabel}
-      renderMap={({ height: viewHeight }) => (
-        <WebCanvas
-          height={viewHeight}
-          scheme={scheme}
-          held={camera.held}
-          frameTick={camera.frameTick}
-          restoreTick={camera.restoreTick}
-          remember={camera.remember}
-          savedJson={savedJson}
-          sketchJson={sketchJson}
-          guideJson={guideJson}
-          viaJson={viaJson}
-          selectedJson={selectedJson}
-          adjust={adjust}
-          trackJson={trackJson}
-          startJson={startJson}
-          youJson={youJson}
-          onUserMove={onUserMove}
-          onProblem={() => setProblem('The map tiles did not load in this browser.')}
-        />
+      drawing={drawingOn}
+      onToggleDraw={onToggleDraw}
+      onUndoDraw={onUndoDraw}
+      onClearDraw={onClearDraw}
+      onConfirmDraw={onConfirmDraw}
+      onKeepDrawing={onKeepDrawing}
+      canKeepDrawing={canKeepDrawing}
+      onExitDraw={onExitDraw}
+      canUndoDraw={canUndoDraw}
+      canClearDraw={canClearDraw}
+      canConfirmDraw={canConfirmDraw}
+      confirmPending={confirmPending}
+      statusNote={statusNote}
+      renderMap={({ height: viewHeight, expanded }) => (
+        <View
+          ref={host}
+          style={{ height: viewHeight }}
+          onLayout={(event) => {
+            const next = {
+              width: event.nativeEvent.layout.width,
+              height: event.nativeEvent.layout.height,
+            };
+            const previous = laidOut.current;
+            laidOut.current = next;
+            if (Math.abs(next.width - previous.width) > 2 || Math.abs(next.height - previous.height) > 2) {
+              measureState.current = freshOverlayMeasure();
+              publishFrame(null);
+            }
+            measureFrame();
+          }}
+        >
+          <WebCanvas
+            height={viewHeight}
+            scheme={scheme}
+            held={camera.held}
+            frameTick={camera.frameTick}
+            restoreTick={camera.restoreTick}
+            remember={camera.remember}
+            savedJson={savedJson}
+            sketchJson={sketchJson}
+            guideJson={guideJson}
+            gapJson={gapJson}
+            pinJson={pinJson}
+            viaJson={viaJson}
+            selectedJson={selectedJson}
+            adjust={adjust}
+            drawing={drawingOn}
+            trackJson={trackJson}
+            startJson={startJson}
+            youJson={youJson}
+            basemap={mapStyle}
+            onUserMove={onUserMove}
+            onProblem={() => setProblem('The map tiles did not load in this browser.')}
+            applyView={applyView}
+          />
+          {draw?.enabled ? (
+            <DrawCapture
+              prepare={measureFrame}
+              readView={() => ({
+                ready: frame.current.ready,
+                originX: frame.current.originX,
+                originY: frame.current.originY,
+                centre: { latitude: camera.held.current.latitude, longitude: camera.held.current.longitude },
+                zoom: camera.held.current.zoom,
+                width: frame.current.width,
+                height: frame.current.height,
+              })}
+              onChange={draw.onChange}
+              onEnd={draw.onEnd}
+              onView={showDrawnView}
+            />
+          ) : null}
+          {draw?.enabled && expanded ? <DrawViewControls zoom={drawnZoom} onZoom={zoomTo} onPan={pan} /> : null}
+          {draw?.enabled && !expanded ? <DrawZoomButtons onZoom={zoomBy} /> : null}
+        </View>
       )}
     />
   );
@@ -176,7 +368,7 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
         id: 'sketch-line',
         type: 'line',
         source: 'sketch',
-        paint: { 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] },
+        paint: { 'line-color': green, 'line-width': 6 },
       },
     },
     {
@@ -186,7 +378,21 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
         id: 'guide-line',
         type: 'line',
         source: 'guide',
-        paint: { 'line-color': '#D1FAE5', 'line-width': 3, 'line-dasharray': [1.2, 1.2] },
+        paint: { 'line-color': pencilColour(input.scheme), 'line-width': 7 },
+      },
+    },
+    {
+      id: 'gap',
+      data: input.gapJson,
+      layer: {
+        id: 'gap-line',
+        type: 'line',
+        source: 'gap',
+        paint: {
+          'line-color': drawGapColour(input.scheme),
+          'line-width': DRAW_GAP_WIDTH,
+          'line-dasharray': DRAW_GAP_DASH,
+        },
       },
     },
     {
@@ -225,6 +431,16 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
       },
     },
     {
+      id: 'pin',
+      data: input.pinJson,
+      layer: {
+        id: 'pin-dot',
+        type: 'circle',
+        source: 'pin',
+        paint: { 'circle-radius': 8, 'circle-color': pencilColour(input.scheme), 'circle-stroke-width': 3, 'circle-stroke-color': '#F3F3EE' },
+      },
+    },
+    {
       id: 'you',
       data: input.youJson,
       layer: {
@@ -239,7 +455,10 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
     const data = JSON.parse(row.data) as unknown;
     const source = map.getSource(row.id);
     if (source) source.setData(data);
-    else map.addSource(row.id, { type: 'geojson', data });
+    else {
+      // Default tolerance runs Douglas-Peucker and turns a finger curve into long chords.
+      map.addSource(row.id, row.id === 'guide' || row.id === 'gap' ? { type: 'geojson', data, tolerance: 0 } : { type: 'geojson', data });
+    }
     if (map.getLayer(String(row.layer.id))) {
       const paint = row.layer.paint as Record<string, unknown>;
       for (const [name, value] of Object.entries(paint)) map.setPaintProperty(String(row.layer.id), name, value);
@@ -259,14 +478,19 @@ function WebCanvas({
   savedJson,
   sketchJson,
   guideJson,
+  gapJson,
+  pinJson,
   viaJson,
   selectedJson,
   adjust,
+  drawing = false,
   trackJson,
   startJson,
   youJson,
+  basemap,
   onUserMove,
   onProblem,
+  applyView,
 }: {
   height: number;
   scheme: MapScheme;
@@ -277,6 +501,8 @@ function WebCanvas({
   savedJson: string;
   sketchJson: string;
   guideJson: string;
+  gapJson: string;
+  pinJson: string;
   viaJson: string;
   selectedJson: string;
   adjust: {
@@ -285,21 +511,26 @@ function WebCanvas({
     selectedIndex: number | null;
     onTap: (point: OutdoorPoint) => void;
   } | null;
+  drawing?: boolean;
   trackJson: string;
   startJson: string;
   youJson: string;
+  basemap: string | object;
   onUserMove?: () => void;
   onProblem: () => void;
+  applyView: { current: (next: HeldCamera) => void };
 }) {
   const host = useRef<View>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const [ready, setReady] = useState(0);
   const applied = useRef<string | null>(null);
   const styleListener = useRef<(() => void) | null>(null);
-  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, viaJson, selectedJson });
-  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, viaJson, selectedJson };
+  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, gapJson, pinJson, viaJson, selectedJson });
+  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, gapJson, pinJson, viaJson, selectedJson };
   const adjustRef = useRef(adjust);
   adjustRef.current = adjust;
+  const drawingRef = useRef(drawing);
+  drawingRef.current = drawing;
   const userMoveRef = useRef(onUserMove);
   userMoveRef.current = onUserMove;
   const heldRef = useRef(held);
@@ -308,6 +539,11 @@ function WebCanvas({
   rememberRef.current = remember;
   const problemRef = useRef(onProblem);
   problemRef.current = onProblem;
+  const applyViewRef = useRef(applyView);
+  applyViewRef.current = applyView;
+  const basemapRef = useRef(basemap);
+  basemapRef.current = basemap;
+  const basemapKey = typeof basemap === 'string' ? basemap : `json:${scheme}`;
 
   useEffect(() => {
     const node = host.current as unknown as HTMLElement | null;
@@ -332,17 +568,17 @@ function WebCanvas({
         const maplibre = await import('maplibre-gl');
         if (cancelled) return;
         const start = heldRef.current.current;
-        const url = openFreeMapStyle(paint.current.scheme);
+        const initial = basemapRef.current;
         const next = new maplibre.Map({
           container: node,
-          style: url,
+          style: initial as string,
           center: [start.longitude, start.latitude],
           zoom: start.zoom,
-          attributionControl: { compact: false },
+          attributionControl: false,
         });
         map = next as unknown as LibreMap;
         mapRef.current = map;
-        applied.current = url;
+        applied.current = typeof initial === 'string' ? initial : `json:${paint.current.scheme}`;
         map.on('moveend', (event?: { originalEvent?: unknown }) => {
           if (!event?.originalEvent) return;
           const current = mapRef.current;
@@ -383,9 +619,8 @@ function WebCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const url = openFreeMapStyle(scheme);
-    if (applied.current !== url) {
-      applied.current = url;
+    if (applied.current !== basemapKey) {
+      applied.current = basemapKey;
       const place = held.current;
       if (styleListener.current) map.off('styledata', styleListener.current);
       const finish = () => {
@@ -397,12 +632,24 @@ function WebCanvas({
       };
       styleListener.current = finish;
       map.on('styledata', finish);
-      map.setStyle(url);
+      map.setStyle(basemap);
       map.once('idle', finish);
       return;
     }
     paintMap(map, paint.current);
-  }, [scheme, savedJson, sketchJson, guideJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
+  }, [scheme, basemap, basemapKey, savedJson, sketchJson, guideJson, gapJson, pinJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
+
+  useEffect(() => {
+    holdMapGestures(mapRef.current, drawing);
+    const sink = applyViewRef.current;
+    sink.current = (next) => {
+      rememberRef.current(next);
+      mapRef.current?.jumpTo({ center: [next.longitude, next.latitude], zoom: next.zoom });
+    };
+    return () => {
+      sink.current = () => {};
+    };
+  }, [drawing, ready]);
 
   useEffect(() => {
     const map = mapRef.current as (LibreMap & {
@@ -415,6 +662,7 @@ function WebCanvas({
       return { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
     };
     const tap = (event: { lngLat?: { lng: number; lat: number } }) => {
+      if (drawingRef.current) return;
       const current = adjustRef.current;
       const point = pointOf(event);
       if (!current?.enabled || !point) return;

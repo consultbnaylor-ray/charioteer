@@ -15,6 +15,7 @@ import { visionContextFrom } from '@/domain/visionBoard';
 import { drinkFreeThisWeek } from '@/domain/stage';
 import { quoteById } from '@/domain/stoicQuotes';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
+import { coachRestingNote, healthWithRestingNote } from '@/domain/currentResting';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
 import { workoutReflectionsFromDiary } from '@/domain/workoutReflections';
 
@@ -26,13 +27,14 @@ function healthTrends(samples: AppSnapshot['health'], today: string): HealthTren
     list.push(sample);
     byKind.set(sample.kind, list);
   }
-  return [...byKind.entries()].map(([kind, rows]) => ({
+  const trends = [...byKind.entries()].map(([kind, rows]) => ({
     kind,
     latest: rows[0]?.value ?? null,
     previous: rows[1]?.value ?? null,
     unit: rows[0]?.unit ?? '',
     note: healthChangeNoteFromReadings(kind, rows, today),
   }));
+  return healthWithRestingNote(trends, coachRestingNote({ today, samples }));
 }
 
 function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
@@ -111,10 +113,10 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
         items: log.items.map((item) => ({ name: item.name, kcal: item.kcal, proteinG: item.proteinG })),
       })),
       weightKg,
-      calorieTarget: settings.hideCalories ? null : (shareHealth ? plan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget),
+      calorieTarget: shareHealth ? plan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget,
       proteinTargetG: settings.proteinTarget,
       goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
-      hideCalories: settings.hideCalories,
+      hideCalories: false,
     })
     : null;
   const review = brief ? nutritionReviewLines(brief) : [];
@@ -192,7 +194,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
               .filter((sample) => sample.kind.startsWith('workout_type_'))
               .map((sample) => ({ kind: sample.kind, value: sample.value, recordedOn: sample.recordedOn })),
             logs: snap.foodLogs ?? [],
-            hideCalories: snap.nutrition?.hideCalories === true,
+            hideCalories: false,
           })
         : [],
       mode: requestedMode,

@@ -9,6 +9,9 @@ export const ROUTE_PURPOSE =
 
 export const ROUTE_READ_TYPE = 'HKWorkoutRouteTypeIdentifier';
 
+/** The link on every outdoor walk, run, hike, or cycle in Workouts, from Apple Health or Garmin. */
+export const VIEW_ROUTE_MAP = 'View route map';
+
 /**
  * Shown when the path cannot be drawn. The workout summary above it stays.
  * MapKit raises an uncaught exception for an illegal region, so the screen
@@ -95,6 +98,12 @@ export type DeviceWorkout = {
   trainingEffect?: number | null;
   /** Garmin anaerobic training effect, 0 to 5. */
   anaerobicEffect?: number | null;
+  /**
+   * The Garmin activity summary id when Garmin recorded this session, including
+   * when it was merged with an Apple Health copy. The route screen reads the
+   * Garmin track with it when Apple Health has no path.
+   */
+  garminSummaryId?: string | null;
 };
 
 export type RoutePoint = {

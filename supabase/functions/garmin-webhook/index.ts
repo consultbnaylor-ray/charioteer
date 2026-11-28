@@ -2,15 +2,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
 import {
   activityRowsFor,
+  clearGarminCredentials,
   dailyRowsFor,
   dedupeBy,
-  deleteGarminRows,
-  deleteGarminSummaries,
+  dedupeUpsertRows,
   hrvRowsFor,
   mapGarminPush,
   missingRelation,
   preferLargerDuration,
-  preferLast,
+  preferLastComplete,
   pulseOxRowsFor,
   respirationRowsFor,
   sleepRowsFor,
@@ -20,6 +20,7 @@ import {
   type GarminDb,
 } from '../_shared/garmin.ts';
 import { summaryRows } from '../_shared/garminSummaries.ts';
+import { logSampleCounts } from '../_shared/garminTrack.ts';
 
 const DAILY_BASE = [
   'user_id',
@@ -59,6 +60,7 @@ Deno.serve(async (req) => {
   const body: unknown = await req.json().catch(() => null);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ ok: false, code: 'body' }, 400);
   const plan = mapGarminPush(body);
+  logSampleCounts(body);
   const admin = createClient(supabaseUrl, service, { auth: { persistSession: false } }) as unknown as GarminDb;
   const garminIds = [
     ...plan.dailies.map((row) => row.garminUserId),
@@ -90,32 +92,32 @@ Deno.serve(async (req) => {
   const activities = dedupeBy(
     activityRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const sleep = dedupeBy(
     sleepRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const metrics = dedupeBy(
     userMetricRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const respiration = dedupeBy(
     respirationRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const pulseOx = dedupeBy(
     pulseOxRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   const hrv = dedupeBy(
     hrvRowsFor(plan, userIdByGarmin),
     (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
-    preferLast,
+    preferLastComplete,
   );
   if (!(await saveRows(admin, 'garmin_dailies', dailies, { onConflict: 'user_id,calendar_date' }))) {
     return json({ ok: false, code: 'daily' }, 500);
@@ -145,7 +147,7 @@ Deno.serve(async (req) => {
 
   for (const garminUserId of plan.deregistered) {
     const userId = userIdByGarmin.get(garminUserId);
-    if (userId) await deleteGarminRows(admin, userId);
+    if (userId) await clearGarminCredentials(admin, userId, 'garmin-webhook: delete');
   }
 
   for (const change of plan.permissionChanges) {
@@ -162,9 +164,6 @@ Deno.serve(async (req) => {
       console.error('garmin-webhook: permissions');
       return json({ ok: false, code: 'permissions' }, 500);
     }
-    const named = change.permissions.split(' ').filter(Boolean);
-    const keepsSummaries = named.includes('HEALTH_EXPORT') || named.includes('ACTIVITY_EXPORT');
-    if (!keepsSummaries) await deleteGarminSummaries(admin, userId);
   }
 
   return json({ ok: true });
@@ -183,8 +182,24 @@ async function saveExtraSummaries(
     ['garmin_epoch', summaryRows(plan.epochs, userIdByGarmin, (row) => ({ active_seconds: row.activeSeconds, steps: row.steps, distance_metres: row.distanceMetres, mean_heart_rate_bpm: row.meanHeartRateBpm }))],
     ['garmin_health_snapshot', summaryRows(plan.healthSnapshot, userIdByGarmin, (row) => ({ heart_rate_bpm: row.heartRateBpm, resting_heart_rate_bpm: row.restingHeartRateBpm, spo2: row.spo2, respiration: row.respiration, stress: row.stress }))],
     ['garmin_move_iq', summaryRows(plan.moveIq, userIdByGarmin, (row) => ({ activity_type: row.activityType, duration_seconds: row.durationSeconds, distance_metres: row.distanceMetres }))],
-    ['garmin_activity_detail', summaryRows(plan.activityDetails, userIdByGarmin, (row) => ({ duration_seconds: row.durationSeconds, distance_metres: row.distanceMetres, average_heart_rate_bpm: row.averageHeartRateBpm, active_kilocalories: row.activeKilocalories }))],
+    ['garmin_activity_detail', summaryRows(plan.activityDetails, userIdByGarmin, (row) => ({
+      duration_seconds: row.durationSeconds,
+      distance_metres: row.distanceMetres,
+      average_heart_rate_bpm: row.averageHeartRateBpm,
+      active_kilocalories: row.activeKilocalories,
+      start_latitude: row.startLatitude ?? null,
+      start_longitude: row.startLongitude ?? null,
+      elevation_gain_metres: row.elevationGainMetres ?? null,
+      elevation_loss_metres: row.elevationLossMetres ?? null,
+    }))],
     ['garmin_activity_file', summaryRows(plan.activityFiles, userIdByGarmin, (row) => ({ file_type: row.fileType }))],
+    ['garmin_activity_samples', summaryRows(plan.activityTracks, userIdByGarmin, (row) => ({
+      started_at: row.startedAt,
+      interval_seconds: row.intervalSeconds,
+      point_count: row.points.length,
+      gps_point_count: row.gpsPointCount,
+      points: row.points,
+    }))],
   ];
   for (const [table, rows] of batches) {
     if (!(await saveRows(admin, table, rows, { onConflict: 'user_id,summary_id' }, true))) return false;
@@ -199,18 +214,19 @@ async function saveRows(
   conflict: { onConflict: string },
   optional = false,
 ): Promise<boolean> {
-  if (!rows.length) return true;
-  let saved = await admin.from(table).upsert(rows, conflict);
+  const batch = dedupeUpsertRows(rows, conflict.onConflict);
+  if (!batch.length) return true;
+  let saved = await admin.from(table).upsert(batch, conflict);
   if (saved.error && table === 'garmin_dailies' && columnMissing(saved.error.message)) {
-    const base = rows.map((row) => {
+    const base = dedupeUpsertRows(batch.map((row) => {
       const next: Record<string, unknown> = {};
       for (const key of DAILY_BASE) next[key] = row[key] ?? null;
       return next;
-    });
+    }), conflict.onConflict);
     saved = await admin.from(table).upsert(base, conflict);
   }
   if (!saved.error) return true;
-  console.error(`garmin-webhook: ${table} ${sqlState(saved.error)} ${rows.length}`);
+  console.error(`garmin-webhook: ${table} ${sqlState(saved.error)} ${batch.length}`);
   if (optional && missingRelation(saved.error.message)) return true;
   return false;
 }

@@ -101,6 +101,7 @@ export {
   mealWeeksAfterShowMore,
   mealWeeksForDay,
   visibleMealDays,
+  barFraction,
   mealNutrientBars,
   goalBodyForSuggestion,
   goalDayLine,

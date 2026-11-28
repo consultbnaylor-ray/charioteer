@@ -9,9 +9,28 @@ export type MealEstimateCategory =
   | 'network'
   | 'timeout'
   | 'provider'
+  | 'unavailable'
   | 'credits'
+  | 'billing'
   | 'unreadable'
   | 'consent';
+
+/**
+ * Shown when our AI provider cannot answer: out of credit, busy, down, or too slow.
+ * It does not blame the photo, says logging by hand still works, and no credit is used.
+ * Matches AI_UNAVAILABLE_MESSAGES.meal on the server.
+ */
+export const PHOTO_PROVIDER_UNAVAILABLE =
+  'Meal reading is resting right now. Logging by hand still works. Try again a bit later.';
+
+/** The same line when the cause was our provider's balance. The person is not told why. */
+export const MEAL_BILLING_UNAVAILABLE = PHOTO_PROVIDER_UNAVAILABLE;
+
+/** Shown beside a text estimate worked out on the phone because the model could not answer. */
+export const ROUGH_ESTIMATE_NOTE = 'Rough estimate. Meal reading is resting right now.';
+
+/** Kept for the billing case. It reads the same as any other time the model cannot answer. */
+export const ROUGH_ESTIMATE_BILLING_NOTE = ROUGH_ESTIMATE_NOTE;
 
 const MESSAGES: Record<MealEstimateCategory, string> = {
   preparation: 'Could not prepare that photo. Try again, or type the meal.',
@@ -19,7 +38,9 @@ const MESSAGES: Record<MealEstimateCategory, string> = {
   network: 'The meal estimate lost the connection. Tap to retry.',
   timeout: 'The meal estimate took too long. Tap to retry.',
   provider: 'The meal estimate did not answer. Tap to retry.',
-  credits: 'This meal estimate needs an AI credit.',
+  unavailable: PHOTO_PROVIDER_UNAVAILABLE,
+  credits: 'No meal-reading credits left. You can still type the meal in yourself.',
+  billing: MEAL_BILLING_UNAVAILABLE,
   unreadable: PHOTO_READ_FAIL,
   consent: 'Reading a meal needs the coach consent. You can still type the meal in yourself.',
 };
@@ -43,6 +64,7 @@ export class MealEstimateError extends UserFacingError {
 export function mealEstimateCategoryFromStatus(status: number, code?: string | null): MealEstimateCategory | null {
   if (code === 'unread') return 'unreadable';
   if (code === 'consent') return 'consent';
+  if (code === 'ai_unavailable' || code === 'provider_unavailable' || code === 'provider_busy') return 'unavailable';
   if (code === 'limit_reached' || code === 'subscription_required' || status === 402 || status === 429) return 'credits';
   if (status === 401) return 'auth';
   if (status === 408 || status === 504) return 'timeout';
