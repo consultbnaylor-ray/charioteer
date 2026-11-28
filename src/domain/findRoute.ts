@@ -452,7 +452,9 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
     distanceM: Math.round(distance),
     durationMinutes: Math.max(1, Math.round(duration)),
     ascentM: ascent,
-    points: points.slice(0, 2000),
+    // Do not slice the tail off. A long footpath can have more than 2000 vertices;
+    // dropping the rest was cutting the snapped line short.
+    points,
     snappedStart,
     snapDistanceM,
     descentM: readMetres(row.descentM),

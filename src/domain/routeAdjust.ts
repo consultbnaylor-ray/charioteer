@@ -85,6 +85,10 @@ export const DRAW_SNAP_NO_PATH_ALONG = 'Part of your line has no path along it, 
 /** The route service did not answer for one piece. The other pieces snapped. */
 export const DRAW_SNAP_SERVICE_GAP = 'Snapped to paths. The route service missed one part, so that part follows your line.';
 
+export const DRAW_SNAP_KEPT_LINE = 'Snapped to paths. Part of your line could not be snapped, so that part follows your drawing.';
+
+export const KEEP_DRAWING = 'Keep drawing';
+
 /** The route service's own cap: too many points, too long a leg, or too big a request. */
 export const DRAW_SNAP_LIMIT = ROUTE_SNAP_LIMIT;
 

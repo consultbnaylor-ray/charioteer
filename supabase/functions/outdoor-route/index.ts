@@ -47,10 +47,12 @@ import {
   ORS_CHUNK_MAX_M,
   ORS_SKETCH_POINT_CAP,
   pathLengthM,
+  planFromSketch,
   providerChunks,
   routeOverTierLimit,
   routeTierLimitMessage,
   splitChunkInHalf,
+  stitchPlanWithSketchTail,
   stitchRoutePlans,
 } from '../_shared/routeLengthLimit.ts';
 import { resolveRouteTier } from '../_shared/routeTier.ts';
@@ -468,6 +470,36 @@ async function routeOneSection(
   return { kind: 'plan', plan: stitched };
 }
 
+function keepDrawnSection(chunk: { latitude: number; longitude: number }[], profile: string): DirectionPlan | null {
+  const kept = planFromSketch(chunk);
+  if (!kept) return null;
+  return {
+    profile,
+    points: kept.points,
+    distanceM: kept.distanceM,
+    durationMinutes: kept.durationMinutes,
+    ascentM: null,
+    descentM: null,
+    elevationsM: null,
+  };
+}
+
+function sectionOrDrawn(
+  input: SketchRouteInput,
+  chunk: { latitude: number; longitude: number }[],
+  result: SketchRouteResult,
+): SketchRouteResult {
+  if (result.kind === 'plan') {
+    const filled = stitchPlanWithSketchTail(result.plan, chunk);
+    return { kind: 'plan', plan: filled.plan };
+  }
+  const code = result.failure.body.code;
+  if (code !== 'no_path' && code !== 'limit') return result;
+  const kept = keepDrawnSection(chunk, input.mode === 'cycle' ? 'cycling-regular' : input.mode === 'run' ? 'foot-hiking' : 'foot-walking');
+  if (!kept) return result;
+  return { kind: 'plan', plan: kept };
+}
+
 async function routeChunks(input: SketchRouteInput): Promise<SketchRouteResult> {
   const chunks = providerChunks(input.sketch, ORS_CHUNK_MAX_M, ORS_WAYPOINT_LIMIT);
   if (chunks.length === 0) {
@@ -475,7 +507,8 @@ async function routeChunks(input: SketchRouteInput): Promise<SketchRouteResult> 
   }
   const results = await mapPool(chunks, CHUNK_CONCURRENCY, (chunk) => routeOneSection({ ...input, sketch: chunk }));
   const plans: DirectionPlan[] = [];
-  for (const result of results) {
+  for (let index = 0; index < results.length; index += 1) {
+    const result = sectionOrDrawn(input, chunks[index] ?? [], results[index]!);
     if (result.kind === 'failure') return result;
     plans.push(result.plan);
   }
@@ -497,7 +530,8 @@ async function routeChunks(input: SketchRouteInput): Promise<SketchRouteResult> 
   }
   const stitched = stitchRoutePlans(plans);
   if (!stitched) return { kind: 'failure', failure: { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } } };
-  return { kind: 'plan', plan: stitched };
+  const filled = stitchPlanWithSketchTail(stitched, input.sketch);
+  return { kind: 'plan', plan: filled.plan };
 }
 
 /**

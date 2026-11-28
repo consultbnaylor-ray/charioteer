@@ -379,3 +379,44 @@ describe('the outdoor-route function for intent points', () => {
     expect(fn).toContain("logOrsFailure('snap-many'");
   });
 });
+
+describe('a truncated snap keeps the rest of the drawing', () => {
+  it('puts the leftover loop back on the line and says it followed the drawing', async () => {
+    const stub = at(0, -6000);
+    const far = at(-400, -6400);
+    const sketch = [at(0, 0), stub, at(-400, -6000), far, at(0, -6400), stub];
+    const result = await snapDrawnIntent({
+      strokes: [sketch],
+      anchor: null,
+      send: async () => ({
+        mocked: false,
+        mode: 'walk',
+        shape: 'a_to_b',
+        profile: 'foot-walking',
+        distanceM: 6_000,
+        durationMinutes: 75,
+        ascentM: null,
+        points: [at(0, 0), stub],
+        snappedStart: null,
+        snapDistanceM: null,
+      }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.keptDrawn).toBe(true);
+    expect(result.points.some((point) => metresBetween(point, far) < 30)).toBe(true);
+  });
+
+  it('refuses a directions body that would have dropped leftover points', () => {
+    const tooMany = Array.from({ length: 51 }, (_, index) => at(0, -index * 100));
+    expect(buildDirectionsBody({
+      mode: 'walk',
+      shape: 'a_to_b',
+      start: tooMany[0]!,
+      end: tooMany[tooMany.length - 1]!,
+      lengthM: 0,
+      sketch: tooMany,
+      intent: true,
+    })).toBeNull();
+  });
+});
