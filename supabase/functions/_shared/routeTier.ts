@@ -1,10 +1,10 @@
 /**
- * The person's plan for route length: an active store subscription, or a comp
- * in entitlement_overrides. No plan is treated as Standard by the caller.
+ * The person's plan for route length: an active store subscription (a free trial counts as Standard),
+ * or a comp in entitlement_overrides. No plan is treated as Standard by the caller.
  */
 import { parseEntitlementOverride, tierForAllowance } from './entitlementOverride.ts';
-import { entitlementActive, type StoreEnvironment, type SubscriptionRecord, type SubscriptionStatus } from './subscriptionRules.ts';
-import { tierForProduct, type Tier } from './tierLimits.ts';
+import { storeTierForSubscription, type StoreEnvironment, type SubscriptionRecord, type SubscriptionStatus } from './subscriptionRules.ts';
+import type { Tier } from './tierLimits.ts';
 
 type Lookup = {
   from(table: string): {
@@ -46,7 +46,7 @@ export async function resolveRouteTier(
     const overrideRes = await admin.from('entitlement_overrides').select('tier, expires_at').eq('user_id', userId).maybeSingle();
     const override = overrideRes.error ? null : parseEntitlementOverride(overrideRes.data);
     const row = sub.error ? null : subscriptionRow(sub.data);
-    const storeTier = row && entitlementActive(row, now) ? tierForProduct(row.productId) : null;
+    const storeTier = storeTierForSubscription(row, now);
     return tierForAllowance(override, storeTier, now);
   } catch {
     return null;

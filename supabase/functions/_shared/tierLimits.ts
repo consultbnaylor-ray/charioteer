@@ -2,7 +2,7 @@
  * Subscription tiers and AI caps. One place to change the numbers.
  * Worst case assumes Apple's 30% and a max-length model call.
  * Day and month boundaries are Europe/London.
- * A free trial uses the limits of the plan being tried.
+ * A free trial or introductory offer has no AI credits (aiTierForSubscription) and the Standard route cap (storeTierForSubscription).
  */
 
 export const YEARLY_PRODUCT_ID = 'Sta';
@@ -43,6 +43,9 @@ export const CRISIS_STATIC_REPLY = [
   'If you might be in alcohol withdrawal, contact your GP or call NHS 111, and call 999 in an emergency.',
   'This note is the helpline signpost. It is not a reply from the coach.',
 ].join(' ');
+
+/** The calm note a free-trial user gets from every AI function. No model call is made and no credit is used. */
+export const TRIAL_AI_MESSAGE = 'AI features come with a subscription. They start when your free trial ends, and everything else in the app is yours to use now.';
 
 export function tierForProduct(productId: string | null | undefined): Tier | null {
   if (!productId) return null;
