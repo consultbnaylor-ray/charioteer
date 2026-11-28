@@ -37,6 +37,21 @@ import { useAppTheme } from '@/ui/theme';
 const KEEP_AWAKE_TAG = 'charioteer-breathe';
 const TICK_MS = 50;
 
+/** Matches the other breathing exercises: 0.68 small, 0.72 at rest, 1 full. */
+const WIM_HOF_CIRCLE_REST_SCALE = 0.72;
+const WIM_HOF_CIRCLE_PAD = 12;
+/** Sized so the longest cue, 'Breathe out and hold', fits the resting circle on one line. */
+const WIM_HOF_CUE_FONT_SIZE = 15;
+const WIM_HOF_CUE_LINE_HEIGHT = 18;
+
+function circleSize(scale: number): number {
+  return 150 + (scale - 0.68) * (80 / 0.32);
+}
+
+/** Fixed to the resting circle so the type does not jump as the circle grows and shrinks. */
+const WIM_HOF_CUE_WIDTH = circleSize(WIM_HOF_CIRCLE_REST_SCALE) - WIM_HOF_CIRCLE_PAD * 2;
+
+
 type Status = 'idle' | 'running' | 'paused' | 'done';
 
 function idleClock(totalMs: number): BreathTiming {
@@ -185,8 +200,8 @@ export function WimHofBreathing() {
 
   const position = wimHofAt(plan, status === 'idle' ? 0 : elapsedMs(clockRef.current, nowMs));
   const started = status === 'running' || status === 'paused';
-  const scale = started ? wimHofScale(position) : 0.72;
-  const size = 150 + (scale - 0.68) * (80 / 0.32);
+  const scale = started ? wimHofScale(position) : WIM_HOF_CIRCLE_REST_SCALE;
+  const size = circleSize(scale);
   const control = status === 'running' ? 'Pause' : status === 'paused' ? 'Resume' : status === 'done' ? 'Start again' : 'Begin';
 
   return (
@@ -241,9 +256,24 @@ export function WimHofBreathing() {
             accessible
             accessibilityLiveRegion="polite"
             accessibilityLabel={status === 'paused' ? 'Paused' : position.step.label}
-            style={{ width: size, height: size, borderRadius: 999, backgroundColor: theme.colors.ink, alignItems: 'center', justifyContent: 'center', padding: 12 }}
+            style={{ width: size, height: size, borderRadius: 999, backgroundColor: theme.colors.ink, alignItems: 'center', justifyContent: 'center', padding: WIM_HOF_CIRCLE_PAD }}
           >
-            <T variant="title" style={{ color: theme.colors.bg, textAlign: 'center' }}>{status === 'paused' ? 'Paused' : position.step.label}</T>
+            <T
+              variant="title"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.5}
+              maxFontSizeMultiplier={1}
+              style={{
+                color: theme.colors.bg,
+                textAlign: 'center',
+                width: WIM_HOF_CUE_WIDTH,
+                fontSize: WIM_HOF_CUE_FONT_SIZE,
+                lineHeight: WIM_HOF_CUE_LINE_HEIGHT,
+              }}
+            >
+              {status === 'paused' ? 'Paused' : position.step.label}
+            </T>
           </View>
         </View>
       ) : null}

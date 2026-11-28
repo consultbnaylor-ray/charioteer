@@ -39,6 +39,7 @@ export type WimHofStepKind = 'ready' | 'in' | 'out' | 'emptyHold' | 'bigIn' | 'h
 export type WimHofStep = {
   kind: WimHofStepKind;
   cue: 'in' | 'out' | 'hold' | 'ready';
+  /** Shown in the circle. Must fit on one line; the longest is 'Breathe out and hold'. */
   label: string;
   round: number;
   /** 1 to 30 during the deep breaths, otherwise null. */

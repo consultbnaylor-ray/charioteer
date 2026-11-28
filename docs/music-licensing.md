@@ -2,17 +2,17 @@
 
 ## Tracks in the app
 
-| id | Title (working) | File | Length | Source |
+| id | Title | File | Length | Source |
 | --- | --- | --- | --- | --- |
-| `calm-waters` | Calm Waters | `assets/audio/meditation/calm-waters.m4a` | 5:00.6 | Made by Ben in Suno, supplied 27 Nov 2026 (Suno id `ae82f4db-dd3c-46ef-9193-6b1f7606b9b7`, created 2026-11-27 22:12 GMT) |
+| `tribal-warrior` | Tribal Warrior | `assets/audio/meditation/tribal-warrior.m4a` | 5:00.6 | Made by Ben in Suno, supplied 27 Nov 2026 (Suno id `ae82f4db-dd3c-46ef-9193-6b1f7606b9b7`, created 2026-11-27 22:12 GMT). Previously listed as Calm Waters (`calm-waters`). |
 
-"Calm Waters" is a working title. The Suno file carried no title, only "made with suno". Ben can rename it by changing `title` in `src/domain/meditationTracks.ts`; the id and file stay the same.
+Ben named the track Tribal Warrior on 28 Nov 2026. The Suno file carried no title, only "made with suno". The bundled file and id were renamed from `calm-waters` to `tribal-warrior`; the audio is unchanged. The app does not persist a chosen track id, so no saved-choice mapping is needed.
 
 ## Licence condition — Ben must confirm before App Store submission
 
 - Suno only grants commercial use (including use inside an app sold or offered on the App Store, and in-app subscriptions) for songs **made while on a paid Suno plan** (Pro or Premier). Songs made on the free plan are for non-commercial use only, and upgrading later does not cover songs made before the upgrade.
 - Charioteer is a commercial app with paid tiers, so every bundled track must have been generated on a paid plan.
-- **Ben to confirm:** `calm-waters` was generated while his Suno account was on a paid plan. If it was not, regenerate it on a paid plan before release, or remove it from `MEDITATION_TRACKS`.
+- **Ben to confirm:** `tribal-warrior` was generated while his Suno account was on a paid plan. If it was not, regenerate it on a paid plan before release, or remove it from `MEDITATION_TRACKS`.
 - Keep the Suno song id above as the record. Re-check Suno's current terms at submission time, as they can change.
 
 ## How the file was prepared (27 Nov 2026)

@@ -36,8 +36,8 @@ describe('meditation track list', () => {
     }
   });
 
-  it('starts with Calm Waters', () => {
-    expect(findTrack('calm-waters')?.title).toBe('Calm Waters');
+  it('starts with Tribal Warrior', () => {
+    expect(findTrack('tribal-warrior')?.title).toBe('Tribal Warrior');
     expect(findTrack('nope')).toBeNull();
     expect(findTrack(MUSIC_OFF)).toBeNull();
   });
