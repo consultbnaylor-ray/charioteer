@@ -1,5 +1,5 @@
 import { overrideActive, parseEntitlementOverride, tierForAllowance } from './entitlementOverride.ts';
-import { storeTierForSubscription, type SubscriptionRecord } from './subscriptionRules.ts';
+import { aiTierForSubscription, inFreeTrial, type SubscriptionRecord } from './subscriptionRules.ts';
 import {
   AI_MAX_TOKENS,
   CRISIS_STATIC_REPLY,
@@ -10,6 +10,7 @@ import {
   londonDayKey,
   londonMonthStart,
   subscriptionRequiredMessage,
+  TRIAL_AI_MESSAGE,
   type Tier,
   type UsageKind,
 } from './tierLimits.ts';
@@ -70,10 +71,14 @@ export async function gateAiUse(input: {
   const override = overrideRes.error ? null : parseEntitlementOverride(overrideRes.data);
   const comp = overrideActive(override, now.getTime());
   const row = subscriptionFromGate(sub.data);
-  const storeTier = storeTierForSubscription(row, now.getTime());
+  const storeTier = aiTierForSubscription(row, now.getTime());
+  const trialOnly = !comp && inFreeTrial(row, now.getTime());
   const tier = tierForAllowance(override, storeTier, now.getTime());
   if (!tier) {
     if (input.crisis) return { ok: false, status: 200, crisis: true, reply: CRISIS_STATIC_REPLY };
+    if (trialOnly) {
+      return { ok: false, status: 402, body: { ok: false, code: 'subscription_required', reason: 'trial', message: TRIAL_AI_MESSAGE } };
+    }
     return { ok: false, status: 402, body: { ok: false, code: 'subscription_required', message: subscriptionRequiredMessage() } };
   }
   const limits = TIER_LIMITS[tier][input.kind];

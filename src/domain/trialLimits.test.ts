@@ -5,11 +5,13 @@ import { countAiUse, gateAiUse, resetCountedRequests } from '../../supabase/func
 import { resolveRouteTier } from '../../supabase/functions/_shared/routeTier.ts';
 import {
   BUNDLE_ID,
+  aiTierForSubscription,
+  inFreeTrial,
   readTransactionClaims,
   storeTierForSubscription,
   type SubscriptionRecord,
 } from '../../supabase/functions/_shared/subscriptionRules.ts';
-import { TIER_LIMITS } from '../../supabase/functions/_shared/tierLimits.ts';
+import { TIER_LIMITS, TRIAL_AI_MESSAGE } from '../../supabase/functions/_shared/tierLimits.ts';
 import { STANDARD_ROUTE_MAX_M, routeLengthCapM } from '../../supabase/functions/_shared/routeLengthLimit.ts';
 
 const USER = 'bd3268ef-7a9e-4b63-9785-0595f2790a15';
@@ -52,7 +54,7 @@ function fakeAdmin(rows: Rows) {
   };
 }
 
-describe('a free trial gets the Standard limits whatever plan it is trying', () => {
+describe('a free trial gets no AI and the Standard route cap, whatever plan it is trying', () => {
   beforeEach(() => resetCountedRequests());
 
   const record = (productId: string, isTrial: boolean, over: Partial<SubscriptionRecord> = {}): SubscriptionRecord => ({
@@ -64,14 +66,19 @@ describe('a free trial gets the Standard limits whatever plan it is trying', () 
     ...over,
   });
 
-  it('holds a trial of any plan to Standard, and leaves paid plans on their own tier', () => {
+  it('holds a trial to the Standard route cap, gives it no AI tier, and leaves paid plans on their own tier', () => {
     const now = NOW.getTime();
-    expect(storeTierForSubscription(record('charioteer.pro.monthly', true), now)).toBe('standard');
-    expect(storeTierForSubscription(record('charioteer.unlimited.monthly', true), now)).toBe('standard');
-    expect(storeTierForSubscription(record('Sta', true), now)).toBe('standard');
+    for (const id of ['Sta', 'charioteer.monthly', 'charioteer.pro.monthly', 'charioteer.unlimited.monthly']) {
+      expect(storeTierForSubscription(record(id, true), now)).toBe('standard');
+      expect(aiTierForSubscription(record(id, true), now)).toBeNull();
+      expect(inFreeTrial(record(id, true), now)).toBe(true);
+    }
     expect(storeTierForSubscription(record('charioteer.pro.monthly', false), now)).toBe('pro');
     expect(storeTierForSubscription(record('charioteer.unlimited.monthly', false), now)).toBe('max');
-    expect(storeTierForSubscription(record('charioteer.monthly', false), now)).toBe('standard');
+    expect(aiTierForSubscription(record('charioteer.pro.monthly', false), now)).toBe('pro');
+    expect(aiTierForSubscription(record('charioteer.unlimited.monthly', false), now)).toBe('max');
+    expect(aiTierForSubscription(record('charioteer.monthly', false), now)).toBe('standard');
+    expect(inFreeTrial(record('Sta', false), now)).toBe(false);
   });
 
   it('gives nothing for an expired, revoked or unknown subscription, trial or not', () => {
@@ -81,6 +88,8 @@ describe('a free trial gets the Standard limits whatever plan it is trying', () 
     expect(storeTierForSubscription(record('charioteer.pro.monthly', true, { status: 'revoked' }), now)).toBeNull();
     expect(storeTierForSubscription(record('charioteer.pro.monthly', true, { status: 'expired' }), now)).toBeNull();
     expect(storeTierForSubscription(record('not.a.plan', true), now)).toBeNull();
+    expect(aiTierForSubscription(record('charioteer.pro.monthly', true, { expiresAt: '2026-11-01T00:00:00Z' }), now)).toBeNull();
+    expect(inFreeTrial(record('charioteer.pro.monthly', true, { expiresAt: '2026-11-01T00:00:00Z' }), now)).toBe(false);
   });
 
   it('reads a free trial or an introductory offer from the signed transaction', () => {
@@ -101,19 +110,35 @@ describe('a free trial gets the Standard limits whatever plan it is trying', () 
     expect(payUpFront.ok && payUpFront.subscription.isTrial).toBe(false);
   });
 
-  it('counts a Max trial against the Standard AI limits, not the Max ones', async () => {
+  it('refuses every kind of AI for a trial of any plan with subscription_required, and counts nothing', async () => {
+    for (const product of ['charioteer.monthly', 'charioteer.pro.monthly', 'charioteer.unlimited.monthly']) {
+      for (const kind of ['coach', 'meal', 'plan'] as const) {
+        for (const countWhen of ['before', 'after'] as const) {
+          const fake = fakeAdmin({ subscriptions: row(product, true) });
+          const gate = await gateAiUse({ admin: fake.admin, userId: USER, kind, now: NOW, enforcedFlag: 'true', countWhen });
+          expect(gate.ok).toBe(false);
+          if (gate.ok || !('body' in gate)) throw new Error('expected a refusal body');
+          expect(gate.status).toBe(402);
+          expect(gate.body).toMatchObject({ ok: false, code: 'subscription_required', reason: 'trial', message: TRIAL_AI_MESSAGE });
+          expect(fake.rpcCalls).toHaveLength(0);
+        }
+      }
+    }
+    expect(TRIAL_AI_MESSAGE).toContain('AI features come with a subscription');
+    expect(TRIAL_AI_MESSAGE).not.toMatch(/credit|limit|error|failed/i);
+  });
+
+  it('never counts a credit for a trial user, even if a caller tries', async () => {
+    const fake = fakeAdmin({ subscriptions: row('charioteer.pro.monthly', true) });
+    expect(await countAiUse({ admin: fake.admin, userId: USER, kind: 'coach', tier: null, now: NOW })).toBe(false);
+    expect(fake.rpcCalls).toHaveLength(0);
+  });
+
+  it('gives a trial user the crisis helplines instead of a model call', async () => {
     const fake = fakeAdmin({ subscriptions: row('charioteer.unlimited.monthly', true) });
-    const gate = await gateAiUse({ admin: fake.admin, userId: USER, kind: 'coach', now: NOW, enforcedFlag: 'true' });
-    expect(gate).toMatchObject({ ok: true, tier: 'standard', limit: TIER_LIMITS.standard.coach.day });
-    expect(fake.rpcCalls[0]).toMatchObject({
-      p_day_limit: TIER_LIMITS.standard.coach.day,
-      p_month_limit: TIER_LIMITS.standard.coach.month,
-    });
-    const pro = fakeAdmin({ subscriptions: row('charioteer.pro.monthly', true) });
-    const meal = await gateAiUse({ admin: pro.admin, userId: USER, kind: 'meal', now: NOW, enforcedFlag: 'true', countWhen: 'after' });
-    expect(meal).toMatchObject({ ok: true, tier: 'standard', limit: TIER_LIMITS.standard.meal.day });
-    expect(await countAiUse({ admin: pro.admin, userId: USER, kind: 'meal', tier: 'standard', now: NOW, requestId: 'trial-meal' })).toBe(true);
-    expect(pro.rpcCalls[0]).toMatchObject({ p_day_limit: TIER_LIMITS.standard.meal.day, p_month_limit: TIER_LIMITS.standard.meal.month });
+    const gate = await gateAiUse({ admin: fake.admin, userId: USER, kind: 'coach', crisis: true, now: NOW, enforcedFlag: 'true' });
+    expect(gate).toMatchObject({ ok: false, status: 200, crisis: true });
+    expect(fake.rpcCalls).toHaveLength(0);
   });
 
   it('keeps a paid Max subscriber on the Max limits', async () => {
@@ -129,6 +154,12 @@ describe('a free trial gets the Standard limits whatever plan it is trying', () 
     });
     const gate = await gateAiUse({ admin: fake.admin, userId: USER, kind: 'coach', now: NOW, enforcedFlag: 'true' });
     expect(gate).toMatchObject({ ok: true, tier: 'max', limit: TIER_LIMITS.max.coach.day });
+    const expired = fakeAdmin({
+      subscriptions: row('charioteer.monthly', true),
+      entitlement_overrides: { tier: 'pro', expires_at: '2026-11-01T00:00:00Z' },
+    });
+    const refused = await gateAiUse({ admin: expired.admin, userId: USER, kind: 'coach', now: NOW, enforcedFlag: 'true' });
+    expect(refused.ok).toBe(false);
   });
 
   it('gives a trial the Standard route cap (41.8 km), and a comp still wins', async () => {
@@ -149,8 +180,18 @@ describe('a free trial gets the Standard limits whatever plan it is trying', () 
     expect(await resolveRouteTier(comped.admin, USER)).toBe('max');
   });
 
-  it('is server-side only: both lookups use the one helper and the app files are untouched', () => {
-    expect(readFileSync('supabase/functions/_shared/aiAllowance.ts', 'utf8')).toContain('storeTierForSubscription(row, now.getTime())');
+  it('wires the AI gate to the AI tier and the route lookup to the route tier, before any model call', () => {
+    expect(readFileSync('supabase/functions/_shared/aiAllowance.ts', 'utf8')).toContain('aiTierForSubscription(row, now.getTime())');
     expect(readFileSync('supabase/functions/_shared/routeTier.ts', 'utf8')).toContain('storeTierForSubscription(row, now)');
+    for (const name of ['thumos-chat', 'estimate-meal', 'health-plan', 'gratitude-reflect', 'thumos-voice-token']) {
+      const text = readFileSync(`supabase/functions/${name}/index.ts`, 'utf8');
+      const gate = text.indexOf('gateAiUse({');
+      const xai = Math.min(...['THUMOS_CHAT.completionsUrl', 'fetch(url', 'api.x.ai'].map((marker) => {
+        const at = text.indexOf(marker, gate);
+        return at < 0 ? Number.POSITIVE_INFINITY : at;
+      }));
+      expect(gate, name).toBeGreaterThan(-1);
+      expect(gate, name).toBeLessThan(xai);
+    }
   });
 });

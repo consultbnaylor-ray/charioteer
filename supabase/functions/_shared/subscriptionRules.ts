@@ -110,10 +110,14 @@ export function entitlementActive(row: SubscriptionRecord | null, now = Date.now
   return Number.isFinite(expires) && expires > now;
 }
 
+/** True while a store subscription is active and still in its free trial or introductory offer. */
+export function inFreeTrial(row: SubscriptionRecord | null, now = Date.now()): boolean {
+  return row != null && row.isTrial && entitlementActive(row, now);
+}
+
 /**
- * The tier a store subscription is allowed to use right now, for AI credits and the route cap.
- * A free trial or introductory offer always gets the Standard limits, whichever plan is being tried.
- * The plan's own tier applies once the trial has converted to a paid period.
+ * The tier that sets the route length cap. A free trial or introductory offer gets the Standard cap,
+ * whichever plan is being tried. A paid period gets the plan's own tier.
  * An active entitlement_overrides row still replaces this (see tierForAllowance).
  */
 export function storeTierForSubscription(row: SubscriptionRecord | null, now = Date.now()): Tier | null {
@@ -121,6 +125,16 @@ export function storeTierForSubscription(row: SubscriptionRecord | null, now = D
   const planTier = tierForProduct(row.productId);
   if (!planTier) return null;
   return row.isTrial ? 'standard' : planTier;
+}
+
+/**
+ * The tier that sets AI credits. A free trial gets none: AI features start with the paid subscription.
+ * An active entitlement_overrides row still replaces this (see tierForAllowance).
+ */
+export function aiTierForSubscription(row: SubscriptionRecord | null, now = Date.now()): Tier | null {
+  if (!row || !entitlementActive(row, now)) return null;
+  if (row.isTrial) return null;
+  return tierForProduct(row.productId);
 }
 
 export function paywallRequired(input: {
