@@ -12,6 +12,9 @@ import {
   type OutdoorPoint,
 } from './outdoorRoute';
 import { OSM_CONTRIBUTORS, ORS_CREDIT, ROUTE_SKETCH_LINE } from './routeConsent';
+import { routeTierLimitMessage } from '@/domain/routeLengthLimit';
+import { paywallEnabled } from '@/domain/subscription';
+import type { Tier } from '@/domain/tierLimits';
 
 export { OSM_CONTRIBUTORS, ORS_CREDIT };
 
@@ -918,6 +921,11 @@ export function messageForRouteBody(body: unknown, status: number | null): strin
   if (named === 'unauthorised' || named === 'unauthorized') return ROUTE_SIGN_IN;
   if (named === 'no_path' || status === 422) return calmOr(body, ROUTE_NO_PATH);
   if (named === 'rate_limited' || named === 'rate' || status === 429) return calmOr(body, ROUTE_RATE_LIMITED);
+  if (named === 'tier_limit') {
+    const raw = body && typeof body === 'object' ? (body as { tier?: unknown }).tier : null;
+    const tier: Tier = raw === 'pro' || raw === 'max' || raw === 'standard' ? raw : 'standard';
+    return routeTierLimitMessage({ tier, offerUpgrade: paywallEnabled() });
+  }
   if (named === 'limit') return calmOr(body, ROUTE_SNAP_LIMIT);
   if (named === 'bad_request' || named === 'input' || status === 400) return calmOr(body, ROUTE_BAD_REQUEST);
   if (named === 'unavailable' || status === 503) return calmOr(body, ROUTE_UNAVAILABLE);

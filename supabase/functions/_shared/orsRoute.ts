@@ -6,6 +6,8 @@
  * An earlier forum note said 2–6 November 2026.
  */
 
+import { ORS_SKETCH_POINT_CAP } from './routeLengthLimit.ts';
+
 export const ORS_HOST = 'https://api.heigit.org';
 
 const PROFILES = {
@@ -174,7 +176,8 @@ export const ORS_WAYPOINT_LIMIT = 50;
 export const ORS_MAX_LEG_M = 100_000;
 
 /** A sketch body larger than this is refused before it is parsed into points. */
-export const ORS_MAX_SKETCH_BYTES = 64_000;
+/** Raised so a long Pro or Max sketch can be sent in one request and then split. */
+export const ORS_MAX_SKETCH_BYTES = 256_000;
 
 /** A leg longer than this is a gap, not a corner. Forcing a straight exit refuses the turn. */
 export const STRAIGHT_CORNER_M = 400;
@@ -239,31 +242,30 @@ function legsAreCorners(sketch: readonly PlacePoint[]): boolean {
   return true;
 }
 
-/** A waypoint cap, a 100 km leg, or a huge body. Null when the sketch can be sent. */
+/**
+ * A single leg over the provider's 100 km cap cannot be split. A long total is split
+ * into shorter calls, so it is not refused here. Null when the sketch can be sent.
+ */
 export function sketchLimitMessage(
   points: readonly PlacePoint[] | null,
   rawBytes = 0,
 ): string | null {
   if (rawBytes > ORS_MAX_SKETCH_BYTES) return ROUTE_LIMIT_MESSAGE;
   if (!points) return null;
-  if (points.length > ORS_WAYPOINT_LIMIT) return ROUTE_LIMIT_MESSAGE;
-  let total = 0;
+  if (points.length > ORS_SKETCH_POINT_CAP) return ROUTE_LIMIT_MESSAGE;
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1];
     const point = points[index];
     if (!previous || !point) continue;
-    const leg = haversineM(previous, point);
-    if (leg > ORS_MAX_LEG_M) return ROUTE_LIMIT_MESSAGE;
-    total += leg;
-    if (total > ORS_MAX_LEG_M) return ROUTE_LIMIT_MESSAGE;
+    if (haversineM(previous, point) > ORS_MAX_LEG_M) return ROUTE_LIMIT_MESSAGE;
   }
   return null;
 }
 
-/** Missing means no sketch. More than the waypoint limit, or a bad point, is refused. */
+/** Missing means no sketch. More than the whole-sketch cap, or a bad point, is refused. */
 export function readSketchPoints(value: unknown): PlacePoint[] | null {
   if (value == null) return [];
-  if (!Array.isArray(value) || value.length > ORS_WAYPOINT_LIMIT || value.length === 1) return null;
+  if (!Array.isArray(value) || value.length > ORS_SKETCH_POINT_CAP || value.length === 1) return null;
   const points: PlacePoint[] = [];
   for (const item of value) {
     const point = readPlace(item);

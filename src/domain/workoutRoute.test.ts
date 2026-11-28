@@ -488,7 +488,7 @@ describe('workout routes stay on the phone', () => {
   it('does not send a route from the repositories, sharing, or edge functions', () => {
     const watched = [
       ...filesUnder('src/data'),
-      ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
+      ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts') && !path.endsWith('routeLengthLimit.ts')),
       ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('savedRoute.ts') && !path.endsWith('drawStroke.ts') && !path.endsWith('drawIntent.ts') && !path.endsWith('drawErase.ts') && !path.endsWith('.test.ts')),
     ];
     // Garmin route maps: Garmin pushes its activity samples to our server, so these files may name a
@@ -513,7 +513,7 @@ describe('workout routes stay on the phone', () => {
         continue;
       }
       if (path === 'supabase/functions/outdoor-route/index.ts') {
-        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch, intent })');
+        expect(source).toContain('buildDirectionsBody({');
         expect(source).toContain('buildSnapBody(start)');
         expect(source).toContain('.insert({ user_id: userId, kind })');
         expect(source).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);

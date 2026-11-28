@@ -49,6 +49,10 @@ import {
   snappedDrawLine,
   undoDrawStroke,
 } from '@/domain/drawStroke';
+import { entitlementActive, paywallEnabled } from '@/domain/subscription';
+import { routeTierLimitMessage } from '@/domain/routeLengthLimit';
+import { tierForAllowance } from '@/domain/entitlementOverride';
+import { tierForProduct, type Tier } from '@/domain/tierLimits';
 import { intentRoundNote, snapDrawnIntent } from '@/domain/drawIntent';
 import {
   applyErase,
@@ -122,6 +126,7 @@ import { FootpathMap } from '@/ui/FootpathMap';
 import { markRubberTipSeen, rubberTipSeen } from '@/ui/rubberTipMemory';
 import { RouteSnapSummary } from '@/ui/RouteSnapSummary';
 import { dismissKeyboard } from '@/ui/keyboard';
+import { useEntitlement } from '@/ui/useEntitlement';
 import { usePreferPaths } from '@/ui/preferPaths';
 import { RouteChoiceGroup } from '@/ui/RouteChoiceGroup';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -146,6 +151,16 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const craving = purpose === 'craving';
   const theme = useAppTheme();
   const [preferPaths, setPreferPaths] = usePreferPaths();
+  const entitlement = useEntitlement();
+  const storeTier = entitlement.planRow && entitlementActive(entitlement.planRow)
+    ? tierForProduct(entitlement.planRow.productId)
+    : null;
+  const routeTier: Tier = tierForAllowance(entitlement.comp, storeTier) ?? 'standard';
+  const offerRouteUpgrade = paywallEnabled();
+  function tierLimitLine(): string {
+    return routeTierLimitMessage({ tier: routeTier, offerUpgrade: offerRouteUpgrade });
+  }
+
   const [mode, setMode] = useState<RouteMode>('walk');
   const [modeTouched, setModeTouched] = useState(false);
   const [shape, setShape] = useState<RouteShape>('loop');
@@ -651,6 +666,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         strokes: nextStrokes,
         anchor,
         closeLoop: drawnShape === 'loop',
+        tier: routeTier,
         send: (waypoints) => repo.planOutdoorRoute({
           mode: drawMode,
           shape: craving ? 'loop' : drawnShape,
@@ -668,7 +684,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       if (drawGen.current !== generation) return false;
       if (!result.ok) {
         if (result.limit) {
-          const line = previous ? `${DRAW_SNAP_LIMIT} ${ROUTE_UNCHANGED}` : DRAW_SNAP_LIMIT;
+          const shown = tierLimitLine();
+          const line = previous ? `${shown} ${ROUTE_UNCHANGED}` : shown;
           setSnapMiss(line);
           setDrawNote(DRAW_SNAP_FAILED);
           setError(line);

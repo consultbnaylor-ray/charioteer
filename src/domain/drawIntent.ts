@@ -1,4 +1,6 @@
 import { combineDrawStrokes } from '@/domain/drawStroke';
+import { routeOverTierLimit } from '@/domain/routeLengthLimit';
+import type { Tier } from '@/domain/tierLimits';
 import {
   adoptSnappedLine,
   ROUTE_BAD_REQUEST,
@@ -39,14 +41,12 @@ import {
 /** About one intent point per this many metres of drawing. */
 export const INTENT_SPACING_M = 350;
 export const INTENT_POINTS_MIN = 4;
-/** The service takes 50. Fewer points means fewer forced turns. */
-export const INTENT_POINTS_MAX = 24;
+/** Enough for a long Pro route at about one point per 350 m. The server splits the call. */
+export const INTENT_POINTS_MAX = 1_000;
 /** A wobble or a corner smaller than this is not a turn the person meant. */
 export const INTENT_WOBBLE_M = 40;
-/** One call covers at most this much drawing, so the returned path stays under the point cap. */
+/** Kept for tests. The phone now sends the whole drawing in one request; the server splits it. */
 export const INTENT_CALL_MAX_M = 15_000;
-/** HeiGIT refuses a walking route whose straight-line length is over 100 km. */
-export const INTENT_MAX_M = 100_000;
 /** Within this, and not much longer, the route is "near" the drawing. */
 export const INTENT_NEAR_M = 400;
 export const INTENT_NEAR_RATIO = 1.3;
@@ -166,8 +166,8 @@ export function intentCalls(points: readonly OutdoorPoint[], maxM = INTENT_CALL_
   return calls;
 }
 
-function tooLong(line: readonly OutdoorPoint[]): boolean {
-  return pathMetres(line) > INTENT_MAX_M;
+function tooLong(line: readonly OutdoorPoint[], tier: Tier | null): boolean {
+  return routeOverTierLimit(pathMetres(line), tier);
 }
 
 function segmentMetres(point: OutdoorPoint, start: OutdoorPoint, end: OutdoorPoint): number {
@@ -268,11 +268,13 @@ export async function snapDrawnIntent(input: {
   strokes: readonly (readonly OutdoorPoint[])[];
   anchor: OutdoorPoint | null;
   closeLoop?: boolean;
+  /** The person's plan. No plan is treated as Standard. */
+  tier?: Tier | null;
   send: (waypoints: readonly OutdoorPoint[]) => Promise<RoutePlan>;
 }): Promise<DrawIntentResult> {
   const line = intentLine(input.strokes, input.anchor, input.closeLoop === true);
   if (line.length < 2 || pathMetres(line) < 8) return { ok: false, limit: false, error: new Error('short') };
-  if (tooLong(line)) return { ok: false, limit: true };
+  if (tooLong(line, input.tier ?? 'standard')) return { ok: false, limit: true };
   const sets = intentPointSets(line);
   if (sets.length === 0) return { ok: false, limit: false, error: new Error('short') };
   let calls = 0;
@@ -282,18 +284,16 @@ export async function snapDrawnIntent(input: {
     const plans: RoutePlan[] = [];
     let joined: OutdoorPoint[] = [];
     let failed = false;
-    for (const waypoints of intentCalls(set)) {
-      calls += 1;
-      try {
-        const plan = await input.send(waypoints);
-        plans.push(plan);
-        joined = joinRouted(joined, plan.points);
-      } catch (error) {
-        if (!worthFewerPoints(error)) return { ok: false, limit: false, error };
-        lastError = error;
-        failed = true;
-        break;
-      }
+    // One request. The edge function splits a long drawing into provider-sized sections.
+    calls += 1;
+    try {
+      const plan = await input.send(set);
+      plans.push(plan);
+      joined = joinRouted(joined, plan.points);
+    } catch (error) {
+      if (!worthFewerPoints(error)) return { ok: false, limit: false, error };
+      lastError = error;
+      failed = true;
     }
     if (failed || plans.length === 0 || joined.length < 2) continue;
     // Out-and-back stubs to a point that sat off the paths are dropped, unless the drawing went there and back too.

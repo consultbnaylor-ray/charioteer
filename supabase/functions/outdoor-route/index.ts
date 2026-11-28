@@ -43,6 +43,17 @@ import {
   withinRouteLimit,
   withinSearchLimit,
 } from '../_shared/orsRoute.ts';
+import {
+  ORS_CHUNK_MAX_M,
+  ORS_SKETCH_POINT_CAP,
+  pathLengthM,
+  providerChunks,
+  routeOverTierLimit,
+  routeTierLimitMessage,
+  splitChunkInHalf,
+  stitchRoutePlans,
+} from '../_shared/routeLengthLimit.ts';
+import { resolveRouteTier } from '../_shared/routeTier.ts';
 
 type RequestKind = 'route' | 'search';
 
@@ -186,34 +197,49 @@ Deno.serve(async (req) => {
     if (!vias) return json({ ok: false, code: 'bad_request', message: 'Choose up to five points on the route.' }, 400);
     const preferPaths = body.preferPaths === true;
     const sketchBytes = JSON.stringify(body.sketch ?? '').length;
-    if (sketchBytes > ORS_MAX_SKETCH_BYTES || (Array.isArray(body.sketch) && body.sketch.length > ORS_WAYPOINT_LIMIT)) {
+    if (sketchBytes > ORS_MAX_SKETCH_BYTES || (Array.isArray(body.sketch) && body.sketch.length > ORS_SKETCH_POINT_CAP)) {
       return json({ ok: false, code: 'limit', message: ROUTE_LIMIT_MESSAGE }, 400);
     }
     const sketch = readSketchPoints(body.sketch);
     if (!sketch) return json({ ok: false, code: 'bad_request', message: 'Choose fewer points on the sketch.' }, 400);
-    const limited = sketchLimitMessage(sketch);
+    const limited = sketchLimitMessage(sketch, sketchBytes);
     if (limited) return json({ ok: false, code: 'limit', message: limited }, 400);
     const lengthM = routeLengthM({ mode, distanceM: body.distanceM, minutes: body.minutes });
     if (!lengthM && vias.length === 0 && sketch.length < 2) return json({ ok: false, code: 'bad_request', message: 'Choose a distance or a time.' }, 400);
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const admin = serviceKey ? createClient(url, serviceKey, { auth: { persistSession: false } }) : null;
+    const resolvedTier = await resolveRouteTier(admin, userId);
+    const tier = resolvedTier ?? 'standard';
+    const drawnM = sketch.length >= 2 ? pathLengthM(sketch) : 0;
+    const measured = Math.max(drawnM, lengthM ?? 0);
+    if (routeOverTierLimit(measured, tier)) {
+      return json({
+        ok: false,
+        code: 'tier_limit',
+        message: routeTierLimitMessage({ tier, offerUpgrade: false }),
+        tier,
+        capMiles: tier === 'pro' ? 200 : 26,
+      }, 400);
+    }
     const routed = routingMode(mode, preferPaths);
     const intent = readIntent(body.intent) && sketch.length >= 2;
-    const directions = buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch, intent });
-    if (!directions) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
-    const first = await postDirections(key, routed, shape, directions);
-    if (first.kind === 'plan') return finish({ ok: true, mocked: false, mode, shape, ...first.plan });
-    if (first.failure.body.code !== 'no_path') return json(first.failure.body, first.failure.status);
-    if (intent) {
-      // A drawn point is too far from any path. One snap call moves every point onto the
-      // network, points with nothing in reach are left out, and the route is asked once more.
-      const moved = await snapMany(key, routed, sketch);
-      if (moved.kind === 'failure') return json(moved.failure.body, moved.failure.status);
-      if (moved.points.length < 2) return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
-      const again = buildDirectionsBody({ mode, shape, start: moved.points[0]!, end, lengthM: 0, via: [], preferPaths, sketch: moved.points, intent });
-      if (!again) return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
-      const retried = await postDirections(key, routed, shape, again);
-      if (retried.kind === 'plan') return finish({ ok: true, mocked: false, mode, shape, ...retried.plan });
-      if (retried.failure.body.code === 'no_path') return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
-      return json(retried.failure.body, retried.failure.status);
+    if (sketch.length >= 2) {
+      // Long drawings are split into provider-sized sections, snapped, and stitched.
+      // That stays one route request for the person.
+      const routedSketch = await routeSketchByChunks({
+        key,
+        mode: routed,
+        shape,
+        preferPaths,
+        sketch,
+        intent,
+        start,
+        end,
+        lengthM: lengthM ?? 0,
+        vias,
+      });
+      if (routedSketch.kind === 'plan') return finish({ ok: true, mocked: false, mode, shape, ...routedSketch.plan });
+      return json(routedSketch.failure.body, routedSketch.failure.status);
     }
     const snapped = await snapStart(key, routed, sketch[0] ?? start);
     if (snapped.kind === 'failure') return json(snapped.failure.body, snapped.failure.status);
@@ -354,6 +380,140 @@ async function snapMany(
   const payload = await response.json().catch(() => null);
   const snapped = parseSnapMany(payload, points.length).filter((point): point is { latitude: number; longitude: number } => point != null);
   return { kind: 'points', points: snapped };
+}
+
+/** Snap every point, in batches of 50, so a long drawing still reaches the path network. */
+async function snapManyAll(
+  key: string,
+  mode: NonNullable<ReturnType<typeof readMode>>,
+  points: readonly { latitude: number; longitude: number }[],
+): Promise<
+  | { kind: 'points'; points: { latitude: number; longitude: number }[] }
+  | { kind: 'failure'; failure: ReturnType<typeof classifyOrsFailure> }
+> {
+  const out: { latitude: number; longitude: number }[] = [];
+  for (let index = 0; index < points.length; index += ORS_WAYPOINT_LIMIT) {
+    const batch = points.slice(index, index + ORS_WAYPOINT_LIMIT);
+    const result = await snapMany(key, mode, batch);
+    if (result.kind === 'failure') return result;
+    out.push(...result.points);
+  }
+  return { kind: 'points', points: out };
+}
+
+type SketchRouteResult =
+  | { kind: 'plan'; plan: DirectionPlan }
+  | { kind: 'failure'; failure: ReturnType<typeof classifyOrsFailure> };
+
+type SketchRouteInput = {
+  key: string;
+  mode: NonNullable<ReturnType<typeof readMode>>;
+  shape: NonNullable<ReturnType<typeof readShape>>;
+  preferPaths: boolean;
+  sketch: { latitude: number; longitude: number }[];
+  intent: boolean;
+  start: { latitude: number; longitude: number };
+  end?: { latitude: number; longitude: number } | null;
+  lengthM: number;
+  vias: { latitude: number; longitude: number }[];
+};
+
+/** A handful of provider calls at a time, under the 40-per-minute allowance. */
+const CHUNK_CONCURRENCY = 3;
+
+async function mapPool<T, R>(items: readonly T[], width: number, work: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      const item = items[index];
+      if (item === undefined) return;
+      out[index] = await work(item, index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(width, items.length) }, () => worker()));
+  return out;
+}
+
+async function routeOneSection(
+  input: Omit<SketchRouteInput, 'sketch'> & { sketch: { latitude: number; longitude: number }[] },
+): Promise<SketchRouteResult> {
+  const body = buildDirectionsBody({
+    mode: input.mode,
+    shape: input.shape,
+    start: input.sketch[0] ?? input.start,
+    end: input.sketch[input.sketch.length - 1] ?? input.end,
+    lengthM: 0,
+    via: [],
+    preferPaths: input.preferPaths,
+    sketch: input.sketch,
+    intent: input.intent,
+  });
+  if (!body) return { kind: 'failure', failure: { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } } };
+  const result = await postDirections(input.key, input.mode, input.shape, body);
+  if (result.kind === 'plan') return result;
+  if (result.failure.body.code !== 'limit') return result;
+  const halves = splitChunkInHalf(input.sketch);
+  if (!halves) return result;
+  const left = await routeOneSection({ ...input, sketch: halves[0] });
+  if (left.kind === 'failure') return left;
+  const last = left.plan.points[left.plan.points.length - 1];
+  const rightPoints = last ? [last, ...halves[1].slice(1)] : halves[1];
+  const right = await routeOneSection({ ...input, sketch: rightPoints });
+  if (right.kind === 'failure') return right;
+  const stitched = stitchRoutePlans([left.plan, right.plan]);
+  if (!stitched) return { kind: 'failure', failure: { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } } };
+  return { kind: 'plan', plan: stitched };
+}
+
+async function routeChunks(input: SketchRouteInput): Promise<SketchRouteResult> {
+  const chunks = providerChunks(input.sketch, ORS_CHUNK_MAX_M, ORS_WAYPOINT_LIMIT);
+  if (chunks.length === 0) {
+    return { kind: 'failure', failure: { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } } };
+  }
+  const results = await mapPool(chunks, CHUNK_CONCURRENCY, (chunk) => routeOneSection({ ...input, sketch: chunk }));
+  const plans: DirectionPlan[] = [];
+  for (const result of results) {
+    if (result.kind === 'failure') return result;
+    plans.push(result.plan);
+  }
+  // Re-route a later section from the previous end when the join would leave a gap.
+  for (let index = 1; index < plans.length; index += 1) {
+    const previous = plans[index - 1]!;
+    const current = plans[index]!;
+    const end = previous.points[previous.points.length - 1];
+    const start = current.points[0];
+    if (!end || !start || haversineM(end, start) < 8) continue;
+    const chunk = chunks[index];
+    if (!chunk) continue;
+    const retried = await routeOneSection({ ...input, sketch: [end, ...chunk.slice(1)] });
+    if (retried.kind === 'plan') plans[index] = retried.plan;
+    else {
+      const bridge = await routeOneSection({ ...input, sketch: [end, start], intent: true });
+      if (bridge.kind === 'plan') plans[index] = stitchRoutePlans([bridge.plan, current]) ?? current;
+    }
+  }
+  const stitched = stitchRoutePlans(plans);
+  if (!stitched) return { kind: 'failure', failure: { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } } };
+  return { kind: 'plan', plan: stitched };
+}
+
+/**
+ * Snap a drawn line, splitting it so each provider call stays under the waypoint
+ * and length caps, then stitch the pieces. One no-path answer is retried after
+ * moving the points onto the path network.
+ */
+async function routeSketchByChunks(input: SketchRouteInput): Promise<SketchRouteResult> {
+  const first = await routeChunks(input);
+  if (first.kind === 'plan' || first.failure.body.code !== 'no_path' || !input.intent) return first;
+  const moved = await snapManyAll(input.key, input.mode, input.sketch);
+  if (moved.kind === 'failure') return moved;
+  if (moved.points.length < 2) {
+    return { kind: 'failure', failure: { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } } };
+  }
+  return routeChunks({ ...input, sketch: moved.points });
 }
 
 /** Writes one row after a successful plan or place list. A refusal, a bad request, or a failed lookup writes nothing. */
