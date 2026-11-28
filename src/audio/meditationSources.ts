@@ -3,5 +3,5 @@
  * Kept apart from the domain list so tests can read the list without Metro.
  */
 export const MEDITATION_SOURCES: Record<string, number> = {
-  'calm-waters': require('../../assets/audio/meditation/calm-waters.m4a'),
+  'tribal-warrior': require('../../assets/audio/meditation/tribal-warrior.m4a'),
 };

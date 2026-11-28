@@ -17,8 +17,8 @@ export type MeditationTrack = {
 };
 
 export const MEDITATION_TRACKS: readonly MeditationTrack[] = [
-  // Suno-made, supplied by Ben on 27 Nov 2026. Working title, rename when Ben picks one.
-  { id: 'calm-waters', title: 'Calm Waters', file: 'calm-waters.m4a', durationMs: 300_600 },
+  // Suno-made, supplied by Ben on 27 Nov 2026. Titled Tribal Warrior on 28 Nov 2026.
+  { id: 'tribal-warrior', title: 'Tribal Warrior', file: 'tribal-warrior.m4a', durationMs: 300_600 },
 ];
 
 export type MusicChoice = 'off' | MeditationTrack['id'];
