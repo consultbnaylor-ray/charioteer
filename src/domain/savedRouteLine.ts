@@ -41,7 +41,7 @@ export function withoutSavedLine(row: Record<string, unknown>): Record<string, u
 
 /**
  * The database refused the line, most likely because the geometry grant or check
- * from 20261127180000_outdoor_routes_keep_line.sql is not applied yet.
+ * from 20261127173856_outdoor_routes_keep_line.sql is not applied yet.
  * The route is then saved without the line, as before.
  */
 export function savedLineRejected(message: string, row: Record<string, unknown>): boolean {

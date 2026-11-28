@@ -463,7 +463,7 @@ describe('workout routes stay on the phone', () => {
     // position only in its owner-only geometry check on outdoor_routes.
     expect(positioned).toEqual([
       'supabase/migrations/20261126215217_garmin_activity_samples.sql',
-      'supabase/migrations/20261127180000_outdoor_routes_keep_line.sql',
+      'supabase/migrations/20261127173856_outdoor_routes_keep_line.sql',
     ]);
     const lineSql = readFileSync(positioned[1], 'utf8');
     expect(lineSql.startsWith('-- Not applied.')).toBe(true);

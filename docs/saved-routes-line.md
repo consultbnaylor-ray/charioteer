@@ -12,7 +12,7 @@ Approved by Ben on 27 November 2026: "Yes, merge PR #147, apply the saved-line d
 ## Apply, in this order
 
 1. Ben approves the privacy wording below (and the solicitor folds it into the DPIA).
-2. Apply `supabase/migrations/20261127180000_outdoor_routes_keep_line.sql` to the live project. It only adds column grants on `geometry` (select, insert, update) to `authenticated`, the `outdoor_routes_geometry_line` check, and a column comment. RLS (`outdoor_routes_own`) is unchanged. Nothing for `anon` or `public`.
+2. Apply `supabase/migrations/20261127173856_outdoor_routes_keep_line.sql` to the live project. It only adds column grants on `geometry` (select, insert, update) to `authenticated`, the `outdoor_routes_geometry_line` check, and a column comment. RLS (`outdoor_routes_own`) is unchanged. Nothing for `anon` or `public`.
 3. Ship the app build. Until step 2, the app saves without the line (it retries without `geometry` on a permission or check error) and reads without it, so the build is safe to ship first.
 4. No edge function change. `account-delete` deletes the auth user, and that cascades `auth.users` → `profiles` → `outdoor_routes` (both foreign keys are `on delete cascade`). Delete in the app removes the row.
 5. `export_my_data` is unchanged: it still drops `geometry`, the same rule as Garmin tracks. If Ben wants the line in Download my data, that is a separate migration.

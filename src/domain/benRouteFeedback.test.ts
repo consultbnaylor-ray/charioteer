@@ -162,7 +162,7 @@ describe('saved route line (Ben, t1135u)', () => {
   });
 
   it('the migration is owner-only, unapplied, checked, and never logs a position', () => {
-    const sql = readFileSync('supabase/migrations/20261127180000_outdoor_routes_keep_line.sql', 'utf8');
+    const sql = readFileSync('supabase/migrations/20261127173856_outdoor_routes_keep_line.sql', 'utf8');
     expect(sql.startsWith('-- Not applied.')).toBe(true);
     expect(sql).toContain('grant select (geometry) on table public.outdoor_routes to authenticated;');
     expect(sql).toContain('grant insert (geometry) on table public.outdoor_routes to authenticated;');
