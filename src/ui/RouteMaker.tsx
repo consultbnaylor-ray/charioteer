@@ -24,6 +24,7 @@ import {
   placeSearchEmptyShown,
   appleMapsUrl,
   nearestPathLine,
+  adoptSnappedLine,
   routeAskFromChoices,
   routeDistanceFieldHint,
   routeKind,
@@ -37,6 +38,7 @@ import {
   type RouteTimeChoice,
 } from '@/domain/findRoute';
 import {
+  attachStrokeToRoute,
   buildDrawSnapRequests,
   clearDrawStrokes,
   combineDrawStrokes,
@@ -47,6 +49,7 @@ import {
   nextDrawMode,
   rawStrokeLines,
   snappedDrawLine,
+  stitchRoute,
   undoDrawStroke,
 } from '@/domain/drawStroke';
 import { entitlementActive, paywallEnabled } from '@/domain/subscription';
@@ -91,6 +94,7 @@ import {
   DRAW_NO_PATH,
   DRAW_PEN_HINT,
   DRAW_SNAP_FAILED,
+  DRAW_SNAP_KEPT_LINE,
   DRAW_SNAP_STRAYED,
   DRAW_SNAP_LIMIT,
   DRAW_SNAP_TRY_AGAIN,
@@ -603,7 +607,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setPencil([]);
       return;
     }
-    const nextStrokes = commitDrawStroke(strokesRef.current, points);
+    const kept = planRef.current?.points;
+    const joined = kept && kept.length >= 2 && snappedCountRef.current >= strokesRef.current.length
+      ? attachStrokeToRoute(kept, points)
+      : points;
+    const nextStrokes = commitDrawStroke(strokesRef.current, joined);
     if (nextStrokes.length === strokesRef.current.length) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
@@ -659,17 +667,29 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setError(null);
     const requestId = randomId();
     try {
+      // After Keep drawing, only the new strokes are sent. They are stitched onto the
+      // kept route, and any gap is routed along paths rather than drawn straight.
+      const incremental = previous != null
+        && previous.points.length >= 2
+        && previousCount > 0
+        && nextStrokes.length > previousCount
+        && erasedSnapRef.current == null;
+      const pending = incremental ? nextStrokes.slice(previousCount) : nextStrokes;
+      const pendingAnchor = incremental
+        ? (previous.points[previous.points.length - 1] ?? null)
+        : anchor;
+      const pendingShape = incremental ? 'a_to_b' as const : (craving ? 'loop' : drawnShape);
       // The drawing becomes a few intent points, and the route service finds the real way
       // between them in one call (two when the first strays far). A river or a field in the
       // drawing is routed round, over the nearest bridge or path, not refused.
       const result = await snapDrawnIntent({
-        strokes: nextStrokes,
-        anchor,
-        closeLoop: drawnShape === 'loop',
+        strokes: pending,
+        anchor: pendingAnchor,
+        closeLoop: !incremental && drawnShape === 'loop',
         tier: routeTier,
         send: (waypoints) => repo.planOutdoorRoute({
           mode: drawMode,
-          shape: craving ? 'loop' : drawnShape,
+          shape: pendingShape,
           start: waypoints[0] ?? origin,
           end: waypoints[waypoints.length - 1] ?? finish,
           distanceM: null,
@@ -693,7 +713,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         }
         throw result.error instanceof Error ? result.error : new Error(DRAW_NO_PATH);
       }
-      const next = result.plan;
+      const added = result.plan;
+      const next = incremental && previous
+        ? adoptSnappedLine(previous, stitchRoute(previous.points, added.points))
+        : added;
       if (next.points.length < 2) {
         setDrawNote(DRAW_NO_PATH);
         setError(DRAW_NO_PATH);
@@ -721,11 +744,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setLastSnapped(nextStrokes);
       tipEvent({ kind: 'snapped' });
       setSaved(false);
-      const snapNote = result.fit === 'close'
-        ? DRAW_SNAPPED
-        : result.fit === 'near'
-          ? DRAW_SNAP_STRAYED
-          : intentRoundNote(result.drawnM, result.routeM);
+      const snapNote = result.keptDrawn
+        ? DRAW_SNAP_KEPT_LINE
+        : result.fit === 'close'
+          ? DRAW_SNAPPED
+          : result.fit === 'near'
+            ? DRAW_SNAP_STRAYED
+            : intentRoundNote(result.drawnM, result.routeM);
       setDrawNote(snapNote);
       setError(null);
       setStart(origin);
@@ -874,9 +899,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setDrawTool('pen');
   }
 
+  function keepDrawing() {
+    setDrawTool('pen');
+    setDrawing(true);
+  }
+
   async function confirmDraw() {
     if (pencilRef.current.length > 0) holdStroke(pencilRef.current);
-    if (!drawReadyToSnap(strokesRef.current, [])) {
+    if (!drawReadyToSnap(strokesRef.current, [], snappedCountRef.current)) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
       setSnapMiss(null);
@@ -1217,10 +1247,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           onUndoDraw={undoDraw}
           onClearDraw={closeDraw}
           onConfirmDraw={craving ? undefined : () => { void confirmDraw(); }}
+          onKeepDrawing={craving ? undefined : keepDrawing}
+          canKeepDrawing={!craving && fromDraw && plan != null}
           onExitDraw={exitDraw}
           canUndoDraw={pencil.length > 0 || strokes.length > 0 || drawStack.length > 0}
           canClearDraw={drawCloseEnabled({ drawing, hasSketch: pencil.length > 0 || strokes.length > 0, fromDraw })}
-          canConfirmDraw={drawReadyToSnap(strokes, pencil)}
+          canConfirmDraw={drawReadyToSnap(strokes, pencil, snappedCount)}
           confirmPending={pending}
           bar={drawBar}
           statusNote={snapMiss ? DRAW_SNAP_FAILED : drawing ? null : drawNote}

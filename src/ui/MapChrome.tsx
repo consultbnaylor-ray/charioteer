@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { OSM_CONTRIBUTORS } from '@/domain/routeConsent';
-import { CONFIRM_DRAW, DRAW_SNAP_FAILED, DRAW_SNAPPED, DRAW_TICK_GREEN } from '@/domain/routeAdjust';
+import { CONFIRM_DRAW, DRAW_SNAP_FAILED, DRAW_SNAPPED, DRAW_TICK_GREEN, KEEP_DRAWING } from '@/domain/routeAdjust';
 import {
   FULL_SCREEN_PANEL_GAP,
   fullScreenControlLift,
@@ -331,6 +331,8 @@ export function MapShell({
   onUndoDraw,
   onClearDraw,
   onConfirmDraw,
+  onKeepDrawing,
+  canKeepDrawing = false,
   canUndoDraw = false,
   canClearDraw = false,
   canConfirmDraw = false,
@@ -362,6 +364,8 @@ export function MapShell({
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
   onConfirmDraw?: () => void;
+  onKeepDrawing?: () => void;
+  canKeepDrawing?: boolean;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
   canConfirmDraw?: boolean;
@@ -498,6 +502,33 @@ export function MapShell({
             </Pressable>
           </View>
         ) : null}
+        {canKeepDrawing && onKeepDrawing && !drawing ? (
+          <View pointerEvents={'box-none'} style={{ position: 'absolute', left: 0, right: 0, bottom: (showRecalculate ? 140 : 72) + lift, alignItems: 'center', zIndex: 7 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={KEEP_DRAWING}
+              accessibilityHint="Adds to the route already on the map, without losing it."
+              onPress={onKeepDrawing}
+              hitSlop={6}
+              style={{
+                minHeight: 56,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingHorizontal: 20,
+                borderRadius: 28,
+                backgroundColor: DRAW_TICK_GREEN,
+                borderWidth: 2,
+                borderColor: '#FFFFFF',
+              }}
+            >
+              <Pencil color="#FFFFFF" />
+              <T maxFontSizeMultiplier={1.6} style={{ color: '#FFFFFF', fontSize: 18, lineHeight: 22, fontFamily: theme.font.bodyStrong }}>
+                {KEEP_DRAWING}
+              </T>
+            </Pressable>
+          </View>
+        ) : null}
         {drawing && canConfirmDraw && onConfirmDraw && !showRecalculate ? (
           <View pointerEvents={'box-none'} style={{ position: 'absolute', left: 0, right: 0, bottom: 72 + lift, alignItems: 'center', zIndex: 7 }}>
             <Pressable
@@ -580,6 +611,8 @@ export function MapFrame({
   onUndoDraw,
   onClearDraw,
   onConfirmDraw,
+  onKeepDrawing,
+  canKeepDrawing = false,
   onExitDraw,
   canUndoDraw,
   canClearDraw,
@@ -612,6 +645,8 @@ export function MapFrame({
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
   onConfirmDraw?: () => void;
+  onKeepDrawing?: () => void;
+  canKeepDrawing?: boolean;
   /** Leaves draw mode and keeps the sketch. Called when the full-screen map closes. */
   onExitDraw?: () => void;
   canUndoDraw?: boolean;
@@ -671,6 +706,8 @@ export function MapFrame({
       onUndoDraw={onUndoDraw}
       onClearDraw={onClearDraw}
       onConfirmDraw={onConfirmDraw}
+      onKeepDrawing={onKeepDrawing}
+      canKeepDrawing={canKeepDrawing}
       canUndoDraw={canUndoDraw}
       canClearDraw={canClearDraw}
       canConfirmDraw={canConfirmDraw}

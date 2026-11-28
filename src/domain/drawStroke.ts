@@ -153,6 +153,75 @@ export function stitchRoute(kept: readonly OutdoorPoint[], added: readonly Outdo
   return [...prior, ...next.slice(skip)];
 }
 
+/** How close a new stroke must start to join a kept route. */
+export const CONTINUE_NEAR_M = 80;
+
+/**
+ * Where a new stroke should join a kept route.
+ * Near the end: continue from the end.
+ * Near some other part of the line: continue from that nearby point.
+ * Otherwise the stroke stands on its own, and the next snap routes any gap along paths.
+ */
+function closestPointOnSegment(point: OutdoorPoint, start: OutdoorPoint, end: OutdoorPoint): { point: OutdoorPoint; metres: number; t: number } {
+  const cos = Math.cos((start.latitude * Math.PI) / 180);
+  const px = (point.longitude - start.longitude) * 111_320 * cos;
+  const py = (point.latitude - start.latitude) * 111_320;
+  const ex = (end.longitude - start.longitude) * 111_320 * cos;
+  const ey = (end.latitude - start.latitude) * 111_320;
+  const length = ex * ex + ey * ey;
+  const t = length < 1 ? 0 : Math.max(0, Math.min(1, (px * ex + py * ey) / length));
+  return {
+    point: {
+      latitude: start.latitude + (end.latitude - start.latitude) * t,
+      longitude: start.longitude + (end.longitude - start.longitude) * t,
+    },
+    metres: Math.hypot(px - t * ex, py - t * ey),
+    t,
+  };
+}
+
+export function continueFromRoute(
+  route: readonly OutdoorPoint[],
+  start: OutdoorPoint,
+  nearM = CONTINUE_NEAR_M,
+): { from: OutdoorPoint; atEnd: boolean } | null {
+  const line = copyPoints(route);
+  if (line.length < 2) return null;
+  const threshold = Math.max(1, nearM);
+  const end = line[line.length - 1]!;
+  if (metresBetween(start, end) <= threshold) return { from: end, atEnd: true };
+  let best: { point: OutdoorPoint; metres: number; index: number; t: number } | null = null;
+  for (let index = 1; index < line.length; index += 1) {
+    const hit = closestPointOnSegment(start, line[index - 1]!, line[index]!);
+    if (!best || hit.metres < best.metres) best = { point: hit.point, metres: hit.metres, index, t: hit.t };
+  }
+  if (!best || best.metres > threshold) return null;
+  const atEnd = best.index >= line.length - 1 && best.t > 0.8;
+  return { from: best.point, atEnd };
+}
+
+/** Prepends the join point when the stroke starts near the kept route. */
+export function attachStrokeToRoute(
+  route: readonly OutdoorPoint[],
+  stroke: readonly OutdoorPoint[],
+  nearM = CONTINUE_NEAR_M,
+): OutdoorPoint[] {
+  const line = copyPoints(stroke);
+  if (line.length === 0) return line;
+  const join = continueFromRoute(route, line[0]!, nearM);
+  if (!join) return line;
+  if (samePoint(join.from, line[0]!) || metresBetween(join.from, line[0]!) < 8) return line;
+  return [copyPoints([join.from])[0]!, ...line];
+}
+
+/** Only unsnapped strokes count. A kept route with no new line is not ready to snap again. */
+export function pendingDrawStrokes(
+  strokes: readonly (readonly OutdoorPoint[])[],
+  snappedCount: number,
+): OutdoorPoint[][] {
+  return rawStrokeLines(strokes, snappedCount, []);
+}
+
 /**
  * The line on the map.
  * Snapped strokes use the routed geometry. A stroke that is still waiting is appended raw,
@@ -610,9 +679,10 @@ function pieceCanFollowPencil(error: unknown): boolean {
 export function drawReadyToSnap(
   strokes: readonly (readonly OutdoorPoint[])[],
   pencil: readonly OutdoorPoint[] = [],
+  snappedCount = 0,
 ): boolean {
   if (copyPoints(pencil).length >= 2) return true;
-  return strokes.some((stroke) => copyPoints(stroke).length >= 2);
+  return pendingDrawStrokes(strokes, snappedCount).length > 0;
 }
 
 export const DRAW_ZOOM_MIN = 2;

@@ -95,6 +95,8 @@ export function FootpathMap({
   onUndoDraw,
   onClearDraw,
   onConfirmDraw,
+  onKeepDrawing,
+  canKeepDrawing = false,
   onExitDraw,
   canUndoDraw = false,
   canClearDraw = false,
@@ -155,6 +157,8 @@ export function FootpathMap({
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
   onConfirmDraw?: () => void;
+  onKeepDrawing?: () => void;
+  canKeepDrawing?: boolean;
   /** Leaves draw mode and keeps the sketch, when the full-screen map closes. */
   onExitDraw?: () => void;
   canUndoDraw?: boolean;
@@ -211,6 +215,8 @@ export function FootpathMap({
       onUndoDraw={onUndoDraw}
       onClearDraw={onClearDraw}
       onConfirmDraw={onConfirmDraw}
+      onKeepDrawing={onKeepDrawing}
+      canKeepDrawing={canKeepDrawing}
       onExitDraw={onExitDraw}
       canUndoDraw={canUndoDraw}
       canClearDraw={canClearDraw}

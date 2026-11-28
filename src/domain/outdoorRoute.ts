@@ -5,6 +5,8 @@
  * A live fix is not stored. A route service is called only after route finding is on.
  */
 
+import { pathLengthM, uncoveredSketchTail } from '@/domain/routeLengthLimit';
+
 export const LOCATION_WHEN_IN_USE =
   'Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path.';
 
@@ -737,6 +739,16 @@ export function removeRouteSpurs(
     if (!cut) return line;
     const next = [...line.slice(0, cut.from + 1), ...line.slice(cut.to + 1)];
     if (next.length < 2) return line;
+    if (useSketch) {
+      // Do not drop a loop the person drew. If this cut leaves a long end of the
+      // drawing with no route under it, keep looking rather than chopping it off.
+      const lost = uncoveredSketchTail(reference, next);
+      const before = uncoveredSketchTail(reference, line);
+      if (lost.length >= 2 && pathLengthM(lost) > pathLengthM(before) + 20) {
+        resume = cut.from + 1;
+        continue;
+      }
+    }
     line = next;
     resume = Math.max(0, cut.from - 1);
   }

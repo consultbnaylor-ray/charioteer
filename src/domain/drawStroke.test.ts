@@ -103,6 +103,7 @@ describe('draw strokes', () => {
     expect(drawReadyToSnap([], [a])).toBe(false);
     expect(drawReadyToSnap([], [a, b])).toBe(true);
     expect(drawReadyToSnap([[a, b]], [])).toBe(true);
+    expect(drawReadyToSnap([[a, b]], [], 1)).toBe(false);
     expect(stitchRoute(routed, [snappedEnd, c])).toEqual([...routed, c]);
     expect(stitchRoute(routed, [])).toEqual(routed);
     expect(stitchRoute([], [a, b])).toEqual([a, b]);

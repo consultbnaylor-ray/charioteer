@@ -1,5 +1,5 @@
 import { combineDrawStrokes } from '@/domain/drawStroke';
-import { routeOverTierLimit } from '@/domain/routeLengthLimit';
+import { appendUncoveredSketchTail, routeOverTierLimit } from '@/domain/routeLengthLimit';
 import type { Tier } from '@/domain/tierLimits';
 import {
   adoptSnappedLine,
@@ -65,6 +65,8 @@ export type DrawIntentResult =
     routeM: number;
     /** Route calls made from the phone. */
     calls: number;
+    /** True when an unsnapped end of the drawing was kept on the line. */
+    keptDrawn: boolean;
   }
   | { ok: false; limit: true }
   | { ok: false; limit: false; error: unknown };
@@ -257,7 +259,7 @@ function combine(plans: readonly RoutePlan[]): RoutePlan {
   };
 }
 
-type Candidate = { points: OutdoorPoint[]; plan: RoutePlan; score: number; fit: IntentFit };
+type Candidate = { points: OutdoorPoint[]; plan: RoutePlan; score: number; fit: IntentFit; keptDrawn: boolean };
 
 /**
  * The drawing, made into the best real route the service can find.
@@ -298,12 +300,15 @@ export async function snapDrawnIntent(input: {
     if (failed || plans.length === 0 || joined.length < 2) continue;
     // Out-and-back stubs to a point that sat off the paths are dropped, unless the drawing went there and back too.
     const cleaned = removeRouteSpurs(joined, SPUR_WITHIN_M, SPUR_MAX_M, line);
-    const points = cleaned.length >= 2 ? cleaned : joined;
+    const snapped = cleaned.length >= 2 ? cleaned : joined;
+    const filled = appendUncoveredSketchTail(snapped, line);
+    const points = filled.points;
     const candidate: Candidate = {
       points,
       plan: adoptSnappedLine(combine(plans), points),
       score: intentScore(line, points),
       fit: intentFit(line, points),
+      keptDrawn: filled.keptDrawn,
     };
     if (!best || candidate.score < best.score) best = candidate;
     if (best.fit === 'close') break;
@@ -317,6 +322,7 @@ export async function snapDrawnIntent(input: {
     drawnM: Math.round(pathMetres(line)),
     routeM: Math.round(pathMetres(best.points)),
     calls,
+    keptDrawn: best.keptDrawn,
   };
 }
 

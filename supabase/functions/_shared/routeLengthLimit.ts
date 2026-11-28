@@ -198,3 +198,155 @@ export function stitchRoutePlans<T extends StitchablePlan>(plans: readonly T[]):
     elevationsM: elevationsComplete ? elevations : null,
   };
 }
+
+/** A sketch point farther than this from the snapped route is treated as uncovered. */
+export const SKETCH_UNCOVERED_M = 80;
+
+function distanceToSegmentM(point: PlaceLike, start: PlaceLike, end: PlaceLike): number {
+  const cos = Math.cos((start.latitude * Math.PI) / 180);
+  const px = (point.longitude - start.longitude) * 111_320 * cos;
+  const py = (point.latitude - start.latitude) * 111_320;
+  const ex = (end.longitude - start.longitude) * 111_320 * cos;
+  const ey = (end.latitude - start.latitude) * 111_320;
+  const length = ex * ex + ey * ey;
+  const t = length < 1 ? 0 : Math.max(0, Math.min(1, (px * ex + py * ey) / length));
+  return Math.hypot(px - t * ex, py - t * ey);
+}
+
+export function distanceToLineM(point: PlaceLike, line: readonly PlaceLike[]): number {
+  if (line.length === 0) return Number.POSITIVE_INFINITY;
+  if (line.length === 1) return haversineM(point, line[0]!);
+  let best = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < line.length; index += 1) {
+    best = Math.min(best, distanceToSegmentM(point, line[index - 1]!, line[index]!));
+  }
+  return best;
+}
+
+/**
+ * The leftover end of a drawing that the snapped route never reached.
+ * Mid-route gaps are left alone when the route kept going afterwards,
+ * so a path that goes round to a bridge is not replaced with a straight cut.
+ * A loop that leaves the end of the route and comes back to that same end is
+ * treated as leftover, because the snapped line stopped there.
+ * The first point is the last covered join, so the pieces share an end.
+ */
+export function uncoveredSketchTail(
+  sketch: readonly PlaceLike[],
+  routed: readonly PlaceLike[],
+  farM = SKETCH_UNCOVERED_M,
+): PlaceLike[] {
+  const drawn = sketch.filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+  const line = routed.filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+  if (drawn.length < 2 || line.length < 2) return [];
+  const threshold = Math.max(1, farM);
+  const covered: boolean[] = [];
+  const along: number[] = [];
+  for (const point of drawn) {
+    const near = distanceToLineM(point, line) <= threshold;
+    covered.push(near);
+    along.push(near ? alongLineM(point, line) : 0);
+  }
+  const routeEnd = pathLengthM(line);
+  let start = -1;
+  for (let index = 0; index < drawn.length; index += 1) {
+    if (covered[index]) {
+      start = index;
+      continue;
+    }
+    if (start < 0) continue;
+    let end = index;
+    while (end < drawn.length && !covered[end]) end += 1;
+    const after = end < drawn.length ? end : -1;
+    const run = drawn.slice(start, after >= 0 ? after + 1 : drawn.length);
+    if (pathLengthM(run) >= threshold) {
+      const afterAlong = after >= 0 ? along[after]! : -1;
+      if (after < 0 || afterAlong >= routeEnd - threshold) return run;
+    }
+    index = Math.max(index, end - 1);
+  }
+  return [];
+}
+
+function alongLineM(point: PlaceLike, line: readonly PlaceLike[]): number {
+  let best = Number.POSITIVE_INFINITY;
+  let along = 0;
+  let walked = 0;
+  for (let index = 1; index < line.length; index += 1) {
+    const start = line[index - 1]!;
+    const end = line[index]!;
+    const leg = haversineM(start, end);
+    const cos = Math.cos((start.latitude * Math.PI) / 180);
+    const px = (point.longitude - start.longitude) * 111_320 * cos;
+    const py = (point.latitude - start.latitude) * 111_320;
+    const ex = (end.longitude - start.longitude) * 111_320 * cos;
+    const ey = (end.latitude - start.latitude) * 111_320;
+    const length = ex * ex + ey * ey;
+    const t = length < 1 ? 0 : Math.max(0, Math.min(1, (px * ex + py * ey) / length));
+    const metres = Math.hypot(px - t * ex, py - t * ey);
+    if (metres < best) {
+      best = metres;
+      along = walked + t * leg;
+    }
+    walked += leg;
+  }
+  return along;
+}
+
+export function appendUncoveredSketchTail(
+  routed: readonly PlaceLike[],
+  sketch: readonly PlaceLike[],
+  farM = SKETCH_UNCOVERED_M,
+): { points: PlaceLike[]; keptDrawn: boolean } {
+  const tail = uncoveredSketchTail(sketch, routed, farM);
+  if (tail.length < 2) return { points: [...routed], keptDrawn: false };
+  return { points: stitchRoutedPoints([routed, tail]), keptDrawn: true };
+}
+
+/** Walking pace used only to keep the time in step when a drawn tail is restored. */
+const KEPT_TAIL_METRES_PER_MINUTE = 80;
+
+/**
+ * Same as appendUncoveredSketchTail, and the figures take in the restored length.
+ * Climb is cleared because the drawn part has no known elevation.
+ */
+export function stitchPlanWithSketchTail<T extends StitchablePlan>(
+  plan: T,
+  sketch: readonly PlaceLike[],
+  farM = SKETCH_UNCOVERED_M,
+): { plan: T; keptDrawn: boolean } {
+  const filled = appendUncoveredSketchTail(plan.points, sketch, farM);
+  if (!filled.keptDrawn) return { plan, keptDrawn: false };
+  const added = Math.max(0, pathLengthM(filled.points) - pathLengthM(plan.points));
+  return {
+    plan: {
+      ...plan,
+      points: filled.points,
+      distanceM: Math.max(1, plan.distanceM + added),
+      durationMinutes: Math.max(1, plan.durationMinutes + Math.round(added / KEPT_TAIL_METRES_PER_MINUTE)),
+      ascentM: null,
+      descentM: null,
+      elevationsM: null,
+    },
+    keptDrawn: true,
+  };
+}
+
+/** A short stand-in plan that follows the drawing when that section could not be snapped. */
+export function planFromSketch(
+  sketch: readonly PlaceLike[],
+  base?: Pick<StitchablePlan, never> & Record<string, unknown>,
+): StitchablePlan | null {
+  const points = sketch.filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+  if (points.length < 2) return null;
+  const distanceM = Math.max(1, pathLengthM(points));
+  return {
+    ...(base ?? {}),
+    points,
+    distanceM,
+    durationMinutes: Math.max(1, Math.round(distanceM / KEPT_TAIL_METRES_PER_MINUTE)),
+    ascentM: null,
+    descentM: null,
+    elevationsM: null,
+  };
+}

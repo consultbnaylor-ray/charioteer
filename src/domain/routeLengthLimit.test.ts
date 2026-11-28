@@ -14,6 +14,8 @@ import {
   routeOverTierLimit,
   routeTierLimitMessage,
   splitChunkInHalf,
+  appendUncoveredSketchTail,
+  stitchPlanWithSketchTail,
   stitchRoutePlans,
   stitchRoutedPoints,
 } from '@/domain/routeLengthLimit';
@@ -181,5 +183,25 @@ describe('plan lookup and wiring', () => {
     const body = readFileSync('src/domain/routeAdjust.ts', 'utf8');
     expect(body).toContain('ORS_SKETCH_POINT_CAP');
     expect(body).not.toContain('SKETCH_WAYPOINT_MAX).map');
+    expect(fn).toContain('stitchPlanWithSketchTail');
+    expect(fn).toContain('sectionOrDrawn');
+    expect(fn).toContain('keepDrawnSection');
+  });
+});
+
+describe('restoring a dropped end', () => {
+  it('puts a dropped loop back on the stitched route rather than leaving a stub', () => {
+    const road = sketch(6_000, 80);
+    const stub = road[road.length - 1]!;
+    const loop = [stub, along(6_000, 400), along(6_400, 400), along(6_400, 0), stub];
+    const filled = appendUncoveredSketchTail(road, [...road, ...loop.slice(1)]);
+    expect(filled.keptDrawn).toBe(true);
+    expect(filled.points.length).toBeGreaterThan(road.length);
+    const plan = stitchPlanWithSketchTail(
+      { points: road, distanceM: 6_000, durationMinutes: 75 },
+      [...road, ...loop.slice(1)],
+    );
+    expect(plan.keptDrawn).toBe(true);
+    expect(plan.plan.distanceM).toBeGreaterThan(6_000);
   });
 });

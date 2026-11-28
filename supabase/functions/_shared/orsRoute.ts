@@ -288,7 +288,11 @@ export function buildDirectionsBody(input: {
   intent?: boolean;
 }): Record<string, unknown> | null {
   const preferPaths = input.preferPaths === true;
-  const sketch = (input.sketch ?? []).slice(0, ORS_WAYPOINT_LIMIT);
+  const rawSketch = input.sketch ?? [];
+  // A long sketch is split by the caller. Dropping the leftover points here
+  // used to cut the snapped line short, so a body that is still too long is refused.
+  if (rawSketch.length > ORS_WAYPOINT_LIMIT) return null;
+  const sketch = rawSketch;
   if (sketch.length >= 2 && input.intent === true) {
     return {
       coordinates: sketch.map(coordinateOf),
@@ -542,7 +546,6 @@ export function parseDirections(payload: unknown, mode: Mode, shape: 'loop' | 'a
   const elevations: number[] = [];
   let elevationsComplete = true;
   for (const pair of coords) {
-    if (points.length >= 2000) break;
     if (!Array.isArray(pair) || pair.length < 2) continue;
     const longitude = Number(pair[0]);
     const latitude = Number(pair[1]);
