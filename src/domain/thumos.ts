@@ -1,6 +1,8 @@
 export {
   buildChatCompletionBody,
   buildSystemPrompt,
+  buildThumosSystemParts,
+  XAI_PROMPT_CACHE_KEYS,
   buildThumosContext,
   completionDeltaText,
   CRAVING_LINE,

@@ -15,7 +15,7 @@ const PHOTO_OUTAGES: MealProviderFault[] = [
 ];
 
 describe('meal provider failures', () => {
-  it('treats provider outages as unavailable, and 429 as busy', () => {
+  it('treats every provider outage as one calm ai_unavailable', () => {
     expect(providerHttpOutage(401)).toBe(true);
     expect(providerHttpOutage(402)).toBe(true);
     expect(providerHttpOutage(403)).toBe(true);
@@ -30,13 +30,13 @@ describe('meal provider failures', () => {
       expect(mealProviderResult(true, fault)).toEqual({
         outcome: 'unavailable',
         status: 503,
-        code: 'provider_unavailable',
+        code: 'ai_unavailable',
       });
     }
     expect(mealProviderResult(true, { kind: 'http', status: 429 })).toEqual({
       outcome: 'unavailable',
       status: 503,
-      code: 'provider_busy',
+      code: 'ai_unavailable',
     });
     expect(mealProviderResult(true, { kind: 'http', status: 400 }).outcome).toBe('unavailable');
   });
@@ -68,7 +68,7 @@ describe('meal provider failures', () => {
   it('wires estimate-meal to that mapping and does not log the body, the key, or the photo', () => {
     const live = readFileSync('supabase/functions/estimate-meal/index.ts', 'utf8');
     expect(live).toContain('mealProviderResult');
-    expect(live).toContain("code: 'provider_unavailable'");
+    expect(live).toContain('AI_UNAVAILABLE_CODE');
     expect(live).toContain('providerUnavailable: true');
     expect(live).toContain('PHOTO_READ_FAIL');
     expect(live).toContain("warnMeal(`http ${response.status}`)");

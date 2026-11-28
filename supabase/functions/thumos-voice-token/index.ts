@@ -2,7 +2,14 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { visionContextFrom } from '../_shared/visionBoard.ts';
 import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
-import { AI_BILLING_CODE, AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
+import { xaiErrorText } from '../_shared/aiBilling.ts';
+import {
+  AI_UNAVAILABLE_CODE,
+  AI_UNAVAILABLE_MESSAGES,
+  classifyXaiFailure,
+  logAiUnavailable,
+  xaiFailureFromError,
+} from '../_shared/aiUnavailable.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
 import { coachRestingNote, garminRestingDays, healthWithRestingNote } from '../_shared/currentResting.ts';
@@ -240,18 +247,27 @@ Deno.serve(async (req) => {
     },
   });
 
-  const response = await fetch(GROK_VOICE.clientSecretUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ expires_after: { seconds: 300 } }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(GROK_VOICE.clientSecretUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ expires_after: { seconds: 300 } }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    const failure = xaiFailureFromError(error);
+    logAiUnavailable('thumos-voice-token', failure, failure);
+    return json({ ok: false, code: AI_UNAVAILABLE_CODE, reason: failure, message: AI_UNAVAILABLE_MESSAGES.voice }, 503);
+  }
   if (!response.ok) {
-    if (xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response))) {
-      logAiBilling('thumos-voice-token', response.status);
-      return json({ ok: false, code: AI_BILLING_CODE, message: AI_BILLING_MESSAGES.voice }, 503);
+    const reason = classifyXaiFailure(response.status, response.status === 402 ? null : await xaiErrorText(response));
+    if (reason) {
+      logAiUnavailable('thumos-voice-token', reason, response.status);
+      return json({ ok: false, code: AI_UNAVAILABLE_CODE, reason, message: AI_UNAVAILABLE_MESSAGES.voice }, 503);
     }
     return json({ ok: false, code: 'upstream', message: 'Voice could not be started. Text chat is still here.' }, 502);
   }

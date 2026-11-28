@@ -167,7 +167,8 @@ describe('workout diary sent to Thumos', () => {
     expect(prompt).toContain('not a diagnosis');
     const crisisPrompt = buildSystemPrompt(crisis, 'support', undefined, { selfHarm: true });
     expect(crisisPrompt).toContain('workout diary');
-    expect(crisisPrompt).not.toContain('how a session felt');
+    // The diary instruction stays in the cached static prefix; the turn still forbids using it.
+    expect(crisisPrompt).toContain('the gratitude diary, the vision board, the nutrition log, the workout diary');
   });
 
   it('reads the diary tables only when allowed, and never location or raw files', () => {

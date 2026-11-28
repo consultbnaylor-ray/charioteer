@@ -163,7 +163,8 @@ describe('gratitude diary helpers', () => {
     const crisis = buildThumosContext({ ...base, safety: { selfHarm: true, withdrawal: false, reasons: ['self-harm or suicidal language'] } });
     expect(crisis).not.toContain('My sister rang');
     const crisisPrompt = buildSystemPrompt(crisis, 'support', undefined, { selfHarm: true });
-    expect(crisisPrompt).not.toContain('Last week you wrote');
+    // The diary instruction stays in the cached static prefix; the turn still forbids using entries.
+    expect(crisisPrompt).toContain('Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, Garmin readings, the gratitude diary');
     expect(crisisPrompt).toContain('gratitude diary');
   });
 });

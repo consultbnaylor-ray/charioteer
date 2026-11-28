@@ -11,7 +11,15 @@ import {
   type PlanInput,
 } from '../_shared/healthPlan.ts';
 import { countAiUse, gateAiUse } from '../_shared/aiAllowance.ts';
-import { AI_BILLING_CODE, AI_BILLING_MESSAGES, logAiBilling, xaiBillingRefusal, xaiErrorText } from '../_shared/aiBilling.ts';
+import { xaiErrorText } from '../_shared/aiBilling.ts';
+import {
+  classifyXaiFailure,
+  logAiUnavailable,
+  unavailableNotice,
+  xaiFailureFromError,
+  type AiUnavailableReason,
+} from '../_shared/aiUnavailable.ts';
+import { parseXaiUsage, recordAiSpend } from '../_shared/aiSpend.ts';
 import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
 import { londonDay, shiftDay } from '../_shared/healthInsights.ts';
@@ -19,7 +27,7 @@ import { json, preflight } from '../_shared/http.ts';
 import { isFitnessGoal, resolvedFitnessGoal } from '../_shared/fitnessGoal.ts';
 import { competitionCutActive } from '../_shared/targetWeight.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, proteinGramsFor, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
-import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { buildChatCompletionBody, THUMOS_CHAT, XAI_PROMPT_CACHE_KEYS } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 import {
   STATS_ANALYSIS_PROMPT,
@@ -31,6 +39,9 @@ import {
   type NutritionBrief,
   type StatsAnalysisPayload,
 } from '../_shared/statsAnalysis.ts';
+
+/** A plan or an analysis is at most 1,500 output tokens. After this the built-in version is returned. Well inside the 150s wall clock. */
+const PLAN_PROVIDER_TIMEOUT_MS = 60_000;
 
 type Body = { limits?: string; mode?: string; summary?: unknown; localOnly?: boolean };
 
@@ -96,20 +107,35 @@ async function analyseStats(input: {
         history: [],
         user: JSON.stringify(summary),
         stream: false,
+        cacheKey: XAI_PROMPT_CACHE_KEYS.healthPlanAnalyse,
       })),
+      signal: AbortSignal.timeout(PLAN_PROVIDER_TIMEOUT_MS),
     });
-    if (!response.ok && xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response))) {
-      logAiBilling('health-plan analyse', response.status);
-      return analysisJson(summary, '', AI_BILLING_MESSAGES.analysis);
+    if (!response.ok) {
+      const reason = classifyXaiFailure(response.status, response.status === 402 ? null : await xaiErrorText(response));
+      if (reason) {
+        logAiUnavailable('health-plan analyse', reason, response.status);
+        return analysisJson(summary, '', reason);
+      }
     }
-    const text = response.ok ? completionText(await response.json()) : '';
+    const payload = response.ok ? await response.json() : null;
+    await recordAiSpend(gateAdmin, {
+      fn: 'health-plan-analyse',
+      tier: gate.ok ? gate.tier : null,
+      model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
+      usage: parseXaiUsage(payload),
+    });
+    const text = payload ? completionText(payload) : '';
     const shown = analysisResult(summary, text);
     if (shown.source === 'model' && gate.ok) {
       await countAiUse({ admin: gateAdmin, userId: input.userId, kind: 'plan', tier: gate.tier }).catch(() => false);
     }
     return analysisJson(summary, text);
-  } catch {
-    return analysisJson(summary, '');
+  } catch (error) {
+    // A timeout or a dropped call: the built-in summary, a calm line, and no credit used.
+    const failure = xaiFailureFromError(error);
+    logAiUnavailable('health-plan analyse', failure, failure);
+    return analysisJson(summary, '', failure);
   }
 }
 
@@ -202,15 +228,15 @@ function analysisResult(summary: StatsAnalysisPayload, modelText: string) {
   return resolvedAnalysisSections(modelText, summary);
 }
 
-/** A billing notice means our provider refused. The built-in summary is still returned. */
-function analysisJson(summary: StatsAnalysisPayload, modelText: string, billingNotice?: string): Response {
+/** An unavailable reason means our provider could not answer. The built-in summary is still returned. */
+function analysisJson(summary: StatsAnalysisPayload, modelText: string, unavailable?: AiUnavailableReason): Response {
   const resolved = analysisResult(summary, modelText);
   return json({
     ok: true,
     analysis: sectionsToText(resolved.sections),
     sections: resolved.sections,
     source: resolved.source,
-    ...(billingNotice ? { code: AI_BILLING_CODE, notice: billingNotice } : {}),
+    ...(unavailable ? unavailableNotice('analysis', unavailable) : {}),
   });
 }
 
@@ -430,27 +456,44 @@ Deno.serve(async (req) => {
         history: [],
         user: JSON.stringify(healthPlanModelContext(input, local)),
         stream: false,
+        cacheKey: XAI_PROMPT_CACHE_KEYS.healthPlan,
       })),
+      signal: AbortSignal.timeout(PLAN_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) {
-      if (xaiBillingRefusal(response.status, response.status === 402 ? null : await xaiErrorText(response))) {
-        logAiBilling('health-plan', response.status);
+      const reason = classifyXaiFailure(response.status, response.status === 402 ? null : await xaiErrorText(response));
+      if (reason) {
+        logAiUnavailable('health-plan', reason, response.status);
         return json({
           ok: true,
           plan: { ...local, limits: input.limits },
           source: 'local',
-          code: AI_BILLING_CODE,
-          notice: AI_BILLING_MESSAGES.plan,
+          ...unavailableNotice('plan', reason),
         });
       }
       return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
     }
-    const parsed = parseHealthPlanJson(completionText(await response.json()));
+    const payload = await response.json();
+    await recordAiSpend(planAdmin, {
+      fn: 'health-plan',
+      tier: gate.ok ? gate.tier : null,
+      model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
+      usage: parseXaiUsage(payload),
+    });
+    const parsed = parseHealthPlanJson(completionText(payload));
     if (!parsed) return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
     const plan = guardHealthPlan({ ...parsed, limits: input.limits, updatedAt: new Date().toISOString() }, input);
     if (gate.ok) await countAiUse({ admin: planAdmin, userId, kind: 'plan', tier: gate.tier }).catch(() => false);
     return json({ ok: true, plan, source: 'model' });
-  } catch {
-    return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
+  } catch (error) {
+    // A timeout or a dropped call: the plan drafted on their figures, a calm line, and no credit used.
+    const failure = xaiFailureFromError(error);
+    logAiUnavailable('health-plan', failure, failure);
+    return json({
+      ok: true,
+      plan: { ...local, limits: input.limits },
+      source: 'local',
+      ...unavailableNotice('plan', failure),
+    });
   }
 });

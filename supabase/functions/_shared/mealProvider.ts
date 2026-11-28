@@ -12,7 +12,7 @@ export type MealProviderFault =
   | { kind: 'unparsed' };
 
 export type MealProviderResult =
-  | { outcome: 'unavailable'; status: 503; code: 'provider_unavailable' | 'provider_busy' }
+  | { outcome: 'unavailable'; status: 503; code: 'ai_unavailable' }
   | { outcome: 'unread'; status: 422; code: 'unread' }
   | { outcome: 'local'; providerUnavailable: boolean };
 
@@ -41,12 +41,8 @@ export function mealProviderResult(photo: boolean, fault: MealProviderFault): Me
       : { outcome: 'local', providerUnavailable: false };
   }
   if (photo) {
-    const busy = fault.kind === 'http' && fault.status === 429;
-    return {
-      outcome: 'unavailable',
-      status: 503,
-      code: busy ? 'provider_busy' : 'provider_unavailable',
-    };
+    // 402, 429, 5xx, a timeout, a dropped call or a missing key: one calm code, never a failed photo.
+    return { outcome: 'unavailable', status: 503, code: 'ai_unavailable' };
   }
   return { outcome: 'local', providerUnavailable: true };
 }
