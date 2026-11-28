@@ -23,6 +23,7 @@ import {
   placeSearchOnce,
   routePlanBody,
 } from '@/domain/routeAdjust';
+import { ORS_SKETCH_POINT_CAP } from '@/domain/routeLengthLimit';
 import {
   ORS_WAYPOINT_LIMIT as SERVER_WAYPOINT_LIMIT,
   PREFER_PATH_WEIGHTINGS,
@@ -82,7 +83,8 @@ describe('sketch routes', () => {
     const atLimit = simplifySketch(busy, 0, ORS_WAYPOINT_LIMIT);
     expect(atLimit.length).toBeLessThanOrEqual(ORS_WAYPOINT_LIMIT);
     expect(readSketchPoints(atLimit.map((point) => ({ ...point })))).toHaveLength(atLimit.length);
-    expect(readSketchPoints(line(ORS_WAYPOINT_LIMIT + 1))).toBeNull();
+    expect(readSketchPoints(line(ORS_WAYPOINT_LIMIT + 1))?.length).toBe(ORS_WAYPOINT_LIMIT + 1);
+    expect(readSketchPoints(line(ORS_SKETCH_POINT_CAP + 1))).toBeNull();
     expect(readSketchPoints(undefined)).toEqual([]);
     const grown = line(8).reduce<OutdoorPoint[]>((points, point) => appendSketchPoint(points, point, 12), []);
     expect(grown.length).toBeGreaterThanOrEqual(2);
@@ -168,8 +170,9 @@ describe('sketch routes', () => {
     expect(directionsUrl(routingMode('cycle', true))).toContain('/cycling-regular/');
     expect(sketchLimitMessage(line(2, 0.001))).toBeNull();
     expect(sketchLimitMessage(line(2, 2))).toBe(ROUTE_LIMIT_MESSAGE);
-    expect(sketchLimitMessage(line(51))).toBe(ROUTE_LIMIT_MESSAGE);
-    expect(readSketchPoints(line(51))).toBeNull();
+    expect(sketchLimitMessage(line(51))).toBeNull();
+    expect(readSketchPoints(line(51))).toHaveLength(51);
+    expect(sketchLimitMessage(line(ORS_SKETCH_POINT_CAP + 1))).toBe(ROUTE_LIMIT_MESSAGE);
   });
 
   it('reads a short geocode list and ignores a bad hit', () => {

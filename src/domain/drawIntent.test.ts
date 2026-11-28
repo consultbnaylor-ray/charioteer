@@ -311,7 +311,8 @@ describe('a drawn route is made from the intent of the drawing', () => {
   it('picks turning points, keeps the far side of a loop, and stays inside the point budget', () => {
     expect(intentBudget(0)).toBe(INTENT_POINTS_MIN);
     expect(intentBudget(6600)).toBe(19);
-    expect(intentBudget(60_000)).toBe(INTENT_POINTS_MAX);
+    expect(intentBudget(60_000)).toBe(Math.round(60_000 / 350));
+    expect(intentBudget(60_000)).toBeLessThanOrEqual(INTENT_POINTS_MAX);
     const points = intentPoints(riverSketch);
     expect(points.length).toBeLessThanOrEqual(intentBudget(pathMetres(riverSketch)));
     expect(points.some((point) => metresBetween(point, at(400, -1800)) < 420)).toBe(true);
@@ -370,9 +371,11 @@ describe('the outdoor-route function for intent points', () => {
 
   it('snaps and asks once more only for an intent request that found no path', () => {
     const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
-    const intentBlock = fn.slice(fn.indexOf('if (intent) {'), fn.indexOf('const snapped = await snapStart'));
-    expect(intentBlock).toContain('snapMany(key, routed, sketch)');
-    expect(intentBlock.match(/postDirections\(/g)).toHaveLength(1);
+    expect(fn).toContain('routeSketchByChunks');
+    expect(fn).toContain('snapManyAll');
+    const retry = fn.slice(fn.indexOf('async function routeSketchByChunks'), fn.indexOf('async function recordRequest'));
+    expect(retry).toContain('snapManyAll(input.key, input.mode, input.sketch)');
+    expect(retry).toContain("first.failure.body.code !== 'no_path'");
     expect(fn).toContain("logOrsFailure('snap-many'");
   });
 });
