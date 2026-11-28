@@ -2,7 +2,7 @@
  * Subscription tiers and AI caps. One place to change the numbers.
  * Worst case assumes Apple's 30% and a max-length model call.
  * Day and month boundaries are Europe/London.
- * A free trial uses the limits of the plan being tried.
+ * A free trial or introductory offer uses the Standard limits, whichever plan is being tried (storeTierForSubscription).
  */
 
 export const YEARLY_PRODUCT_ID = 'Sta';

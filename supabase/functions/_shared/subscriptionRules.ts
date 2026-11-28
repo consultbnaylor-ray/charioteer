@@ -10,6 +10,8 @@ import {
   UNLIMITED_PRODUCT_ID,
   YEARLY_PRODUCT_ID,
   isSubscriptionProduct,
+  tierForProduct,
+  type Tier,
 } from './tierLimits.ts';
 
 export {
@@ -106,6 +108,19 @@ export function entitlementActive(row: SubscriptionRecord | null, now = Date.now
   if (!row.expiresAt) return false;
   const expires = Date.parse(row.expiresAt);
   return Number.isFinite(expires) && expires > now;
+}
+
+/**
+ * The tier a store subscription is allowed to use right now, for AI credits and the route cap.
+ * A free trial or introductory offer always gets the Standard limits, whichever plan is being tried.
+ * The plan's own tier applies once the trial has converted to a paid period.
+ * An active entitlement_overrides row still replaces this (see tierForAllowance).
+ */
+export function storeTierForSubscription(row: SubscriptionRecord | null, now = Date.now()): Tier | null {
+  if (!row || !entitlementActive(row, now)) return null;
+  const planTier = tierForProduct(row.productId);
+  if (!planTier) return null;
+  return row.isTrial ? 'standard' : planTier;
 }
 
 export function paywallRequired(input: {

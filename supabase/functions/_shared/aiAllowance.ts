@@ -1,5 +1,5 @@
 import { overrideActive, parseEntitlementOverride, tierForAllowance } from './entitlementOverride.ts';
-import { entitlementActive, type SubscriptionRecord } from './subscriptionRules.ts';
+import { storeTierForSubscription, type SubscriptionRecord } from './subscriptionRules.ts';
 import {
   AI_MAX_TOKENS,
   CRISIS_STATIC_REPLY,
@@ -10,7 +10,6 @@ import {
   londonDayKey,
   londonMonthStart,
   subscriptionRequiredMessage,
-  tierForProduct,
   type Tier,
   type UsageKind,
 } from './tierLimits.ts';
@@ -71,7 +70,7 @@ export async function gateAiUse(input: {
   const override = overrideRes.error ? null : parseEntitlementOverride(overrideRes.data);
   const comp = overrideActive(override, now.getTime());
   const row = subscriptionFromGate(sub.data);
-  const storeTier = row && entitlementActive(row, now.getTime()) ? tierForProduct(row.productId) : null;
+  const storeTier = storeTierForSubscription(row, now.getTime());
   const tier = tierForAllowance(override, storeTier, now.getTime());
   if (!tier) {
     if (input.crisis) return { ok: false, status: 200, crisis: true, reply: CRISIS_STATIC_REPLY };

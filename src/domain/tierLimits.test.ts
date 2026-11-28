@@ -22,7 +22,7 @@ import {
 const NOW = new Date('2026-11-01T12:00:00.000Z');
 
 describe('tier limits', () => {
-  it('maps every product to a tier and gives a trial the plan it is trying', () => {
+  it('maps every product to a tier (a trial is held to Standard in storeTierForSubscription)', () => {
     expect(tierForProduct('Sta')).toBe('standard');
     expect(tierForProduct('charioteer.monthly')).toBe('standard');
     expect(tierForProduct(PRO_PRODUCT_ID)).toBe('pro');
