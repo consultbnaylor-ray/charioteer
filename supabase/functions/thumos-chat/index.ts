@@ -6,7 +6,8 @@ import { ensureSafetyNotices } from '../_shared/safety.ts';
 import { pinnedStoicQuote } from '../_shared/stoicQuotes.ts';
 import {
   buildChatCompletionBody,
-  buildSystemPrompt,
+  buildThumosSystemParts,
+  XAI_PROMPT_CACHE_KEYS,
   buildThumosContext,
   completionDeltaText,
   conversationCues,
@@ -367,7 +368,7 @@ Deno.serve(async (req) => {
     stoicQuote: pinned?.school === 'Stoic' ? pinned.text : null,
   });
   const earlierAssistant = history.filter((turn) => turn.role === 'assistant').map((turn) => turn.content);
-  const system = buildSystemPrompt(context, mode, ALCOHOL_FACTS, {
+  const promptParts = buildThumosSystemParts(context, mode, ALCOHOL_FACTS, {
     followUp: mode === 'support' && isThumosFollowUp(history),
     supportShape: detectRisk(content) === 'planning' ? 'planning' : 'acute',
     committedAction,
@@ -461,7 +462,8 @@ Deno.serve(async (req) => {
                 apiKey,
                 model: step.model,
                 timeoutMs: step.timeoutMs,
-                system,
+                system: promptParts.staticInstructions,
+                systemAfter: promptParts.turnAndContext,
                 history,
                 user: content,
                 onFailure: (reason) => {
@@ -504,7 +506,8 @@ Deno.serve(async (req) => {
                   apiKey,
                   model: primaryStep?.model ?? model,
                   timeoutMs: primaryStep?.timeoutMs ?? THUMOS_CHAT.firstTimeoutMs,
-                  system: `${system}\n\n${THUMOS_RETRY_NOTE}`,
+                  system: promptParts.staticInstructions,
+                  systemAfter: `${promptParts.turnAndContext}\n\n${THUMOS_RETRY_NOTE}`,
                   history,
                   user: content,
                   onUsage: (usage) => spend(primaryStep?.model ?? model, usage),
@@ -582,6 +585,7 @@ async function completeThumos(input: {
   model: string;
   timeoutMs: number;
   system: string;
+  systemAfter?: string;
   history: ChatTurn[];
   user: string;
   onDelta?: (piece: string) => void;
@@ -593,9 +597,11 @@ async function completeThumos(input: {
   const body = JSON.stringify(buildChatCompletionBody({
     model: input.model,
     system: input.system,
+    systemAfter: input.systemAfter,
     history: input.history,
     user: input.user,
     stream: true,
+    cacheKey: XAI_PROMPT_CACHE_KEYS.thumosChat,
   }));
   try {
     const response = await fetch(THUMOS_CHAT.completionsUrl, {

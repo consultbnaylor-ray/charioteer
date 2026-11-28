@@ -10,7 +10,7 @@ import { xaiErrorText } from '../_shared/aiBilling.ts';
 import { classifyXaiFailure, logAiUnavailable, unavailableNotice, xaiFailureFromError } from '../_shared/aiUnavailable.ts';
 import { parseXaiUsage, recordAiSpend } from '../_shared/aiSpend.ts';
 import { json, preflight } from '../_shared/http.ts';
-import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { buildChatCompletionBody, THUMOS_CHAT, XAI_PROMPT_CACHE_KEYS } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 
 /** A reflection is a few sentences. After this the built-in note is shown instead. */
@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
         history: [],
         user: messages.user,
         stream: false,
+        cacheKey: XAI_PROMPT_CACHE_KEYS.gratitudeReflect,
       })),
       signal: AbortSignal.timeout(REFLECT_TIMEOUT_MS),
     });

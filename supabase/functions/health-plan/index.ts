@@ -27,7 +27,7 @@ import { json, preflight } from '../_shared/http.ts';
 import { isFitnessGoal, resolvedFitnessGoal } from '../_shared/fitnessGoal.ts';
 import { competitionCutActive } from '../_shared/targetWeight.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, proteinGramsFor, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
-import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { buildChatCompletionBody, THUMOS_CHAT, XAI_PROMPT_CACHE_KEYS } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 import {
   STATS_ANALYSIS_PROMPT,
@@ -107,6 +107,7 @@ async function analyseStats(input: {
         history: [],
         user: JSON.stringify(summary),
         stream: false,
+        cacheKey: XAI_PROMPT_CACHE_KEYS.healthPlanAnalyse,
       })),
       signal: AbortSignal.timeout(PLAN_PROVIDER_TIMEOUT_MS),
     });
@@ -455,6 +456,7 @@ Deno.serve(async (req) => {
         history: [],
         user: JSON.stringify(healthPlanModelContext(input, local)),
         stream: false,
+        cacheKey: XAI_PROMPT_CACHE_KEYS.healthPlan,
       })),
       signal: AbortSignal.timeout(PLAN_PROVIDER_TIMEOUT_MS),
     });

@@ -18,10 +18,14 @@ The phone still reads the older `provider_billing` code, so an older server and 
 
 ## Spend log
 
-`ai_spend_log` stores one row per answered call: function, plan tier, model, input and output tokens, and the cost.
-The cost is `usage.cost_in_usd_ticks` from xAI (1 USD = 10^10 ticks). If it is missing, tokens times the rate card, with an unknown model priced high.
+`ai_spend_log` stores one row per answered call: function, plan tier, model, input, output and cached prompt tokens, and the cost.
+The cost is `usage.cost_in_usd_ticks` from xAI (1 USD = 10^10 ticks). If it is missing, tokens times the rate card (cached tokens at the cached rate), with an unknown model priced high.
 No user id, prompt, reply or photo is stored, and only the service role can read it.
 Realtime voice is billed by minute to the phone's own connection and is not logged here. Voice is off for launch.
+
+## Prompt cache
+
+xAI caches a matching prefix from the start of `messages`. The static instructions go in the first system message, with nothing personal, no date and no stats in front of them. Turn-specific instructions and CONTEXT go in a second system message. Each function sets `prompt_cache_key` (for example `charioteer:thumos-chat`) so later calls for that feature land on the same cache server. A retry note is appended only to the second system message, so the cached prefix does not change.
 
 ## Spend warning
 

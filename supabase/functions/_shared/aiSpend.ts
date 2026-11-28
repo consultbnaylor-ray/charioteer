@@ -20,6 +20,8 @@ export type AiSpendFunction =
 export type XaiUsage = {
   inputTokens: number;
   outputTokens: number;
+  /** Prompt tokens served from cache. Part of inputTokens, not on top of them. */
+  cachedTokens: number;
   /** The charge xAI reports, in USD. Null when the response did not carry one. */
   costUsd: number | null;
 };
@@ -44,28 +46,34 @@ export function parseXaiUsage(payload: unknown): XaiUsage | null {
   const completion = count(raw.completion_tokens ?? raw.output_tokens);
   const total = count(raw.total_tokens);
   const output = Math.max(completion, total > input ? total - input : 0);
+  const details = (raw.prompt_tokens_details ?? raw.input_tokens_details) as Record<string, unknown> | undefined;
+  const cachedRaw = details && typeof details === 'object' ? count(details.cached_tokens) : 0;
+  const cachedTokens = Math.min(cachedRaw, input);
   const ticks = typeof raw.cost_in_usd_ticks === 'number' && raw.cost_in_usd_ticks >= 0 ? raw.cost_in_usd_ticks : null;
   if (input === 0 && output === 0 && ticks == null) return null;
-  return { inputTokens: input, outputTokens: output, costUsd: ticks == null ? null : ticks / TICKS_PER_USD };
+  return { inputTokens: input, outputTokens: output, cachedTokens, costUsd: ticks == null ? null : ticks / TICKS_PER_USD };
 }
 
 /** USD per million tokens, from https://docs.x.ai/docs/models (under 200k prompt tokens). */
-export const XAI_RATE_CARD: Record<string, { input: number; output: number }> = {
-  'grok-4.3': { input: 1.25, output: 2.5 },
-  'grok-4.3-latest': { input: 1.25, output: 2.5 },
-  'grok-4.20-0309-reasoning': { input: 1.25, output: 2.5 },
-  'grok-4.20-0309-non-reasoning': { input: 1.25, output: 2.5 },
-  'grok-4.5': { input: 2, output: 6 },
-  'grok-4.6': { input: 2, output: 6 },
-  'grok-4.7': { input: 2, output: 6 },
+export const XAI_RATE_CARD: Record<string, { input: number; cached: number; output: number }> = {
+  'grok-4.3': { input: 1.25, cached: 0.2, output: 2.5 },
+  'grok-4.3-latest': { input: 1.25, cached: 0.2, output: 2.5 },
+  'grok-4.20-0309-reasoning': { input: 1.25, cached: 0.2, output: 2.5 },
+  'grok-4.20-0309-non-reasoning': { input: 1.25, cached: 0.2, output: 2.5 },
+  'grok-4.5': { input: 2, cached: 0.5, output: 6 },
+  'grok-4.6': { input: 2, cached: 0.5, output: 6 },
+  'grok-4.7': { input: 2, cached: 0.5, output: 6 },
 };
 
 /** A model that is not on the card is priced like the dearest listed one, so spend is never understated. */
-const UNKNOWN_MODEL_RATE = { input: 2, output: 6 };
+const UNKNOWN_MODEL_RATE = { input: 2, cached: 0.5, output: 6 };
 
-export function estimateCostUsd(model: string, inputTokens: number, outputTokens: number): number {
+/** cachedTokens is the portion of inputTokens served from cache, billed at the cached rate. */
+export function estimateCostUsd(model: string, inputTokens: number, outputTokens: number, cachedTokens = 0): number {
   const rate = XAI_RATE_CARD[model] ?? UNKNOWN_MODEL_RATE;
-  return (inputTokens * rate.input + outputTokens * rate.output) / 1_000_000;
+  const cached = Math.min(Math.max(cachedTokens, 0), Math.max(inputTokens, 0));
+  const fresh = Math.max(inputTokens, 0) - cached;
+  return (fresh * rate.input + cached * rate.cached + outputTokens * rate.output) / 1_000_000;
 }
 
 export type AiSpendRow = {
@@ -74,6 +82,7 @@ export type AiSpendRow = {
   model: string;
   input_tokens: number;
   output_tokens: number;
+  cached_tokens: number;
   cost_usd: number;
   cost_source: 'xai' | 'estimated';
 };
@@ -86,14 +95,15 @@ export function spendRow(input: {
   usage: XaiUsage | null;
 }): AiSpendRow | null {
   if (!input.usage) return null;
-  const { inputTokens, outputTokens, costUsd } = input.usage;
+  const { inputTokens, outputTokens, cachedTokens, costUsd } = input.usage;
   return {
     fn: input.fn,
     tier: input.tier ?? null,
     model: input.model.slice(0, 80),
     input_tokens: inputTokens,
     output_tokens: outputTokens,
-    cost_usd: Number((costUsd ?? estimateCostUsd(input.model, inputTokens, outputTokens)).toFixed(6)),
+    cached_tokens: cachedTokens,
+    cost_usd: Number((costUsd ?? estimateCostUsd(input.model, inputTokens, outputTokens, cachedTokens)).toFixed(6)),
     cost_source: costUsd == null ? 'estimated' : 'xai',
   };
 }

@@ -15,6 +15,7 @@ create table public.ai_spend_log (
   model text not null check (char_length(model) between 1 and 80),
   input_tokens integer not null default 0 check (input_tokens >= 0),
   output_tokens integer not null default 0 check (output_tokens >= 0),
+  cached_tokens integer not null default 0 check (cached_tokens >= 0),
   cost_usd numeric(12, 6) not null check (cost_usd >= 0),
   cost_source text not null check (cost_source in ('xai', 'estimated'))
 );
@@ -26,7 +27,7 @@ revoke all on table public.ai_spend_log from public, anon, authenticated;
 grant all on table public.ai_spend_log to service_role;
 
 comment on table public.ai_spend_log is
-  'xAI cost per answered call. Function, tier, model, tokens and USD only. No user id or content. Service role only.';
+  'xAI cost per answered call. Function, tier, model, tokens (including cached prompt tokens) and USD only. No user id or content. Service role only.';
 
 -- One row per month and alert level, so each warning is sent once.
 create table public.ai_spend_alerts (

@@ -20,7 +20,12 @@ import {
   xaiUsageRequest,
   xaiUsageTotalUsd,
 } from '../../supabase/functions/_shared/aiSpend.ts';
-import { buildChatCompletionBody } from '../../supabase/functions/_shared/thumos.ts';
+import { ALCOHOL_FACTS } from '../../supabase/functions/_shared/facts.ts';
+import {
+  buildChatCompletionBody,
+  buildThumosSystemParts,
+  XAI_PROMPT_CACHE_KEYS,
+} from '../../supabase/functions/_shared/thumos.ts';
 import { mealProviderResult } from '../../supabase/functions/_shared/mealProvider.ts';
 
 const source = (path: string) => readFileSync(path, 'utf8');
@@ -128,13 +133,29 @@ describe('what each call costs', () => {
     const usage = parseXaiUsage({
       usage: { prompt_tokens: 196, completion_tokens: 2, total_tokens: 319, completion_tokens_details: { reasoning_tokens: 121 }, cost_in_usd_ticks: 3_509_000 },
     });
-    expect(usage).toEqual({ inputTokens: 196, outputTokens: 123, costUsd: 0.0003509 });
+    expect(usage).toEqual({ inputTokens: 196, outputTokens: 123, cachedTokens: 0, costUsd: 0.0003509 });
   });
 
   it('counts reasoning tokens as output whether or not completion_tokens already includes them', () => {
     expect(parseXaiUsage({ usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140 } })?.outputTokens).toBe(40);
     expect(parseXaiUsage({ usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 190 } })?.outputTokens).toBe(90);
-    expect(parseXaiUsage({ usage: { input_tokens: 199, output_tokens: 1, total_tokens: 200 } })).toEqual({ inputTokens: 199, outputTokens: 1, costUsd: null });
+    expect(parseXaiUsage({ usage: { input_tokens: 199, output_tokens: 1, total_tokens: 200 } })).toEqual({ inputTokens: 199, outputTokens: 1, cachedTokens: 0, costUsd: null });
+    expect(parseXaiUsage({
+      usage: {
+        prompt_tokens: 5300,
+        completion_tokens: 500,
+        total_tokens: 5800,
+        prompt_tokens_details: { text_tokens: 5300, cached_tokens: 4000 },
+      },
+    })).toEqual({ inputTokens: 5300, outputTokens: 500, cachedTokens: 4000, costUsd: null });
+    expect(parseXaiUsage({
+      usage: {
+        input_tokens: 125,
+        output_tokens: 48,
+        total_tokens: 173,
+        input_tokens_details: { cached_tokens: 98 },
+      },
+    })?.cachedTokens).toBe(98);
   });
 
   it('has no usage to read from an empty or odd response', () => {
@@ -148,41 +169,45 @@ describe('what each call costs', () => {
     expect(estimateCostUsd('grok-4.3', 1_000_000, 1_000_000)).toBeCloseTo(3.75, 6);
     expect(estimateCostUsd('grok-4.7', 1_000_000, 1_000_000)).toBeCloseTo(8, 6);
     expect(estimateCostUsd('grok-mystery', 1_000_000, 1_000_000)).toBeCloseTo(8, 6);
+    // 800k of the 1M input tokens were cached: (200k * 1.25 + 800k * 0.20 + 1M * 2.50) / 1M
+    expect(estimateCostUsd('grok-4.3', 1_000_000, 1_000_000, 800_000)).toBeCloseTo(2.91, 6);
   });
 
   it('stores function, tier, model, tokens and cost only', () => {
-    const row = spendRow({ fn: 'thumos-chat', tier: 'pro', model: 'grok-4.3', usage: { inputTokens: 5300, outputTokens: 500, costUsd: null } });
+    const row = spendRow({ fn: 'thumos-chat', tier: 'pro', model: 'grok-4.3', usage: { inputTokens: 5300, outputTokens: 500, cachedTokens: 0, costUsd: null } });
     expect(row).toEqual({
       fn: 'thumos-chat',
       tier: 'pro',
       model: 'grok-4.3',
       input_tokens: 5300,
       output_tokens: 500,
+      cached_tokens: 0,
       cost_usd: 0.007875,
       cost_source: 'estimated',
     });
-    expect(Object.keys(row ?? {}).sort()).toEqual(['cost_source', 'cost_usd', 'fn', 'input_tokens', 'model', 'output_tokens', 'tier']);
-    expect(spendRow({ fn: 'estimate-meal', tier: null, model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.5 } })).toMatchObject({ tier: null, cost_usd: 0.5, cost_source: 'xai' });
+    expect(Object.keys(row ?? {}).sort()).toEqual(['cached_tokens', 'cost_source', 'cost_usd', 'fn', 'input_tokens', 'model', 'output_tokens', 'tier']);
+    expect(spendRow({ fn: 'estimate-meal', tier: null, model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, costUsd: 0.5 } })).toMatchObject({ tier: null, cost_usd: 0.5, cost_source: 'xai' });
     expect(spendRow({ fn: 'estimate-meal', tier: null, model: 'grok-4.3', usage: null })).toBeNull();
   });
 
   it('writes the row, and never throws when the table is missing or the database fails', async () => {
     const inserted: Record<string, unknown>[] = [];
     await recordAiSpend({ from: () => ({ insert: async (row) => { inserted.push(row); return { error: null }; } }) }, {
-      fn: 'gratitude-reflect', tier: 'standard', model: 'grok-4.3', usage: { inputTokens: 300, outputTokens: 400, costUsd: 0.0012 },
+      fn: 'gratitude-reflect', tier: 'standard', model: 'grok-4.3', usage: { inputTokens: 300, outputTokens: 400, cachedTokens: 0, costUsd: 0.0012 },
     });
     expect(inserted).toHaveLength(1);
     await expect(recordAiSpend({ from: () => ({ insert: async () => ({ error: { message: 'relation "ai_spend_log" does not exist' } }) }) }, {
-      fn: 'gratitude-reflect', tier: null, model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.1 },
+      fn: 'gratitude-reflect', tier: null, model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, costUsd: 0.1 },
     })).resolves.toBeUndefined();
     await expect(recordAiSpend({ from: () => { throw new Error('down'); } }, {
-      fn: 'gratitude-reflect', tier: null, model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.1 },
+      fn: 'gratitude-reflect', tier: null, model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, costUsd: 0.1 },
     })).resolves.toBeUndefined();
   });
 
   it('asks xAI for the usage in a stream, and logs spend from every function that answers', () => {
     const body = buildChatCompletionBody({ system: 's', history: [], user: 'u', stream: true });
     expect(body.stream_options).toEqual({ include_usage: true });
+    expect(body.prompt_cache_key).toBeUndefined();
     expect(buildChatCompletionBody({ system: 's', history: [], user: 'u', stream: false }).stream_options).toBeUndefined();
     for (const name of ['thumos-chat', 'gratitude-reflect', 'health-plan', 'estimate-meal'] as const) {
       const text = source(`supabase/functions/${name}/index.ts`);
@@ -280,12 +305,105 @@ describe('the spend migration', () => {
   it('stores no user id and no content', () => {
     const table = sql.slice(sql.indexOf('create table public.ai_spend_log'), sql.indexOf(');', sql.indexOf('create table public.ai_spend_log')));
     expect(table).not.toMatch(/user_id|profiles|prompt|reply|content|body|photo|email/i);
-    for (const column of ['fn', 'tier', 'model', 'input_tokens', 'output_tokens', 'cost_usd']) expect(table).toContain(column);
+    for (const column of ['fn', 'tier', 'model', 'input_tokens', 'output_tokens', 'cached_tokens', 'cost_usd']) expect(table).toContain(column);
   });
 
   it('matches the row the functions write', () => {
-    const row = spendRow({ fn: 'thumos-chat', tier: 'max', model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.1 } });
+    const row = spendRow({ fn: 'thumos-chat', tier: 'max', model: 'grok-4.3', usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, costUsd: 0.1 } });
     const table = sql.slice(sql.indexOf('create table public.ai_spend_log'), sql.indexOf(');', sql.indexOf('create table public.ai_spend_log')));
     for (const column of Object.keys(row ?? {})) expect(table, column).toContain(column);
+  });
+});
+
+describe('xAI prompt caching', () => {
+  it('keeps the static coach instructions identical, with no name, date or stats in them', () => {
+    const first = buildThumosSystemParts('Name: Alex\nSober time: 47 days', 'support', ALCOHOL_FACTS, { supportShape: 'acute' });
+    const second = buildThumosSystemParts('Name: Sam\nSober time: 2 days', 'growth', ALCOHOL_FACTS, { selfHarm: true });
+    expect(first.staticInstructions).toBe(second.staticInstructions);
+    expect(first.staticInstructions).toContain('You are Thumos');
+    expect(first.staticInstructions).toContain('CURATED FACTS');
+    expect(first.staticInstructions).toContain('116 123');
+    expect(first.staticInstructions).not.toMatch(/Name:|Sober time:|Personal reasons:|mood \d/);
+    expect(first.staticInstructions).not.toMatch(/\nCONTEXT\n/);
+    expect(first.staticInstructions).not.toContain('Alex');
+    expect(first.staticInstructions).not.toContain('47 days');
+    expect(first.turnAndContext).toContain('CONTEXT');
+    expect(first.turnAndContext).toContain('Name: Alex');
+    expect(first.turnAndContext).toContain('47 days');
+    expect(second.turnAndContext).toContain('help them reach help now');
+    expect(first.staticInstructions.startsWith('You are Thumos')).toBe(true);
+  });
+
+  it('sends the static prefix first, then the turn, and sets prompt_cache_key', () => {
+    const parts = buildThumosSystemParts('Name: Alex', 'steady');
+    const body = buildChatCompletionBody({
+      system: parts.staticInstructions,
+      systemAfter: parts.turnAndContext,
+      history: [{ role: 'user', content: 'Earlier' }, { role: 'assistant', content: 'A reply' }],
+      user: 'How am I doing?',
+      stream: true,
+      cacheKey: XAI_PROMPT_CACHE_KEYS.thumosChat,
+    });
+    expect(body.prompt_cache_key).toBe('charioteer:thumos-chat');
+    expect(body.messages[0]).toEqual({ role: 'system', content: parts.staticInstructions });
+    expect(body.messages[1]).toEqual({ role: 'system', content: parts.turnAndContext });
+    expect(body.messages[0].content).not.toContain('Name: Alex');
+    expect(body.messages[1].content).toContain('Name: Alex');
+    expect(body.messages.map((message) => message.role)).toEqual(['system', 'system', 'user', 'assistant', 'user']);
+  });
+
+  it('a retry note goes in the turn-specific message, so the cached prefix does not change', () => {
+    const parts = buildThumosSystemParts('Name: Alex', 'steady');
+    const first = buildChatCompletionBody({
+      system: parts.staticInstructions,
+      systemAfter: parts.turnAndContext,
+      history: [],
+      user: 'Hi',
+      stream: true,
+      cacheKey: XAI_PROMPT_CACHE_KEYS.thumosChat,
+    });
+    const retry = buildChatCompletionBody({
+      system: parts.staticInstructions,
+      systemAfter: `${parts.turnAndContext}\n\nPlease try again, more carefully.`,
+      history: [],
+      user: 'Hi',
+      stream: true,
+      cacheKey: XAI_PROMPT_CACHE_KEYS.thumosChat,
+    });
+    expect(retry.messages[0].content).toBe(first.messages[0].content);
+    expect(retry.messages[1].content).toContain('more carefully');
+    expect(retry.prompt_cache_key).toBe(first.prompt_cache_key);
+  });
+
+  it('every AI function that calls the model sets a stable feature cache key, with the static prompt first', () => {
+    const chat = source('supabase/functions/thumos-chat/index.ts');
+    expect(chat).toContain('cacheKey: XAI_PROMPT_CACHE_KEYS.thumosChat');
+    expect(chat).toContain('system: promptParts.staticInstructions');
+    expect(chat).toContain('systemAfter: promptParts.turnAndContext');
+    expect(chat).toContain('systemAfter: `${promptParts.turnAndContext}\\n\\n${THUMOS_RETRY_NOTE}`');
+    const meal = source('supabase/functions/estimate-meal/index.ts');
+    expect(meal).toContain('cacheKey: XAI_PROMPT_CACHE_KEYS.estimateMeal');
+    expect(meal).toContain('prompt_cache_key: XAI_PROMPT_CACHE_KEYS.estimateMeal');
+    expect(meal).toContain('const mealSystem =');
+    expect(meal).toContain('MEAL_ESTIMATE_PROMPT');
+    expect(meal).not.toContain('`${MEAL_ESTIMATE_PROMPT}\\n\\nMeal:');
+    const plan = source('supabase/functions/health-plan/index.ts');
+    expect(plan).toContain('cacheKey: XAI_PROMPT_CACHE_KEYS.healthPlan');
+    expect(plan).toContain('cacheKey: XAI_PROMPT_CACHE_KEYS.healthPlanAnalyse');
+    const reflect = source('supabase/functions/gratitude-reflect/index.ts');
+    expect(reflect).toContain('cacheKey: XAI_PROMPT_CACHE_KEYS.gratitudeReflect');
+  });
+
+  it('prices cached prompt tokens at the cached rate when xAI did not send a charge', () => {
+    const row = spendRow({
+      fn: 'thumos-chat',
+      tier: 'standard',
+      model: 'grok-4.3',
+      usage: { inputTokens: 5300, outputTokens: 500, cachedTokens: 4000, costUsd: null },
+    });
+    // 1300 * 1.25 + 4000 * 0.20 + 500 * 2.50 = 1625 + 800 + 1250 = 3675 / 1e6
+    expect(row?.cached_tokens).toBe(4000);
+    expect(row?.cost_usd).toBeCloseTo(0.003675, 6);
+    expect(row?.cost_source).toBe('estimated');
   });
 });

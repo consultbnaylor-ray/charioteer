@@ -607,18 +607,41 @@ export function historyTurnsForModel(rows: HistoryRow[]): ChatTurn[] {
     }));
 }
 
+/**
+ * Sticky routing keys for xAI prompt caching.
+ * Requests with the same key go to the same server, which is where the cache lives.
+ * https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits
+ * The header x-grok-conv-id does the same job; prompt_cache_key in the body takes priority, so we use that.
+ * One key per feature, not per person, so the shared static prefix can be reused across users.
+ */
+export const XAI_PROMPT_CACHE_KEYS = {
+  thumosChat: 'charioteer:thumos-chat',
+  estimateMeal: 'charioteer:estimate-meal',
+  healthPlan: 'charioteer:health-plan',
+  healthPlanAnalyse: 'charioteer:health-plan-analyse',
+  gratitudeReflect: 'charioteer:gratitude-reflect',
+} as const;
+
 export function buildChatCompletionBody(input: {
   model?: string;
   system: string;
+  /**
+   * Turn-specific instructions and CONTEXT. Sent as a second system message so the
+   * first message (system) can stay byte-identical and be served from the cache.
+   */
+  systemAfter?: string;
   history: ChatTurn[];
   user: string;
   stream: boolean;
+  /** Routes this call to the same cache server as earlier calls with the same key. */
+  cacheKey?: string;
 }): {
   model: string;
   reasoning_effort: 'none' | 'low';
   stream: boolean;
   /** Asks xAI for the usage and exact cost in the last chunk of a stream, so the spend log has it. */
   stream_options?: { include_usage: true };
+  prompt_cache_key?: string;
   max_tokens?: number;
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
 } {
@@ -629,14 +652,17 @@ export function buildChatCompletionBody(input: {
     .slice(-THUMOS_CHAT.historyLimit);
   const last = prior[prior.length - 1];
   const history = last && last.role === 'user' && last.content.trim() === input.user.trim() ? prior.slice(0, -1) : prior;
+  const after = input.systemAfter?.trim() ?? '';
   return {
     model,
     reasoning_effort,
     stream: input.stream,
     ...(input.stream ? { stream_options: { include_usage: true as const } } : {}),
+    ...(input.cacheKey ? { prompt_cache_key: input.cacheKey } : {}),
     max_tokens: THUMOS_CHAT.maxTokens,
     messages: [
       { role: 'system', content: input.system },
+      ...(after ? [{ role: 'system' as const, content: after }] : []),
       ...history,
       { role: 'user', content: input.user },
     ],
@@ -812,14 +838,24 @@ function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
   return ACUTE_SUPPORT;
 }
 
-function styleLine(turn: PromptTurn): string {
-  const voice = 'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. No emoji unless the person uses them first. When you mention someone they talk about, use they, unless the user has already used a pronoun for that person. Do not guess he or she.';
-  if (turn.selfHarm) return `${voice} Be warm and brief: 2 to 4 sentences.`;
-  if (turn.committedAction) return `${voice} Write 1 or 2 sentences. Do not ask a question.`;
+/**
+ * UK English voice that never changes from turn to turn.
+ * Length and crisis wording sit in the turn-specific part, so this line can stay in the cached prefix.
+ */
+export const THUMOS_VOICE_LINE =
+  'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. No emoji unless the person uses them first. When you mention someone they talk about, use they, unless the user has already used a pronoun for that person. Do not guess he or she.';
+
+function styleExtra(turn: PromptTurn): string {
+  if (turn.selfHarm) return 'Be warm and brief: 2 to 4 sentences.';
+  if (turn.committedAction) return 'Write 1 or 2 sentences. Do not ask a question.';
   if (turn.supportShape === 'planning' && !turn.followUp) {
-    return `${voice} Give 3 to 5 concise suggestions. Often end with no question. A short, specific follow-up is fine.`;
+    return 'Give 3 to 5 concise suggestions. Often end with no question. A short, specific follow-up is fine.';
   }
-  return `${voice} Usually 2 to 4 sentences. Answer what they just said. Often end with no question. Vary the ending. Do not answer in a single generic line, and do not put each point on its own line.`;
+  return 'Usually 2 to 4 sentences. Answer what they just said. Often end with no question. Vary the ending. Do not answer in a single generic line, and do not put each point on its own line.';
+}
+
+function styleLine(turn: PromptTurn): string {
+  return `${THUMOS_VOICE_LINE} ${styleExtra(turn)}`;
 }
 
 function conversationShape(turn: PromptTurn): string {
@@ -935,16 +971,40 @@ export function buildThumosContext(input: ThumosContextInput): string {
   ].filter(Boolean).join('\n');
 }
 
-export function buildSystemPrompt(
+/**
+ * Split the coach prompt so the static instructions can be cached.
+ * xAI matches an identical prefix from the start of the messages array
+ * (https://docs.x.ai/developers/advanced-api-usage/prompt-caching/how-it-works).
+ * Nothing personal or turn-specific belongs in staticInstructions: no name, date, stats, or stage.
+ */
+export function buildThumosSystemParts(
   context: string,
   mode: ThumosMode,
   facts: readonly CitedFact[] = ALCOHOL_FACTS,
   turn: PromptTurn = {},
-): string {
+): { staticInstructions: string; turnAndContext: string } {
   const factText = facts === ALCOHOL_FACTS ? factsBlock() : facts.map((fact) => `- [${fact.id}] ${fact.text} (${fact.source})`).join('\n');
-  return [
+  const staticInstructions = [
     'You are Thumos, the spirited companion in Charioteer.',
     'Charioteer is named for Plato\'s charioteer of the soul. You are the spirited horse: courage, heart, and forward motion.',
+    'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
+    'You cannot act outside this chat. Never offer to set a reminder, an alarm, or a calendar entry, and never offer to contact someone. If a reminder, alarm, or calendar entry would help, suggest they set it themselves. Do not say "I can set a reminder".',
+    THUMOS_VOICE_LINE,
+    'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
+    GRATITUDE_PROMPT_LINE,
+    VISION_PROMPT_LINE,
+    NUTRITION_PROMPT_LINE,
+    WORKOUT_REFLECTION_PROMPT,
+    'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
+    'Safety rules, follow exactly:',
+    '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',
+    '- If they express suicidal thoughts or self-harm: take it seriously. Encourage the Samaritans on 116 123 (free, 24 hours) and 999 if they are in immediate danger. Stay supportive. Do not debate whether they should live. Do not describe methods.',
+    '',
+    'CURATED FACTS',
+    factText,
+  ].filter((line) => line !== '').join('\n');
+
+  const turnAndContext = [
     turn.selfHarm
       ? 'On this turn your only job is to stay with this person and help them reach help now.'
       : (turn.stage && turn.stage !== 'stopped')
@@ -953,33 +1013,31 @@ export function buildSystemPrompt(
     mode === 'support' || turn.selfHarm
       ? ''
       : 'You also motivate movement, a healthy meal, and sleep when they cannot be bothered. Sobriety and safety still come first. That help is not medical advice. Respect an injury, an illness, and signs of overtraining, and give permission to rest.',
-    'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
-    'You cannot act outside this chat. Never offer to set a reminder, an alarm, or a calendar entry, and never offer to contact someone. If a reminder, alarm, or calendar entry would help, suggest they set it themselves. Do not say "I can set a reminder".',
-    styleLine(turn),
-    'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
+    styleExtra(turn),
     turn.selfHarm
       ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, the workout diary, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
       : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote or a pinned Platonic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes published comparison bands, you may quote those figures and name the source written there. They are not a target and not a reason to chase the top of a range. Do not add a band that is not written there. If CONTEXT includes a pinned Stoic quote or a pinned Platonic quote, you may use it once for motivation. Quote it faithfully. Plato is Platonic, not a Stoic. Do not call Plato a Stoic.',
-    turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
-    turn.selfHarm ? '' : VISION_PROMPT_LINE,
-    turn.selfHarm ? '' : NUTRITION_PROMPT_LINE,
-    turn.selfHarm ? '' : WORKOUT_REFLECTION_PROMPT,
-    'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     repetitionLine(turn),
     conversationShape(turn),
     modeGuidance(mode, turn),
     eventPreparationSection(turn),
     motivationBlock(mode, turn),
-    'Safety rules, follow exactly:',
-    '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',
-    '- If they express suicidal thoughts or self-harm: take it seriously. Encourage the Samaritans on 116 123 (free, 24 hours) and 999 if they are in immediate danger. Stay supportive. Do not debate whether they should live. Do not describe methods.',
     '',
     'CONTEXT',
     context,
-    '',
-    'CURATED FACTS',
-    factText,
-  ].join('\n');
+  ].filter((line) => line !== '').join('\n');
+
+  return { staticInstructions, turnAndContext };
+}
+
+export function buildSystemPrompt(
+  context: string,
+  mode: ThumosMode,
+  facts: readonly CitedFact[] = ALCOHOL_FACTS,
+  turn: PromptTurn = {},
+): string {
+  const parts = buildThumosSystemParts(context, mode, facts, turn);
+  return `${parts.staticInstructions}\n\n${parts.turnAndContext}`;
 }
 
 export function safetyFromText(text: string): SafetyHit {

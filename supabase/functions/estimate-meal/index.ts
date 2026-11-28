@@ -15,7 +15,7 @@ import { corsHeaders, json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
 import { MEAL_NO_RETRY_HEADER, mealProviderResult, providerRetryPointless, type MealProviderFault } from '../_shared/mealProvider.ts';
 import { MEAL_ESTIMATE_PROMPT, PHOTO_READ_FAIL, estimateFromText, parseMealEstimate } from '../_shared/nutrition.ts';
-import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { buildChatCompletionBody, THUMOS_CHAT, XAI_PROMPT_CACHE_KEYS } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 
 type Body = { text?: string; imageBase64?: string; source?: string };
@@ -155,8 +155,11 @@ Deno.serve(async (req) => {
   });
   if (!gate.ok && 'body' in gate) return json({ ...gate.body, usage: null }, gate.status);
 
+  // The long estimate instructions sit in the system message so they form a stable cached prefix.
+  const mealSystem = `You estimate meals. Reply with JSON only.\n\n${MEAL_ESTIMATE_PROMPT}`;
+  const mealUser = text ? `Meal: ${text}` : 'See the photo.';
   const content: ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail?: 'low' } })[] = [
-    { type: 'text', text: text ? `${MEAL_ESTIMATE_PROMPT}\n\nMeal: ${text}` : MEAL_ESTIMATE_PROMPT },
+    { type: 'text', text: mealUser },
   ];
   if (image) {
     const urlPart = image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
@@ -165,18 +168,20 @@ Deno.serve(async (req) => {
 
   const textBody = buildChatCompletionBody({
     model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
-    system: 'You estimate meals. Reply with JSON only.',
+    system: mealSystem,
     history: [],
-    user: text || 'See the photo.',
+    user: mealUser,
     stream: false,
+    cacheKey: XAI_PROMPT_CACHE_KEYS.estimateMeal,
   });
   const photoBody = {
     model: THUMOS_CHAT.model,
     reasoning_effort: 'low' as const,
     stream: false,
     max_tokens: 2000,
+    prompt_cache_key: XAI_PROMPT_CACHE_KEYS.estimateMeal,
     messages: [
-      { role: 'system' as const, content: 'You estimate meals. Reply with JSON only.' },
+      { role: 'system' as const, content: mealSystem },
       { role: 'user' as const, content },
     ],
   };
@@ -188,10 +193,7 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(image ? photoBody : { ...textBody, messages: [
-        { role: 'system', content: 'You estimate meals. Reply with JSON only.' },
-        { role: 'user', content },
-      ] }),
+      body: JSON.stringify(image ? photoBody : textBody),
       signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) {
